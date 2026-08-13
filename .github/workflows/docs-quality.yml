@@ -65,9 +65,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $pattern = '(api[_-]?key|client[_-]?secret|password)\s*[:=]\s*["'']?[A-Za-z0-9_\-]{16,}'
-          $matches = git grep -n -I -E $pattern -- . ':!docs/*.md'
-          if ($LASTEXITCODE -gt 1) { throw 'Secret scan failed to run.' }
-          if ($matches) {
-            Write-Error "Potential secret detected:`n$matches"
-            exit 1
-          }
+          $secretMatches = @(git grep -n -I -E $pattern -- . ':!docs/*.md')
+          $grepExitCode = $LASTEXITCODE
+          if ($grepExitCode -eq 1) { exit 0 }
+          if ($grepExitCode -ne 0) { throw "Secret scan failed to run (git grep exit code: $grepExitCode)." }
+          Write-Error "Potential secret detected:`n$($secretMatches -join [Environment]::NewLine)"
+          exit 1
