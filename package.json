@@ -17,11 +17,13 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "packs:validate": "tsx packs/validate.ts",
     "local:up": "docker compose up -d",
     "local:down": "docker compose down",
     "local:logs": "docker compose logs -f"
   },
   "devDependencies": {
+    "tsx": "4.19.1",
     "typescript": "~5.8.3"
   }
 }

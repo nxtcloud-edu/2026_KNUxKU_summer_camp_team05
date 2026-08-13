@@ -1,0 +1,59 @@
+{
+  "packId": "jp-osaka",
+  "displayName": "오사카",
+  "country": "JP",
+  "coverage": "B",
+  "active": false,
+  "center": { "lat": 34.6937, "lng": 135.5023 },
+  "areas": ["난바", "우메다", "신사이바시", "텐노지", "베이에어리어", "닛폰바시"],
+  "airports": ["KIX", "ITM"],
+  "requiresAirTravel": true,
+  "cardDeck": "deck_jp_osaka_v2",
+  "providers": {
+    "hotel": ["rakuten_travel", "amadeus_hotel", "google_places"],
+    "dining": ["hotpepper", "gurunavi", "google_places"],
+    "poi": ["google_places", "jnto"],
+    "transit": ["navitime", "google_directions"],
+    "flight": ["amadeus_flight"]
+  },
+  "config": {
+    "currency": "JPY",
+    "displayCurrency": "KRW",
+    "timezone": "Asia/Tokyo",
+    "mealTimes": { "lunch": "11:30-14:00", "dinner": "17:30-21:30" },
+    "tipping": false,
+    "defaultTransit": "subway",
+    "commonClosedDay": "화요일(일부 박물관)",
+    "reservationCulture": "인기 식당 사전예약 필수",
+    "avgCosts": { "mealMid": 1500, "subwayRide": 240, "taxiBase": 600 }
+  },
+  "typicalDurations": [2, 3, 4],
+  "recommendedNights": 3,
+  "peakSeasons": ["2026-12-24~2027-01-02", "2026-10-03~2026-10-09"],
+  "avoidDates": ["2026-12-31"],
+  "weatherProfile": { "bestMonths": [3, 4, 5, 10, 11], "rainyMonths": [6, 7] },
+  "roundPreset": "standard_overseas",
+  "transitPasses": [
+    {
+      "id": "osaka-amazing-pass-1d",
+      "name": "오사카 주유패스 1일권",
+      "priceMinor": 2800,
+      "currency": "JPY",
+      "validity": "1일",
+      "coverage": ["osaka_metro", "osaka_city_bus", "hankyu_partial"],
+      "includedAttractions": ["우메다 스카이빌딩", "오사카성 천수각", "츠텐카쿠"],
+      "excludes": ["JR선"],
+      "usageConditions": "미확인 — 구매처·교환 장소·시간대 제약 확인 필요",
+      "notes": "포함 시설 입장권 가치가 커서 관광지 2곳 이상 방문 시 유리. R3 확정 후 재계산 대상"
+    }
+  ],
+  "priceBands": [],
+  "verification": [
+    { "field": "config.avgCosts", "status": "unverified", "note": "기획서 예시값. 현지 단가 재확인 필요" },
+    { "field": "peakSeasons", "status": "unverified", "note": "2026~2027 실제 연휴·이벤트 일정 확인 필요" },
+    { "field": "transitPasses[osaka-amazing-pass-1d].priceMinor", "status": "unverified", "note": "공식 사이트에서 가격·유효 노선·포함 시설 확인 필요" },
+    { "field": "transitPasses[osaka-amazing-pass-1d].includedAttractions", "status": "unverified", "note": "전체 목록 미완성" },
+    { "field": "providers", "status": "unverified", "note": "각 제공자의 상업적 이용 약관·쿼터 확인 필요" },
+    { "field": "commonClosedDay", "status": "unverified", "note": "주요 POI별 휴관일로 세분화 필요" }
+  ]
+}

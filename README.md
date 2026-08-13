@@ -48,6 +48,7 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | [agent-architecture.md](docs/agent-architecture.md) | 에이전트 아키텍처와 제어 계약 — 제어 평면 분리, 심판 호출 순서 디스패치 프로토콜, Data Agent 캐시 계약 |
 | [development-and-deployment.md](docs/development-and-deployment.md) | 개발 환경과 배포 계획 — 저장소 구조, 스택 결정, 로컬 실행, 프론트–백엔드 계약, AWS EC2 배포 |
 | [objection-and-rerun.md](docs/objection-and-rerun.md) | 이의 제기와 재토론 — 횟수 상한, 심사·승인 규칙, 재실행 범위 산출, 늦은 하드 제약 등록 |
+| [team-assignments.md](docs/team-assignments.md) | 팀 역할과 작업 폴더 — 4개 트랙의 소유 범위, 첫 과제, 트랙 간 접점 |
 | [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
 | [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
 | [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
