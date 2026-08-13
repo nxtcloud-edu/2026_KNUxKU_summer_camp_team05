@@ -19,8 +19,46 @@
 | `policy.ts` | 38개 `queryClass`의 TTL·캐시 여부·fail-closed·캐시 키 | 클래스 추가 시에만 |
 | `agents.ts` | 인스턴스 8종: 누가 어떤 클래스를 담당하고 라운드당 몇 번 부르나 | 거의 안 늘어남 |
 | `providers/*.ts` | **API 하나 = 파일 하나** | 예. 여기만 늘어난다 |
+| `prefetch.ts` | 라운드 시작 전 조달 — 캐시를 데우고 후보를 DB에 적재 | 아니오. 한 벌 |
 
 게이트웨이가 한 벌이라 정규화 스키마·TTL·신뢰도·프라이버시 경계가 한 곳에서만 강제된다. 심판 입장에서는 인스턴스가 8종이든 제공자가 30개든 "필요하면 도구 한 번"으로 동일하다.
+
+## 붙어 있는 제공자
+
+| 어댑터 | 담당 클래스 | 환경변수 | 비고 |
+| --- | --- | --- | --- |
+| `amadeus` | `flight.offers_search` · `flight.cheapest_date` · `flight.offer_price` | `AMADEUS_CLIENT_ID` · `AMADEUS_CLIENT_SECRET` | 기본 baseUrl은 test 환경. `AMADEUS_BASE_URL`로 운영 전환 |
+| `odsay` | `transit.route` · `transit.airport_transfer` | `ODSAY_API_KEY` | 실패도 HTTP 200으로 온다 — 본문 `error`를 본다 |
+| `tourapi` | `poi.search` · `dining.search` · `geo.place_details` | `TOUR_API_KEY` | 액티비티 정규화 스키마가 없어 **캐시 전용**. `candidates`에 적재되지 않는다 |
+
+`providersFromEnv()`는 키가 있는 것만 싣고, 빠진 것은 `missing`으로 보고한다. 조용히 빠지면 후보가 0건인 이유를 아무도 모른다.
+
+```typescript
+const setup = providersFromEnv();
+setup.missing; // [{ id: 'amadeus', envVars: ['AMADEUS_CLIENT_ID', ...] }]
+const registry = setup.registry(packProviders);
+```
+
+## 프리페치
+
+라운드가 시작되기 전에 후보를 조달해 캐시와 `candidates` 테이블에 채운다. 심판은 조달을 기다리는 대신 **감시와 판정**에 집중한다.
+
+```typescript
+const plan = planPrefetch({ runId, roundId: 'r_2', packId, params: { 'hotel.search': [{ ... }] } });
+const report = await runPrefetch(gateway, plan, { sink });
+```
+
+미리 받지 **않는** 것이 계약의 핵심이다.
+
+| 제외 | 이유 |
+| --- | --- |
+| `web.*` · `kb.retrieve` | 후보 조달원이 아니다. 심판이 필요할 때만 부른다 (6.9) |
+| fail-closed 클래스 | 안전 축은 판정 시점의 live 값이어야 한다 |
+| `cache: 'never'` 클래스 | 저장 자체가 금지다. 미리 받아도 버려지고 쿼터만 태운다 |
+
+`runPrefetch`는 **던지지 않는다.** 실패는 보고서에 남고 라운드는 그대로 진행한다 — 프리페치는 성능 최적화이지 조달의 유일한 경로가 아니다. 다만 클래스 쿼터를 넘기면 즉시 멈춘다. 프리페치가 라운드 예산을 다 먹고 심판이 검증 호출을 못 하는 상황이 최악이다.
+
+정규화 스키마(`candidateSchema`)를 통과한 응답만 `candidates`에 들어간다. 통과하지 못한 것은 캐시에만 남는다 — 스키마 밖의 것을 후보로 인정하면 계획서의 `external_id` 전수 검증이 무너진다.
 
 ## 제공자 어댑터 추가하기
 
@@ -56,11 +94,11 @@ createStaticRegistry([rakutenTravel, amadeusHotel], {
 ## 검증
 
 ```bash
-npm run test --workspace @tm/data-agents      # 26개, 키 없이 돈다
+npm run test --workspace @tm/data-agents      # 57개, 키 없이 돈다
 npm run typecheck --workspace @tm/data-agents
 ```
 
-테스트는 픽스처 제공자로 돌기 때문에 API 키가 필요 없다. 실제 제공자 호출은 비용 상한이 있는 sandbox 또는 nightly로 분리한다.
+테스트는 픽스처 제공자와 `fetch` 스텁으로 돌기 때문에 API 키가 필요 없다. 실제 제공자 어댑터는 **응답 형태를 고정해 정규화 계약만** 검증한다 — 실제 호출은 키를 넣고 비용 상한이 있는 sandbox 또는 nightly로 분리한다.
 
 ## 손대면 안 되는 것
 

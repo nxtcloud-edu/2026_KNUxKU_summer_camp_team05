@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node --import tsx --test src/policy.test.ts src/canonical.test.ts src/gateway.test.ts",
+    "test": "node --import tsx --test src/policy.test.ts src/canonical.test.ts src/gateway.test.ts src/prefetch.test.ts src/providers/providers.test.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

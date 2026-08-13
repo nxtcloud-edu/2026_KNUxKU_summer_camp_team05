@@ -23,3 +23,25 @@ export {
   type QuotaCounter,
 } from './gateway.js';
 export { createFixtureProvider, type FixtureConfig } from './providers/fixture.js';
+export {
+  PREFETCH_CLASSES_BY_ROUND,
+  extractCandidates,
+  planPrefetch,
+  prefetchSkipReason,
+  prefetchableClasses,
+  runPrefetch,
+  type CandidateSink,
+  type PrefetchFailure,
+  type PrefetchOptions,
+  type PrefetchPlan,
+  type PrefetchPlanInput,
+  type PrefetchReport,
+  type PrefetchSkip,
+  type PrefetchSkipReason,
+  type PrefetchedCandidate,
+} from './prefetch.js';
+export { buildUrl, httpJson, isoDurationToMinutes, rawRefOf, requireEnv } from './providers/http.js';
+export { amadeusFromEnv, createAmadeusProvider, type AmadeusConfig } from './providers/amadeus.js';
+export { createOdsayProvider, odsayFromEnv, type OdsayConfig } from './providers/odsay.js';
+export { createTourApiProvider, tourApiFromEnv, type TourApiConfig } from './providers/tourapi.js';
+export { providersFromEnv, type ProviderSetup } from './providers/registry.js';
