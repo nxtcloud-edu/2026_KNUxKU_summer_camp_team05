@@ -93,14 +93,50 @@ npm run packs:validate
 
 ```text
 apps/api/                 Fastify 게이트웨이 (방·설문·이의 접수)
-apps/worker/              BullMQ 워커, Orchestrator 루프
-packages/core/            결정론 엔진 (STALE 전파, 이의 영향, 디스패치 검증)
-packages/agents/          Supervisor·심판 7종·페르소나·문서 생성   ← 신규
-packages/data-agents/     Data Agent read-through + 제공자 어댑터  ← 신규
-packages/db/              마이그레이션·리포지토리                  ← 신규
+apps/worker/              BullMQ 워커, Orchestrator 루프, Planning Graph 저장
+packages/core/            결정론 엔진 (Scoring, Planning Graph, 디스패치 검증 V1~V10,
+                          Validation Pass, 재심 기계 판정, 이의 영향)
+packages/agents/          Supervisor·심판 7종·페르소나·문서 생성   ← 별도 담당자
+packages/data-agents/     Data Agent read-through + 제공자 어댑터
+packages/db/              마이그레이션·리포지토리
 ```
 
-첫 과제 (의존 순서대로)
+> **T3 내부 분담**: LLM을 호출하는 것(`packages/agents`)과 호출하지 않는 것(나머지)을 다른 사람이 맡는다. 결정론 엔진 담당자는 `packages/agents`를 건드리지 않는다. 넘겨줄 설정·계약은 [llm-runtime-config.md](llm-runtime-config.md)에 있다.
+
+### 4.1 완료된 것 (전부 실행 검증됨)
+
+| 항목 | 위치 | 검증 |
+| --- | --- | --- |
+| PostgreSQL 스키마·리포지토리 | `packages/db` | `npm run smoke --workspace @tm/db` |
+| 이의 → 큐 → 워커 → 기록 한 바퀴 | `apps/api` · `apps/worker` | API·워커·PG·Redis 기동 후 `applied`까지 확인 |
+| Data Agent 게이트웨이·정책 카탈로그 | `packages/data-agents` | 테스트 26개 (키 없이 실행) |
+| Scoring Engine · 재심 기계 판정 | `packages/core/src/{scoring,review}.ts` | 테스트 28개 |
+| 디스패치 검증 V1~V10 · Validation Pass | `packages/core/src/{dispatch,validation}.ts` | 테스트 30개 |
+| Planning Graph ↔ `planning_nodes` | `packages/core/src/graph.ts` · `apps/worker/src/orchestrator/graph-store.ts` | 테스트 16개 + STALE 전파 실행 확인 |
+
+핵심 계약 셋은 테스트로 고정되어 있다. 깨면 `npm run test`가 실패한다.
+
+- 심판·Supervisor는 후보를 선택하지 않고 수치도 만들지 않는다 (INV-2)
+- C5·C7은 코드 판정이 최종이다 (INV-3)
+- 예약 완료 노드는 자동 STALE 대상이 아니라 승인 요청 대상이다 (INV-5)
+- fail-closed 미검증 노드는 승격할 수 없고 finalize를 막는다 (V9)
+- 페르소나 에이전트는 도구가 없다. 웹검색 포함 모든 조달은 심판이 Data Agent를 통해 한다
+
+### 4.2 남은 것
+
+| # | 항목 | 막는 것 |
+| --- | --- | --- |
+| 1 | **제공자 어댑터** — API 하나당 파일 하나 (Amadeus·Rakuten·ODsay·TourAPI…) | 없음. T2의 커버리지 조사 결과가 우선순위를 정한다. 추가 방법은 `packages/data-agents/README.md` |
+| 2 | **`computeLegalMoves` 그래프 기반 전환** — 지금은 "다음 라운드 하나"만 만든다 | 없음. `readyNodes`가 재료다 |
+| 3 | **나머지 리포지토리** — `verdicts` · `candidates` · `messages` · `scores` · `concession_ledger` · `dispatch_decisions` · `llm_usage` | 없음. 심판이 결과를 쓸 곳 |
+| 4 | **DateResolver** — 비트맵 교집합 → 슬라이딩 윈도우 → 완화 → 스코어링 | 설문 스키마 v2/v3 결정 (T4 미결정 4번) |
+| 5 | **설문 → `ParticipantWeights` 변환기** | 같음 |
+| 6 | **카카오 OAuth·세션** | 없음. API 외부 노출의 전제 |
+| 7 | **방 API 확장** — 방 조회·멤버·페르소나 확인 게이트, 트리거 3종, 승인 요청 경로 | 없음 |
+| 8 | **Constraint Optimizer · Booking Coordinator · 알림** | R5·예약 설계 확정 |
+| 9 | 큐 계약 중복 제거, 민감정보 파기 잡, 백업·복구 리허설, `infra/ec2/` | 배포 준비 시 |
+
+### 4.3 작업 이력 (의존 순서)
 
 1. ~~**`packages/db`** — 인메모리 저장소를 PostgreSQL로 교체~~ **완료·실행 검증됨.** 마이그레이션 1건과 리포지토리 3종(rooms·surveys·objections)이 로컬 PostgreSQL 16에서 통과한다. 회귀 확인은 `npm run smoke --workspace @tm/db`. 다음은 나머지 테이블(runs·rounds·planning_nodes·verdicts·pack_cache)의 리포지토리다.
 2. ~~**이의 → 큐 → 재실행 경로**~~ **완료·실행 검증됨.** 접수 → `queued` → 워커 소비 → 대상 라운드 재실행 기록 → `applied` + `outcome`까지 한 바퀴 돈다. 워커는 `DATABASE_URL` 없이 기동하지 않고(인메모리로는 API가 만든 이의가 보이지 않는다), 같은 이의가 다시 들어오면 건너뛴다. 최종 실패는 run `FAILED` + `unresolvedReason`으로 남기고 이의를 `applied`로 올리지 않는다. **남은 것은 심판 알맹이** — 지금은 라운드가 돌기만 하고 후보를 조달하지 않아 `outcome.changed`가 항상 false다.
@@ -111,6 +147,7 @@ packages/db/              마이그레이션·리포지토리                  �
    - 심판은 이 값을 받아 **서술만** 한다. 후보 선택과 수치 산출은 코드가 한다(INV-2).
    - 남은 접점: 설문 응답 → `ParticipantWeights` 변환기. v2·v3 중 무엇을 쓸지가 T4의 4번 결정에 달려 있다.
 5. **`packages/agents`** — Supervisor부터. 심판은 Flight → Transport → Accommodation 순서로 붙인다(문서가 이미 있는 순서). 모델·키·프롬프트 설정은 [llm-runtime-config.md](llm-runtime-config.md).
+   > **분담 주의**: LLM 에이전트(Supervisor·심판·페르소나)는 T3 안에서 **별도 담당자가 맡는다.** 표의 소유 폴더에는 T3로 적혀 있지만 실제로는 나뉘어 있으니, 결정론 엔진 담당자는 이 항목을 건드리지 않는다.
 6. ~~**Orchestrator 검증 규칙 완성**~~ **V1~V10 완료** (`packages/core/src/dispatch.ts`). 위반 처리가 규칙마다 다르다: 거부(V1·V2·V4·V5·V7·V9) / 직렬화(V3) / 축약 모드 강등(V6) / 승인 요청 변환(V8) / 코드 판정 채택(V10).
 7. ~~**Validation Pass**~~ **완료** (`packages/core/src/validation.ts`). `external_id` 전수 검증, 예산 정합성, 시간대 겹침·이동시간·영업시간, fail-closed 미검증. 실패하면 `documentGate`가 `PARTIAL`만 허용한다.
 8. ~~**Planning Graph 연결**~~ **완료** (`packages/core/src/graph.ts` + `apps/worker/src/orchestrator/graph-store.ts`). V4·V9 입력을 `planning_nodes` 테이블에서 읽는다. 노드는 삭제되지 않고 STALE + 버전 상승으로 남아 이력이 보존된다. 예약 완료 노드는 자동 STALE 대상이 아니라 승인 요청 대상이다(INV-5).
