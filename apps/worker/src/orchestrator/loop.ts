@@ -1,10 +1,16 @@
 import {
   executionCaps,
   type DispatchProposal,
-  type DispatchValidationResult,
   type LegalMove,
+  type PlanningNodeId,
   type RoundId,
 } from '@tm/contracts';
+import {
+  defaultRoundOrder as coreRoundOrder,
+  validateProposal,
+  type DispatchContext,
+  type DispatchVerdict,
+} from '@tm/core';
 import type { JobPayload } from '../queue.js';
 
 /**
@@ -15,17 +21,8 @@ import type { JobPayload } from '../queue.js';
  * 근거: docs/agent-architecture.md 3장 · 4장
  */
 
-/** 기본 위상 순서. Supervisor 실패 시의 폴백이자 참조 순서다 (agent-architecture.md 4.5) */
-export const defaultRoundOrder: RoundId[] = [
-  'r_0',
-  'r_1a',
-  'r_1b',
-  'r_2',
-  'r_3',
-  'r_4',
-  'r_5',
-  'r_6',
-];
+/** 기본 위상 순서. 정의는 @tm/core에 있다 (agent-architecture.md 4.5) */
+export const defaultRoundOrder: readonly RoundId[] = coreRoundOrder;
 
 export interface RunState {
   runId: string;
@@ -38,6 +35,10 @@ export interface RunState {
   /** Supervisor 제안이 거부된 누적 횟수 */
   dispatchRejections: number;
   fallbackCount: number;
+  /** 예약 완료·수동 확정 노드. 제안으로 변경할 수 없다 (V4) */
+  lockedNodes?: PlanningNodeId[];
+  /** fail-closed 검증을 통과하지 못한 노드. 승격할 수 없다 (V9) */
+  unverifiedNodes?: PlanningNodeId[];
 }
 
 export interface SupervisorPort {
@@ -79,32 +80,26 @@ export function computeLegalMoves(state: RunState, allowed: RoundId[]): LegalMov
   ];
 }
 
-/** V1~V10 중 지금 구현된 것: V1(합법 수), V2(위상 순서), V5(상한), V7(라운드 스킵 금지) */
-export function validateProposal(
+/**
+ * 디스패치 검증은 @tm/core가 한다 (V1~V10 전부 구현되어 있다).
+ * 워커는 실행 상태를 컨텍스트로 넘기는 역할만 한다.
+ */
+export function validateDispatch(
   proposal: DispatchProposal,
   moves: LegalMove[],
-): DispatchValidationResult {
-  const violations: DispatchValidationResult['violations'] = [];
-  const legalIds = new Set(moves.map((move) => move.moveId));
-
-  for (const step of proposal.sequence) {
-    if (!legalIds.has(step.moveId)) {
-      violations.push({ rule: 'V1', moveId: step.moveId, detail: '합법 수 집합에 없습니다' });
-    }
-  }
-
-  for (const move of moves) {
-    if (move.guards.roundRerunUsed > move.guards.roundRerunCap) {
-      violations.push({ rule: 'V5', moveId: move.moveId, detail: '재심 상한 초과' });
-    }
-    if (move.guards.globalRecalcUsed > move.guards.globalRecalcCap) {
-      violations.push({ rule: 'V5', moveId: move.moveId, detail: '전역 재계산 상한 초과' });
-    }
-  }
-
-  // TODO(orchestrator): V3·V4·V6·V8·V9·V10 구현. 특히 V9(fail-closed 미검증 노드 승격 금지)는
-  // 안전과 직결되므로 Validation Pass 착수와 함께 반드시 추가한다.
-  return { accepted: violations.length === 0, violations, serialized: [] };
+  state: RunState,
+): DispatchVerdict {
+  const context: DispatchContext = {
+    moves,
+    // TODO(orchestrator): Planning Graph를 붙이면 잠긴 노드·미검증 노드를
+    // planning_nodes 테이블에서 읽는다. 지금은 실행 상태에 있는 것만 넘긴다.
+    lockedNodes: state.lockedNodes,
+    unverifiedNodes: state.unverifiedNodes,
+    pendingRounds: defaultRoundOrder.filter((round) => !state.completedRounds.includes(round)),
+    completedRounds: state.completedRounds,
+    budgetExhausted: state.usdRemaining <= 0,
+  };
+  return validateProposal(proposal, context);
 }
 
 /**
@@ -116,7 +111,7 @@ export async function runPipeline(
   state: RunState,
 ): Promise<RunState> {
   const allowed =
-    payload.kind === 'full_run' ? defaultRoundOrder : orderRerunRounds(payload.rerunRounds);
+    payload.kind === 'full_run' ? [...defaultRoundOrder] : orderRerunRounds(payload.rerunRounds);
   const instruction = payload.kind === 'rerun_from_objection' ? payload.instruction : null;
 
   let current = state;
@@ -128,7 +123,20 @@ export async function runPipeline(
     let chosen = moves[0];
 
     if (proposal !== null) {
-      const result = validateProposal(proposal, moves);
+      const result = validateDispatch(proposal, moves, current);
+
+      // V9 위반 노드는 BLOCKED로 넘긴다. 조용히 통과시키지 않는다.
+      if (result.blockedNodes.length > 0) {
+        current = {
+          ...current,
+          unverifiedNodes: [...new Set([...(current.unverifiedNodes ?? []), ...result.blockedNodes])],
+        };
+      }
+      // V10 불일치는 프롬프트 회귀 추적 대상이다.
+      for (const mismatch of result.reviewMismatch) {
+        console.warn(`[orchestrator] REVIEW 판정 불일치 ${mismatch.roundId}: ${mismatch.detail}`);
+      }
+
       if (result.accepted) {
         const target = moves.find((move) => move.moveId === proposal.sequence[0]?.moveId);
         if (target !== undefined) chosen = target;
