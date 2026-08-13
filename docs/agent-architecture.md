@@ -37,6 +37,7 @@
 | **D2** | 심판은 캐시 DB를 직접 읽지 않는다. **Data Agent가 유일한 read-through 게이트웨이**다 (조회 → 미스 시 API 호출 → 정규화 → 저장 → 반환을 한 번의 도구 호출로 처리) | 심판 관점의 동작은 동일하되(정보가 필요하면 도구 한 번), 정규화 스키마·TTL·신뢰도·fail-closed 정책이 한 곳에서 강제된다. 기획서 10.3 "에이전트와 심판은 원본 API 형식을 절대 보지 않는다"를 지킬 수 있는 유일한 배치다 |
 | **D3** | 캐시 히트를 무조건 사용하지 않는다. 요청의 **`purpose`(exploration / verification / booking_readiness)** 와 `queryClass` 정책이 캐시 사용 여부를 결정한다 | 확정가·그룹 재고·객실 조합·알레르기 대응은 캐시로 `VERIFIED`/`BOOKABLE`을 통과할 수 없다 (기획서 19.6, 항공 19.4, 숙소 20.1) |
 | **D4** | 심판 인스턴스와 라운드는 1:1이 아니다. R1은 항공 → 교통 순차 2개이고, 교통패스는 R3 이후 재계산된다. Supervisor의 순서 조절은 **전역 Planning Graph의 STALE 재수렴까지 포함**한다 | 교통 정책이 숙소 가중치를 결정하고(숙소 1.4), 패스 손익은 확정 관광지에 의존한다(교통 5.2) |
+| **D5** | **웹검색도 심판이 Data Agent를 통해 조달한다.** 개인(페르소나) 에이전트에는 도구를 주지 않고, RAG는 별도 저장소가 아니라 **캐시 DB(`pack_cache`) 위에** 올린다 (6.9) | 개인 에이전트가 각자 검색하면 후보 밖 항목 주장·참여자 간 정보 비대칭·인원수 배수 비용이 동시에 발생한다. 캐시 위에 RAG를 올리면 정규화·TTL·evidence 추적이 그대로 상속되고, 웹·RAG 결과는 advisory로 격리된다 |
 
 Data Agent는 이미지상 독립 컴포넌트로 두되 **내부 판단은 결정론으로 구현한다.** 후보 완화 탐색(Pass 1 → Pass 2)은 심판의 책무이므로(항공 4.1) Data Agent에 추론을 넣을 이유가 없고, 넣으면 캐시 정책이 확률적으로 흔들린다. 제공자 폴백 체인·TTL 판정·정규화는 규칙으로 충분하다.
 
@@ -69,6 +70,9 @@ Data Agent 인스턴스와 담당 범위:
 | `DiningData` | `dining.search`, `dining.hours`, `dining.diet_support`, `dining.reservation_slot` | `Pack.providers.dining` |
 | `GeoData` | `geo.travel_time`, `geo.matrix`, `geo.place_details`, `geo.geocode` | 전역 (Google 계열 + 지역 폴백) |
 | `RefData` | `ref.fx`, `ref.airport_codes`, `ref.airline_codes`, `ref.pack_config` | 전역 · Pack 부트스트랩 |
+| `WebData` | `web.search`, `web.page`, `kb.retrieve`(RAG) | 전역 검색 제공자 + `pack_cache` 색인 |
+
+**페르소나 에이전트는 Data Agent 인스턴스를 하나도 갖지 않는다.** 웹검색을 포함한 모든 조달은 심판이 Data Agent를 통해 수행한다 (6.9).
 
 ---
 
@@ -427,6 +431,9 @@ resolve(req):
 | `dining.reservation_slot` | 1h | `placeId:datetime:pax` | 허용 | **live 강제** | 기획서 19.6 |
 | `weather.forecast` | 3h | `area:date` | 허용 | 허용 | 기획서 9.5 |
 | `ref.fx` | 6h | `pair` | 허용 | 허용(조회시각 병기) | 기획서 9.6 |
+| `web.search` | 24h | `pack:normalizedQuery` | 허용 | **판정 근거 금지 (advisory)** | 6.9 |
+| `web.page` | 7d | `url:contentHash` | 허용 | **판정 근거 금지 (advisory)** | 6.9 |
+| `kb.retrieve` (RAG) | 캐시 레코드 TTL 상속 | `pack:queryClass:embeddingVersion` | 허용 | **판정 근거 금지 (advisory)** | 6.9 |
 
 `fail-closed` 표시 클래스는 검증 실패·조회 불가 시 **후보를 `winner`/`VERIFIED`/`BOOKABLE`로 승격할 수 없다.** `uncertainties`에 적는 것만으로 통과하지 못한다.
 
@@ -465,6 +472,40 @@ resolve(req):
 - `prefetch` move는 Supervisor가 A1 재량으로 우선순위를 정하고, Data Agent가 백그라운드로 캐시를 채운다. 프리페치 결과는 **`exploration` 신뢰도로만 사용**된다.
 - 인기 Pack의 POI 이동시간 행렬(200×200), 상위 숙소 100개 × 주요 지점 10개 실측은 배치로 미리 계산한다. 행렬은 `matrixVersion` + `modePolicyHash` + `originSetHash`로 버전을 고정하고, 입력이 바뀌면 즉시 `STALE`이다.
 
+### 6.9 웹 조달과 RAG — 캐시 DB 위에 올린다
+
+**D5. 웹검색은 개인 에이전트의 도구가 아니라 심판의 조달 경로다.** 페르소나 에이전트가 직접 검색하면 세 가지가 동시에 깨진다.
+
+| 깨지는 것 | 결과 |
+| --- | --- |
+| 그라운딩 | 후보 밖 항목을 주장한다 → Validation Pass의 `external_id` 전수 검증 실패 |
+| 공정성 | 검색을 잘한 에이전트가 이긴다. 참여자 간 정보 비대칭은 대리인 모델의 전제를 무너뜨린다 |
+| 비용 | 인원수만큼 곱해진다 (N명 × 라운드 × 검색) |
+
+따라서 `web.search` / `web.page` / `kb.retrieve`는 다른 `queryClass`와 똑같이 **심판 → Data Agent** 경로로만 호출된다. 계약 수준의 강제는 `callerId` 화이트리스트(`referee:` · `orchestrator:` · `supervisor:`)이며, `persona:*`의 요청은 스키마 검증에서 거부된다.
+
+**RAG는 별도 저장소를 만들지 않고 `pack_cache` 위에 얹는다.** Data Agent가 이미 정규화해 저장한 payload가 유일한 코퍼스다.
+
+```
+심판 ── kb.retrieve ──▶ Data Agent
+                          ├─ 1. 메타 필터: packId · queryClass · valid_until > now()
+                          ├─ 2. 후보 청크 검색 (1차: 메타+텍스트 · 2차: 임베딩 재순위)
+                          ├─ 3. evidenceId 동반 반환 (원본 캐시 레코드로 역추적 가능)
+                          └─ 4. data_requests에 cacheHit·confidence 기록
+```
+
+| 규칙 | 이유 |
+| --- | --- |
+| 색인 대상은 `pack_cache`의 **정규화 payload**뿐. `rawPayloadRef`는 색인하지 않는다 | 제공자 원본이 LLM 컨텍스트로 새는 경로를 만들지 않는다 (6.6) |
+| 만료된 캐시 레코드는 검색 결과에서 제외한다 | 만료 데이터가 RAG를 통해 신선한 척 되살아나는 것이 가장 흔한 사고다 |
+| 반환 청크는 항상 `evidenceId`를 동반한다 | 근거 없는 문장이 회의록에 들어가지 않는다 |
+| **advisory 전용** — `VERIFIED`·`BOOKABLE` 승격과 fail-closed 클래스 검증에 쓸 수 없다 | 확정가·그룹 재고·객실 조합·알레르기 대응은 해당 `queryClass`의 live 호출로만 통과한다 (D3) |
+| 설문 원문·페르소나·방 배정 정보는 색인 대상이 아니다 | 민감정보는 코퍼스에 들어가지 않는다 |
+
+`web.search`·`web.page`도 같은 취급이다. 조회 결과는 `pack_cache`에 저장되어 다음 조회와 RAG 코퍼스에 재사용되지만, **신뢰도는 `estimated`를 넘지 못하고 판정 근거가 되지 못한다.** 웹은 "공식 API에 없는 맥락"(임시 휴업 공지, 축제 일정, 공사 안내)을 심판이 `uncertainties`로 올리기 위한 보조 채널이지, 후보 조달원이 아니다.
+
+구현 1차는 확장 없이 시작한다. `pack_cache`를 메타 필터 + 텍스트 매칭으로 좁히는 것만으로 Pack 단위 코퍼스는 충분히 작다. 임베딩 재순위가 필요해지면 그때 pgvector를 도입한다 — `postgres:16-alpine` 이미지에는 확장이 없으므로 이미지 교체가 함께 필요하다 (14장 8번).
+
 ---
 
 ## 7. 심판 에이전트 공통 계약
@@ -493,6 +534,7 @@ Supervisor가 `rerun`을 지시하면 심판은 지시문을 컨텍스트에 받
 | CLASH | 충돌축 클러스터링(코드) 후 진영별 최극단 1명만 LLM 호출. 2~3턴 |
 | 비발언자 | "👍 동의" 경량 반응은 Scoring Engine이 계산. LLM 미사용 |
 | 컨텍스트 격리 | 타인 페르소나는 요약본(하드 제약 + 상위 3개 선호)만. 설문 원문·방 배정 선호·건강·신념 상세는 주입 금지 |
+| **도구** | **없다.** 웹검색·RAG를 포함해 어떤 조달도 하지 않는다. 심판이 게시한 후보 카드 안에서만 발언한다 (6.9) |
 | 출력 | `{stance, candidate_ids, condition, message}` JSON. 발화 3문장 이내, `max_tokens` 120 |
 | 상한 | 라운드당 32턴. 3턴 연속 후보 순위 불변이면 조기 종료 |
 | 미응답자 | 기본 페르소나로 대체하되 회의록에 명시. **가용 일정은 대체 불가** — 일정 계산에서 제외 |
@@ -637,6 +679,10 @@ node:   PROVISIONAL → VERIFIED → BOOKABLE → BOOKED
 | A18 | 예약 완료(BOOKED) 노드 변경 제안 | V4 거부 → 취소 비용·영향 범위 제시 후 승인 요청 |
 | A19 | 페르소나 컨텍스트에 타인 방 배정 선호가 주입됨 | 격리 계약 위반 → 검사 실패 |
 | A20 | Validation Pass 실패 상태에서 문서 생성 요청 | 게이트 차단, `PARTIAL` 계획서만 발행 |
+| A21 | `callerId: 'persona:user_3'`로 `web.search` 요청 | 스키마 검증 거부 + 격리 위반 로그 |
+| A22 | `kb.retrieve` 결과만으로 후보를 `VERIFIED`로 승격 시도 | advisory 전용 → 거부. 해당 `queryClass` live 호출 필요 |
+| A23 | 만료된 `pack_cache` 레코드가 RAG 검색 결과에 포함됨 | `valid_until` 필터 누락 → 회귀 테스트 실패 |
+| A24 | 웹검색 결과를 근거로 심판이 후보를 발명 | 후보는 정규화 조달 클래스에만 존재 → Validation Pass `external_id` 실패 |
 
 ---
 
@@ -651,6 +697,8 @@ node:   PROVISIONAL → VERIFIED → BOOKABLE → BOOKED
 | 5 | 자연어 필드(리뷰·주의사항) 요약 정규화에 LLM을 쓸지 | Phase 2 |
 | 6 | Supervisor 모델 티어와 폴백 티어 | 비용 실측 후 |
 | 7 | `dispatch_decisions` 보존 기간과 민감정보 마스킹 규칙 | 프라이버시 정책 확정 시 |
+| 8 | RAG 검색 방식 — 메타+텍스트로 계속 갈지, pgvector로 올릴지 (이미지 교체 동반) | `kb.retrieve` 품질 실측 후 |
+| 9 | 웹검색 제공자와 라운드당 호출 상한 | `WebData` 어댑터 착수 전 |
 
 ---
 

@@ -45,16 +45,46 @@ export const queryClasses = [
   'geo.place_details',
   'geo.geocode',
   'weather.forecast',
+  /**
+   * 웹 조달·RAG. 개인(페르소나) 에이전트는 이 클래스를 호출할 수 없다.
+   * 웹검색도 심판이 Data Agent를 통해서만 조달하고, RAG는 캐시 DB 위에서 돈다.
+   * 근거: agent-architecture.md 6.9 · survey-v3-proposal.md C4
+   */
+  'web.search',
+  'web.page',
+  'kb.retrieve',
 ] as const;
 
 export type QueryClass = (typeof queryClasses)[number];
+
+/**
+ * 호출자 종류. 페르소나 에이전트는 Data Agent를 직접 호출하지 않는다 —
+ * 후보 밖 항목 주장, 참여자 간 정보 비대칭, 인원수만큼 곱해지는 비용을 막는다.
+ */
+export const allowedCallerPrefixes = ['referee:', 'orchestrator:', 'supervisor:'] as const;
+
+export function isAllowedCaller(callerId: string): boolean {
+  return allowedCallerPrefixes.some((prefix) => callerId.startsWith(prefix));
+}
+
+/** 웹·RAG 결과는 사실 확정에 쓸 수 없다. 이 클래스는 예약·검증 판정의 근거가 되지 못한다. */
+export const advisoryOnlyQueryClasses = ['web.search', 'web.page', 'kb.retrieve'] as const;
+
+export function isAdvisoryOnly(queryClass: QueryClass): boolean {
+  return (advisoryOnlyQueryClasses as readonly string[]).includes(queryClass);
+}
 
 export const dataRequestSchema = z.object({
   requestId: z.string(),
   runId: z.string(),
   roundId: z.string(),
-  /** 'referee:accommodation' | 'orchestrator:date_resolver' 형태 */
-  callerId: z.string(),
+  /**
+   * 'referee:accommodation' | 'orchestrator:date_resolver' 형태.
+   * 페르소나 에이전트(`persona:*`)는 조달 권한이 없다 — 그라운딩 경계다.
+   */
+  callerId: z.string().refine(isAllowedCaller, {
+    message: 'Data Agent는 심판·오케스트레이터·Supervisor만 호출할 수 있습니다',
+  }),
   queryClass: z.enum(queryClasses),
   purpose: z.enum(dataPurposes),
   packId: z.string(),

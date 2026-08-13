@@ -46,13 +46,13 @@
 
 | 경로 | 역할 | 비고 |
 | --- | --- | --- |
-| `apps/api` | API Gateway — 방·설문·이의 접수, 잡 디스패치 | 골격 완료 (Fastify). 인증·DB 미착수 |
-| `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 골격 완료 (BullMQ). 에이전트 미착수 |
-| `packages/core` | 결정론 엔진 — Planning Graph STALE 전파, 이의 영향 산출, 디스패치 검증 | 부분 구현 |
+| `apps/api` | API Gateway — 방·설문·이의 접수, 잡 디스패치 | 골격 완료 (Fastify). PostgreSQL·큐 연동 검증 완료, **인증 미착수** |
+| `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 골격 완료 (BullMQ). **잡 소비부·에이전트 미착수** |
+| `packages/core` | 결정론 엔진 — Planning Graph STALE 전파, 이의 영향 산출, 디스패치 검증 | 부분 구현 (V1·V2·V5·V7) |
 | `packages/agents` | LLM 에이전트 — Supervisor, 심판 7종, 페르소나, 문서 생성 | 미착수 |
-| `packages/data-agents` | Data Agent read-through + 제공자 어댑터 | 미착수 |
-| `packages/db` | 마이그레이션·리포지토리 (현재 `apps/api/src/store.ts` 인메모리) | 미착수 |
-| `packs/` | Destination Pack 데이터 (JSON) | 미착수 |
+| `packages/data-agents` | Data Agent read-through + 제공자 어댑터 (웹·RAG 포함) | 미착수. 계약만 `@tm/contracts`에 있음 |
+| `packages/db` | 마이그레이션·리포지토리 | 착수 — 초기 스키마 + 리포지토리 3종, 실행 검증 통과 (4.2.1) |
+| `packs/` | Destination Pack 데이터 (JSON) | 착수 (`jp-osaka` 초안) |
 
 `apps/api`는 **Fastify(ESM)** 로 확정했다. 기획서 10.1은 "NestJS 또는 FastAPI"였고 앞선 초안은 NestJS를 기본안으로 두었으나, 실제 복잡도는 게이트웨이가 아니라 워커(Orchestrator·심판)에 있다. 게이트웨이는 인증·CRUD·잡 디스패치로 얇게 유지되므로, NestJS의 DI·모듈 규약이 주는 이점보다 데코레이터·CommonJS 설정 비용이 크다. 저장소 전체를 ESM + TypeScript 하나로 유지하는 편이 낫다. 모듈 경계가 실제로 부족해지면 그때 NestJS로 옮긴다.
 
@@ -101,6 +101,28 @@ npm run build             # 워크스페이스 전체 빌드
 npm run lint
 ```
 
+### 4.2.1 PostgreSQL 경로 실행 검증
+
+DB를 쓰는 코드는 타입 검사로 확인되지 않는다. 예약어·jsonb 캐스팅·조인·부분 유니크 인덱스는 실행해야 드러난다.
+
+```bash
+npm run local:up                                # PostgreSQL 16 · Redis 7
+export DATABASE_URL=postgres://tm:tm_local@localhost:5432/travel_mediation
+npm run migrate --workspace @tm/db              # 미적용 마이그레이션만 실행
+npm run smoke   --workspace @tm/db              # 리포지토리 3종 왕복 검증
+```
+
+`smoke`는 실제로 방·설문·이의를 쓰고 읽은 뒤 `DELETE FROM rooms`로 정리한다(CASCADE). 확인 범위는 rooms 생성·상태 전이·`markCompleted`, surveys upsert와 `allergens` 승격, `rooms.get`의 파생 조회(SETTLED 라운드 · BOOKED 노드), objections 저장·집계·상태 갱신, 그리고 같은 사용자가 같은 라운드에 중복 이의를 낼 수 없다는 제약이다. SQL을 건드리는 PR은 이걸 통과시킨다.
+
+API까지 붙여서 확인하려면 (2026-08-13 확인 완료):
+
+```bash
+DATABASE_URL=$DATABASE_URL ENABLE_QUEUE=true npm run dev --workspace @tm/api
+curl localhost:3001/health          # → {"storage":"postgres","database":true,"queue":true}
+```
+
+방 생성 → 설문 제출 → 이의 preview/접수까지 태우면, 이의가 `queued`로 바뀌고 `rerun:{objectionId}` 잡이 Redis에 남는다. `ENABLE_QUEUE=false`면 접수는 되지만 `accepted`에 머문다 — 실행되지 않은 이의를 `queued`로 표시하지 않기 위한 의도된 동작이다.
+
 `VITE_API_BASE_URL`을 비워두면 프론트는 폼 제출을 `sessionStorage`에 적재한다(`apps/web/src/formApi.ts`). 따라서 **백엔드 없이도 전체 화면 흐름을 확인할 수 있다.** 백엔드가 붙으면 `apps/web/.env`에 값을 넣는다.
 
 ### 4.3 환경변수
@@ -121,6 +143,7 @@ npm run lint
 | 데이터스토어 | `DATABASE_URL`, `REDIS_URL` |
 | 실행 상한 | `RUN_WALLCLOCK_LIMIT_SEC`(1800), `RUN_COST_CAP_USD`(0.6), `ROUND_TURN_CAP`(32), `ROUND_RERUN_CAP`(2), `GLOBAL_RECALC_CAP`(3), `WORKER_CONCURRENCY` |
 | LLM | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL_PERSONA`, `LLM_MODEL_REFEREE`, `LLM_MODEL_SUPERVISOR` |
+| 웹·RAG | `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_API_KEY`, `WEB_SEARCH_CALLS_PER_ROUND`, `RAG_EMBEDDING_MODEL`(2차) — 심판 전용 조달 경로 (agent-architecture 6.9) |
 | 여행 API | `AMADEUS_CLIENT_ID`, `AMADEUS_CLIENT_SECRET`, `AMADEUS_ENV`, `RAKUTEN_APPLICATION_ID`, `GOOGLE_MAPS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `ODSAY_API_KEY`, `NAVITIME_API_KEY`, `TOURAPI_SERVICE_KEY`, `HOTPEPPER_API_KEY`, `KAKAO_REST_API_KEY`, `KOREAEXIM_FX_API_KEY` |
 | 인증 | `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `SESSION_SECRET` |
 
@@ -281,8 +304,9 @@ ECS·EKS, 오토스케일링, Terraform·CDK, 멀티 AZ, 블루/그린 배포. �
 
 | # | 항목 | 결정 시점 |
 | --- | --- | --- |
-| 1 | `apps/api` 프레임워크 최종 확정 (NestJS 기본안) | 백엔드 착수 시 |
-| 2 | DB 접근 계층 (Prisma / Kysely / raw SQL) | `packages/db` 착수 시 |
+| 1 | ~~`apps/api` 프레임워크~~ **Fastify(ESM) 확정** (3장) | — |
+| 2 | ~~DB 접근 계층~~ **`pg` + raw SQL 확정.** 스키마가 흔들리는 값은 jsonb라 ORM 이점이 작고, 마이그레이션 러너는 63줄이다 | — |
+| 2-1 | RAG 검색 방식 — 메타+텍스트로 유지할지 pgvector로 올릴지. 후자는 `postgres:16-alpine` → `pgvector/pgvector:pg16` 이미지 교체가 필요하다 | `kb.retrieve` 품질 실측 후 |
 | 3 | `infra/ec2/` 구성 파일 (compose.prod, nginx.conf, 배포 스크립트) | 첫 배포 준비 시 |
 | 4 | EC2 인스턴스 타입·리전 | 첫 배포 준비 시 |
 | 5 | `packages/contracts`를 프론트가 import하는 시점 (설문 payload 단일화) | 백엔드 설문 엔드포인트 구현 시 |

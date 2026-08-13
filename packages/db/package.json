@@ -11,6 +11,7 @@
   },
   "scripts": {
     "migrate": "tsx src/migrate.ts",
+    "smoke": "tsx src/smoke.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

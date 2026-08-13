@@ -49,6 +49,7 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | [development-and-deployment.md](docs/development-and-deployment.md) | 개발 환경과 배포 계획 — 저장소 구조, 스택 결정, 로컬 실행, 프론트–백엔드 계약, AWS EC2 배포 |
 | [objection-and-rerun.md](docs/objection-and-rerun.md) | 이의 제기와 재토론 — 횟수 상한, 심사·승인 규칙, 재실행 범위 산출, 늦은 하드 제약 등록 |
 | [team-assignments.md](docs/team-assignments.md) | 팀 역할과 작업 폴더 — 4개 트랙의 소유 범위, 첫 과제, 트랙 간 접점 |
+| [survey-v3-proposal.md](docs/survey-v3-proposal.md) | 설문 v3 제안 검토 — 4단계 중요도 척도, 기존 설계와의 충돌과 결정 |
 | [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
 | [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
 | [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
@@ -71,6 +72,14 @@ npm run dev        # 프론트엔드 개발 서버 → http://localhost:5173
 npm run typecheck  # 워크스페이스 전체 검증
 ```
 
+백엔드를 붙일 때는 DB를 먼저 준비하고 실행 검증을 통과시킨다.
+
+```bash
+export DATABASE_URL=postgres://tm:tm_local@localhost:5432/travel_mediation
+npm run migrate --workspace @tm/db   # 스키마 적용
+npm run smoke   --workspace @tm/db   # 리포지토리 왕복 검증
+```
+
 `VITE_API_BASE_URL`을 비워두면 폼 제출이 `sessionStorage`에 적재되어, 백엔드 없이도 전체 화면 흐름을 확인할 수 있습니다. 구조·스택·환경변수·배포는 [development-and-deployment.md](docs/development-and-deployment.md)를 참고하세요.
 
 ```text
@@ -88,9 +97,10 @@ docs/              설계 문서
 | DateResolver·전역 계획 그래프 | 완료 | 미착수 | 미착수 |
 | Orchestrator·Supervisor 제어 분리 · Data Agent 캐시 계약 | 완료 | 미착수 | 미착수 |
 | 프론트엔드 화면 흐름 (MOA MVP) | 완료 | 진행 | 미착수 |
-| API·Worker 골격 (방·설문·이의 접수, 잡 큐) | 완료 | 진행 | 미착수 |
+| API·Worker 골격 (방·설문·이의 접수, 잡 큐) | 완료 | 진행 | API 경로 실행 검증 |
+| PostgreSQL 스키마·리포지토리 | 완료 | 진행 | 로컬 실행 검증 통과 |
 | Data Agent·심판·Supervisor 구현 | 완료 | 미착수 | 미착수 |
-| 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 미착수 |
+| 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 접수·큐 등록까지 검증 |
 | Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
 | Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |
 | 예약 상태·재계획·사용자 결과 UX | 완료 | 미착수 | 미착수 |

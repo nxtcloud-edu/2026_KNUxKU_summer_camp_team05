@@ -102,9 +102,10 @@ packages/db/              마이그레이션·리포지토리                  �
 
 첫 과제 (의존 순서대로)
 
-1. **`packages/db`** — `apps/api/src/store.ts`의 인메모리 저장소를 PostgreSQL로 교체한다. 테이블은 기획서 11.1 + [agent-architecture.md](agent-architecture.md) 12.1.
-2. **이의 → 큐 → 재실행 경로 완성** — `apps/api/src/routes/objections.ts`의 TODO. `accepted`면 `rerun_from_objection` 잡을 등록하고 `queued`로 바꾼다. 잡 ID는 `rerun:{objectionId}`로 고정해 멱등성을 지킨다.
-3. **`packages/data-agents`** — read-through 게이트웨이. 캐시 정책 카탈로그(29개 `queryClass`)를 코드로 옮긴다. `purpose`가 `verification`인 fail-closed 클래스는 캐시로 통과할 수 없다.
+1. ~~**`packages/db`** — 인메모리 저장소를 PostgreSQL로 교체~~ **완료·실행 검증됨.** 마이그레이션 1건과 리포지토리 3종(rooms·surveys·objections)이 로컬 PostgreSQL 16에서 통과한다. 회귀 확인은 `npm run smoke --workspace @tm/db`. 다음은 나머지 테이블(runs·rounds·planning_nodes·verdicts·pack_cache)의 리포지토리다.
+2. ~~**이의 → 큐 → 재실행 경로**~~ **API 쪽 완료.** `ENABLE_QUEUE=true`에서 이의가 `queued`로 바뀌고 `rerun:{objectionId}` 잡이 Redis에 등록되는 것까지 확인했다. **남은 것은 워커 소비부** — `apps/worker/src/orchestrator/loop.ts`가 아직 잡을 처리하지 않는다.
+3. **`packages/data-agents`** — read-through 게이트웨이. 캐시 정책 카탈로그(32개 `queryClass`)를 코드로 옮긴다. `purpose`가 `verification`인 fail-closed 클래스는 캐시로 통과할 수 없다.
+   - **웹검색·RAG도 여기로 들어온다.** `web.search`·`web.page`·`kb.retrieve`는 심판만 호출하고(`callerId` 화이트리스트), RAG는 별도 저장소 없이 `pack_cache` 위에서 돈다. 세 클래스 모두 **advisory** — 후보를 만들거나 `VERIFIED`/`BOOKABLE`로 승격시키지 못한다. 계약은 [agent-architecture.md](agent-architecture.md) 6.9.
 4. **`packages/agents`** — Supervisor부터. 심판은 Flight → Transport → Accommodation 순서로 붙인다(문서가 이미 있는 순서).
 5. **Orchestrator 검증 규칙 완성** — 현재 V1·V2·V5·V7만 구현되어 있다. **V9(fail-closed 미검증 노드 승격 금지)** 는 안전과 직결되므로 Validation Pass와 함께 반드시 추가한다.
 
@@ -113,6 +114,7 @@ packages/db/              마이그레이션·리포지토리                  �
 - Supervisor(LLM)는 제안만 한다. 실행·수치 계산·상한 집행은 코드가 한다.
 - C5·C7은 기계 판정이 최종이다. Supervisor 판단과 다르면 코드를 채택하고 불일치를 기록한다.
 - 심판은 제공자 원본 JSON을 절대 보지 않는다. Data Agent가 정규화한 형태만 전달한다.
+- **페르소나 에이전트에는 도구를 주지 않는다.** 웹검색 포함 모든 조달은 심판이 Data Agent를 통해 한다. 개인 에이전트가 각자 검색하면 그라운딩·공정성·비용이 동시에 무너진다.
 - 인증(카카오 OAuth·세션)이 붙기 전에 API를 외부에 노출하지 않는다.
 
 ---

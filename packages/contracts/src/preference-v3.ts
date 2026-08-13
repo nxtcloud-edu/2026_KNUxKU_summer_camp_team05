@@ -60,21 +60,20 @@ export type PaceId = (typeof paceIds)[number];
 export const transportModes = ['plane', 'ship', 'train', 'bus', 'car'] as const;
 export type TransportMode = (typeof transportModes)[number];
 
-/** 방장이 방 생성 시 정하는 값 (Setting 단계) */
+/**
+ * 방장이 방 생성 시 정하는 값 (Setting 단계).
+ *
+ * 날짜 필드는 없다. 방장은 날짜를 정하지 않는다 — 가용 일정은 설문에서만 수집하고
+ * DateResolver가 전원 가능한 구간을 계산해 확정한다 (기획서 v1.2 · 7.2).
+ * 방장이 정한 날짜가 이탈의 주요 원인이므로 이 경로는 영구적으로 닫는다.
+ * 전원 가능한 구간이 없을 때만 계산된 선택지 중에서 방장이 고른다 (기획서 3.3).
+ */
 export const roomSettingSchema = z.object({
   packId: z.string().min(1),
   transportModes: z.array(z.enum(transportModes)).min(1),
   pace: z.enum(paceIds),
-  /** 1인 예산 한도 (KRW). 방장이 제시하는 기준값 */
+  /** 1인 예산 한도 (KRW). 방장이 제시하는 기준값이며 개인 상한은 설문에서 따로 받는다 */
   budgetPerPersonKrw: z.number().int().positive(),
-  /**
-   * ⚠️ 미해결: 날짜를 방장이 고정하면 기획서 v1.2의 DateResolver와 충돌한다.
-   * docs/survey-v3-proposal.md 4장 참조. 확정까지 optional로 둔다.
-   */
-  dateRange: z
-    .object({ start: z.string(), end: z.string() })
-    .nullable()
-    .default(null),
 });
 
 export type RoomSetting = z.infer<typeof roomSettingSchema>;
