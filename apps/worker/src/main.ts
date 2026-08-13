@@ -1,8 +1,20 @@
 import { Worker } from 'bullmq';
-import { executionCaps } from '@tm/contracts';
+import { executionCaps, type PlanningNodeId } from '@tm/contracts';
 import { createRepositories, isDatabaseConfigured } from '@tm/db';
 import { jobPayloadSchema, QUEUE_NAME } from './queue.js';
-import { runPipeline, type RunState, type SupervisorPort, type RefereePort } from './orchestrator/loop.js';
+import {
+  runPipeline,
+  type GraphPort,
+  type RunState,
+  type SupervisorPort,
+  type RefereePort,
+} from './orchestrator/loop.js';
+import {
+  guardsFromGraph,
+  loadGraph,
+  nodesForRound,
+  recordNodeUpdate,
+} from './orchestrator/graph-store.js';
 import {
   alreadyApplied,
   applyRerunOutcome,
@@ -76,7 +88,33 @@ const worker = new Worker(
       },
     };
 
-    const finished = await runPipeline(payload, { supervisor, referee }, state);
+    // Planning Graph는 DB가 원본이다. V4·V9가 run 경계를 넘어 작동하려면 필요하다.
+    let graph = await loadGraph(repos, payload.runId);
+    const graphPort: GraphPort = {
+      async guards() {
+        return guardsFromGraph(graph);
+      },
+      async settleRound(roundId) {
+        const staled: PlanningNodeId[] = [];
+        const lockedDescendants: PlanningNodeId[] = [];
+        // 한 라운드가 여러 노드를 산출할 수 있다 (R2 = 지역 + 숙소).
+        for (const nodeId of nodesForRound(roundId)) {
+          const result = await recordNodeUpdate(repos, payload.runId, graph, {
+            nodeId,
+            // TODO(agents): 심판이 붙으면 판결 결과에 따라 VERIFIED / BLOCKED를 구분한다.
+            // 지금은 후보를 조달하지 않으므로 검증됐다고 주장할 수 없다.
+            status: 'PROVISIONAL',
+            confidence: 'unknown',
+          });
+          graph = result.graph;
+          staled.push(...result.staled);
+          lockedDescendants.push(...result.lockedDescendants);
+        }
+        return { staled, lockedDescendants };
+      },
+    };
+
+    const finished = await runPipeline(payload, { supervisor, referee, graph: graphPort }, state);
     await repos.runs.finish(payload.runId, 'COMPLETED');
 
     if (payload.kind === 'rerun_from_objection') {

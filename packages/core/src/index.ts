@@ -5,3 +5,4 @@ export * from './scoring.js';
 export * from './review.js';
 export * from './dispatch.js';
 export * from './validation.js';
+export * from './graph.js';

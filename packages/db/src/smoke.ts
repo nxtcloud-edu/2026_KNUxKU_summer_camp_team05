@@ -122,12 +122,87 @@ async function main(): Promise<void> {
     check('finish → COMPLETED', (await repos.runs.get('run_smoke'))?.status === 'COMPLETED');
     check('finish → finishedAt 기록', (await repos.runs.get('run_smoke'))?.finishedAt !== null);
 
-    console.log('rooms.get 파생 조회');
-    await query(
-      `INSERT INTO planning_nodes (run_id, node_id, input_hash, status, locked)
-       VALUES ('run_smoke', 'accommodation', 'h1', 'BOOKED', false),
-              ('run_smoke', 'activity', 'h2', 'VERIFIED', false)`,
+    console.log('planning_nodes');
+    await repos.planningNodes.appendVersions('run_smoke', [
+      {
+        nodeId: 'accommodation',
+        version: 1,
+        status: 'VERIFIED',
+        confidence: 'live',
+        inputHash: 'h1',
+        dependencyVersions: { accommodation_area: 1 },
+        evidenceRefs: ['sha256:abc'],
+        locked: false,
+      },
+      {
+        nodeId: 'dining',
+        version: 1,
+        status: 'BLOCKED',
+        confidence: 'unknown',
+        inputHash: 'h2',
+        dependencyVersions: {},
+        evidenceRefs: [],
+        locked: false,
+      },
+    ]);
+    // 상위가 바뀌어 숙소가 v2로 올라가고 식사는 STALE v2로 내려간 상황
+    await repos.planningNodes.appendVersions('run_smoke', [
+      {
+        nodeId: 'accommodation',
+        version: 2,
+        status: 'BOOKED',
+        confidence: 'live',
+        inputHash: 'h3',
+        dependencyVersions: { accommodation_area: 2 },
+        evidenceRefs: ['sha256:def'],
+        locked: true,
+      },
+    ]);
+
+    const latest = await repos.planningNodes.listLatest('run_smoke');
+    const accommodation = latest.find((row) => row.nodeId === 'accommodation');
+    check('listLatest → 노드별 최신 버전만', latest.length === 2, latest.length);
+    check('최신 버전이 v2', accommodation?.version === 2, accommodation?.version);
+    check('locked 왕복', accommodation?.locked === true);
+    check('dependencyVersions 왕복', accommodation?.dependencyVersions['accommodation_area'] === 2);
+    check('evidenceRefs 왕복', accommodation?.evidenceRefs[0] === 'sha256:def');
+
+    const history = await repos.planningNodes.history('run_smoke', 'accommodation');
+    check('이력이 보존된다 (v1 삭제 안 됨)', history.length === 2, history.length);
+    check('이력은 버전 오름차순', history[0]?.version === 1 && history[1]?.version === 2);
+
+    await repos.planningNodes.appendVersions('run_smoke', [
+      {
+        nodeId: 'accommodation',
+        version: 2,
+        status: 'BOOKED',
+        confidence: 'live',
+        inputHash: 'h3-retry',
+        dependencyVersions: { accommodation_area: 2 },
+        evidenceRefs: ['sha256:def'],
+        locked: true,
+      },
+    ]);
+    check(
+      '같은 버전 재기록 → 행 추가 없음 (잡 재시도 멱등)',
+      (await repos.planningNodes.history('run_smoke', 'accommodation')).length === 2,
     );
+
+    console.log('rooms.get 파생 조회');
+    // accommodation은 위에서 이미 v2 BOOKED + locked다. VERIFIED 노드 하나만 더 넣어
+    // BOOKED/locked만 골라지는지 본다.
+    await repos.planningNodes.appendVersions('run_smoke', [
+      {
+        nodeId: 'activity',
+        version: 1,
+        status: 'VERIFIED',
+        confidence: 'live',
+        inputHash: 'h4',
+        dependencyVersions: {},
+        evidenceRefs: [],
+        locked: false,
+      },
+    ]);
 
     const withFacts = await repos.rooms.get(room.roomId);
     check('completedRounds = SETTLED 라운드만', withFacts?.completedRounds.join(',') === 'r_2', withFacts?.completedRounds);

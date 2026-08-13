@@ -50,6 +50,13 @@ export interface RefereePort {
   run(roundId: RoundId, instruction: string | null): Promise<void>;
 }
 
+export interface GraphPort {
+  /** 현재 잠긴 노드·미검증 노드. V4·V9의 입력이며 DB가 원본이다 */
+  guards(): Promise<{ lockedNodes: PlanningNodeId[]; unverifiedNodes: PlanningNodeId[] }>;
+  /** 라운드 종료를 그래프에 기록하고 하위 노드에 STALE을 전파한다 */
+  settleRound(roundId: RoundId): Promise<{ staled: PlanningNodeId[]; lockedDescendants: PlanningNodeId[] }>;
+}
+
 /**
  * TODO(orchestrator): LegalMove 산출을 Planning Graph 상태와 연결한다.
  * 지금은 다음에 실행할 라운드 하나만 만들어 파이프라인 형태를 고정한다.
@@ -107,7 +114,12 @@ export function validateDispatch(
  */
 export async function runPipeline(
   payload: JobPayload,
-  ports: { supervisor: SupervisorPort; referee: RefereePort },
+  ports: {
+    supervisor: SupervisorPort;
+    referee: RefereePort;
+    /** 라운드가 끝날 때마다 Planning Graph를 갱신한다. 없으면 그래프 없이 진행한다 */
+    graph?: GraphPort;
+  },
   state: RunState,
 ): Promise<RunState> {
   const allowed =
@@ -116,6 +128,16 @@ export async function runPipeline(
 
   let current = state;
   for (;;) {
+    // 잠긴 노드·미검증 노드는 DB의 Planning Graph에서 읽는다. RunState는 캐시일 뿐이다.
+    if (ports.graph !== undefined) {
+      const guards = await ports.graph.guards();
+      current = {
+        ...current,
+        lockedNodes: guards.lockedNodes,
+        unverifiedNodes: guards.unverifiedNodes,
+      };
+    }
+
     const moves = computeLegalMoves(current, allowed);
     if (moves.length === 0) break;
 
@@ -154,6 +176,17 @@ export async function runPipeline(
     if (round === undefined) break;
 
     await ports.referee.run(round, instruction);
+
+    if (ports.graph !== undefined) {
+      const settled = await ports.graph.settleRound(round);
+      // 잠겨서 STALE로 못 내린 하위 노드는 조용히 두지 않는다. 승인 요청 대상이다.
+      if (settled.lockedDescendants.length > 0) {
+        console.warn(
+          `[orchestrator] ${round} 변경이 예약 완료 노드에 영향: ${settled.lockedDescendants.join(', ')} — 승인 필요`,
+        );
+      }
+    }
+
     current = { ...current, completedRounds: [...current.completedRounds, round] };
   }
 

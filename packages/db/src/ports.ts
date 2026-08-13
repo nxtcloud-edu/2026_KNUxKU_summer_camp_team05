@@ -1,5 +1,6 @@
 import type {
   Confidence,
+  NodeStatus,
   ObjectionRecord,
   ObjectionRequest,
   PlanningNodeId,
@@ -150,6 +151,35 @@ export interface CacheRepository {
   logRequest(entry: DataRequestLog): Promise<void>;
 }
 
+/**
+ * Planning Graph 노드. 상위가 바뀌면 하위는 삭제되지 않고 STALE + 새 버전으로 남는다.
+ * 버전 이력을 보존하므로 "왜 이 결정이 뒤집혔는가"를 나중에 되짚을 수 있다.
+ */
+export interface PlanningNodeRow {
+  runId: string;
+  nodeId: PlanningNodeId;
+  version: number;
+  status: NodeStatus;
+  confidence: Confidence;
+  inputHash: string;
+  dependencyVersions: Record<string, number>;
+  evidenceRefs: string[];
+  locked: boolean;
+  updatedAt: string;
+}
+
+export interface PlanningNodeRepository {
+  /** 노드별 최신 버전만 반환한다 */
+  listLatest(runId: string): Promise<PlanningNodeRow[]>;
+  /** 새 버전 행을 추가한다. 기존 행은 이력으로 남는다 */
+  appendVersions(
+    runId: string,
+    nodes: readonly Omit<PlanningNodeRow, 'runId' | 'updatedAt'>[],
+  ): Promise<void>;
+  /** 특정 노드의 버전 이력 */
+  history(runId: string, nodeId: PlanningNodeId): Promise<PlanningNodeRow[]>;
+}
+
 export interface Repositories {
   kind: 'postgres' | 'memory';
   rooms: RoomRepository;
@@ -157,5 +187,6 @@ export interface Repositories {
   objections: ObjectionRepository;
   runs: RunRepository;
   cache: CacheRepository;
+  planningNodes: PlanningNodeRepository;
   close(): Promise<void>;
 }

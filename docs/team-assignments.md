@@ -113,7 +113,9 @@ packages/db/              마이그레이션·리포지토리                  �
 5. **`packages/agents`** — Supervisor부터. 심판은 Flight → Transport → Accommodation 순서로 붙인다(문서가 이미 있는 순서). 모델·키·프롬프트 설정은 [llm-runtime-config.md](llm-runtime-config.md).
 6. ~~**Orchestrator 검증 규칙 완성**~~ **V1~V10 완료** (`packages/core/src/dispatch.ts`). 위반 처리가 규칙마다 다르다: 거부(V1·V2·V4·V5·V7·V9) / 직렬화(V3) / 축약 모드 강등(V6) / 승인 요청 변환(V8) / 코드 판정 채택(V10).
 7. ~~**Validation Pass**~~ **완료** (`packages/core/src/validation.ts`). `external_id` 전수 검증, 예산 정합성, 시간대 겹침·이동시간·영업시간, fail-closed 미검증. 실패하면 `documentGate`가 `PARTIAL`만 허용한다.
-   - **남은 접점**: 워커가 `lockedNodes`·`unverifiedNodes`를 `planning_nodes` 테이블에서 읽어야 한다. 지금은 `RunState`에 들고 있어 run이 끝나면 사라진다.
+8. ~~**Planning Graph 연결**~~ **완료** (`packages/core/src/graph.ts` + `apps/worker/src/orchestrator/graph-store.ts`). V4·V9 입력을 `planning_nodes` 테이블에서 읽는다. 노드는 삭제되지 않고 STALE + 버전 상승으로 남아 이력이 보존된다. 예약 완료 노드는 자동 STALE 대상이 아니라 승인 요청 대상이다(INV-5).
+   - **남은 접점**: `computeLegalMoves`가 아직 "다음 라운드 하나"만 만든다. 그래프의 `readyNodes`를 쓰면 병렬 가능한 수를 함께 낼 수 있다.
+   - 심판이 붙기 전까지 노드 상태는 `PROVISIONAL`에 머문다. 후보를 조달하지 않았으므로 `VERIFIED`라고 주장할 수 없다.
 
 지켜야 할 것
 

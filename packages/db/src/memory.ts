@@ -4,6 +4,8 @@ import type {
   CacheRepository,
   DataRequestLog,
   ObjectionRepository,
+  PlanningNodeRepository,
+  PlanningNodeRow,
   Repositories,
   RoomRepository,
   RoomRow,
@@ -197,6 +199,35 @@ export function createMemoryRepositories(): Repositories {
     },
   };
 
+  /** runId → nodeId → 버전 오름차순 이력 */
+  const nodeHistory = new Map<string, Map<string, PlanningNodeRow[]>>();
+
+  const planningNodeRepo: PlanningNodeRepository = {
+    async listLatest(runId) {
+      const byNode = nodeHistory.get(runId);
+      if (byNode === undefined) return [];
+      return [...byNode.values()]
+        .map((versions) => versions[versions.length - 1])
+        .filter((row): row is PlanningNodeRow => row !== undefined);
+    },
+    async appendVersions(runId, nodes) {
+      const byNode = nodeHistory.get(runId) ?? new Map<string, PlanningNodeRow[]>();
+      for (const node of nodes) {
+        const versions = byNode.get(node.nodeId) ?? [];
+        const existing = versions.findIndex((row) => row.version === node.version);
+        const row: PlanningNodeRow = { ...node, runId, updatedAt: new Date().toISOString() };
+        if (existing >= 0) versions[existing] = row;
+        else versions.push(row);
+        versions.sort((a, b) => a.version - b.version);
+        byNode.set(node.nodeId, versions);
+      }
+      nodeHistory.set(runId, byNode);
+    },
+    async history(runId, nodeId) {
+      return [...(nodeHistory.get(runId)?.get(nodeId) ?? [])];
+    },
+  };
+
   return {
     kind: 'memory',
     rooms: roomRepo,
@@ -204,7 +235,9 @@ export function createMemoryRepositories(): Repositories {
     objections: objectionRepo,
     runs: runRepo,
     cache: cacheRepo,
+    planningNodes: planningNodeRepo,
     async close() {
+      nodeHistory.clear();
       rooms.clear();
       surveys.clear();
       objections.clear();

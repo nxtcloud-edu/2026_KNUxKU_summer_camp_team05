@@ -1,9 +1,11 @@
 import type { ObjectionRecord, ObjectionRequest, PlanningNodeId, RoundId } from '@tm/contracts';
-import { closePool, query, queryOne } from './client.js';
+import { closePool, query, queryOne, withTransaction } from './client.js';
 import type {
   CacheRecord,
   CacheRepository,
   ObjectionRepository,
+  PlanningNodeRepository,
+  PlanningNodeRow,
   Repositories,
   RoomRepository,
   RoomRow,
@@ -471,5 +473,102 @@ export function createPostgresRepositories(): Repositories {
     },
   };
 
-  return { kind: 'postgres', rooms, surveys, objections, runs, cache, close: closePool };
+  interface PlanningNodeDbRow {
+    run_id: string;
+    node_id: string;
+    version: number;
+    input_hash: string;
+    dependency_versions: Record<string, number>;
+    status: string;
+    confidence: string;
+    evidence_refs: string[];
+    locked: boolean;
+    updated_at: Date;
+  }
+
+  const toPlanningNode = (row: PlanningNodeDbRow): PlanningNodeRow => ({
+    runId: row.run_id,
+    nodeId: row.node_id as PlanningNodeRow['nodeId'],
+    version: row.version,
+    status: row.status as PlanningNodeRow['status'],
+    confidence: row.confidence as PlanningNodeRow['confidence'],
+    inputHash: row.input_hash,
+    dependencyVersions: row.dependency_versions,
+    evidenceRefs: row.evidence_refs,
+    locked: row.locked,
+    updatedAt: row.updated_at.toISOString(),
+  });
+
+  const planningNodes: PlanningNodeRepository = {
+    async listLatest(runId) {
+      // 노드별 최신 버전만. DISTINCT ON은 ORDER BY 첫 컬럼과 일치해야 한다.
+      const rows = await query<PlanningNodeDbRow>(
+        `SELECT DISTINCT ON (node_id)
+                run_id, node_id, version, input_hash, dependency_versions,
+                status, confidence, evidence_refs, locked, updated_at
+           FROM planning_nodes
+          WHERE run_id = $1
+          ORDER BY node_id, version DESC`,
+        [runId],
+      );
+      return rows.map(toPlanningNode);
+    },
+
+    async appendVersions(runId, nodes) {
+      if (nodes.length === 0) return;
+      // 같은 (run, node, version)이 다시 들어오면 덮어쓴다. 잡 재시도가 실패하지 않도록.
+      await withTransaction(async (client) => {
+        for (const node of nodes) {
+          await client.query(
+            `INSERT INTO planning_nodes
+               (run_id, node_id, version, input_hash, dependency_versions,
+                status, confidence, evidence_refs, locked, updated_at)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8::jsonb,$9, now())
+             ON CONFLICT (run_id, node_id, version) DO UPDATE
+               SET status = EXCLUDED.status,
+                   confidence = EXCLUDED.confidence,
+                   input_hash = EXCLUDED.input_hash,
+                   dependency_versions = EXCLUDED.dependency_versions,
+                   evidence_refs = EXCLUDED.evidence_refs,
+                   locked = EXCLUDED.locked,
+                   updated_at = now()`,
+            [
+              runId,
+              node.nodeId,
+              node.version,
+              node.inputHash,
+              JSON.stringify(node.dependencyVersions),
+              node.status,
+              node.confidence,
+              JSON.stringify(node.evidenceRefs),
+              node.locked,
+            ],
+          );
+        }
+      });
+    },
+
+    async history(runId, nodeId) {
+      const rows = await query<PlanningNodeDbRow>(
+        `SELECT run_id, node_id, version, input_hash, dependency_versions,
+                status, confidence, evidence_refs, locked, updated_at
+           FROM planning_nodes
+          WHERE run_id = $1 AND node_id = $2
+          ORDER BY version`,
+        [runId, nodeId],
+      );
+      return rows.map(toPlanningNode);
+    },
+  };
+
+  return {
+    kind: 'postgres',
+    rooms,
+    surveys,
+    objections,
+    runs,
+    cache,
+    planningNodes,
+    close: closePool,
+  };
 }
