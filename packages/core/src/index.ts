@@ -6,3 +6,7 @@ export * from './review.js';
 export * from './dispatch.js';
 export * from './validation.js';
 export * from './graph.js';
+export * from './moves.js';
+export * from './budget.js';
+export * from './factcheck.js';
+export * from './triggers.js';
