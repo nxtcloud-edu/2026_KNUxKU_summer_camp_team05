@@ -8,6 +8,7 @@ import type {
   RoundId,
   RoundPhase,
   SurveySubmission,
+  Verdict,
 } from '@tm/contracts';
 
 /**
@@ -23,7 +24,32 @@ export interface RoomRow {
   completedRounds: RoundId[];
   bookedNodes: PlanningNodeId[];
   budgetBaselinePerPersonKrw?: number;
+  /** 마감 기한 트리거의 기준 시각. 없으면 마감 트리거를 쓸 수 없다 */
+  deadlineAt: string | null;
   createdAt: string;
+}
+
+export interface MemberRow {
+  roomId: string;
+  userId: string;
+  role: 'host' | 'member';
+  /** 설문을 제출했는가 */
+  surveySubmitted: boolean;
+  /**
+   * 페르소나 카드를 확인한 시각. null이면 아직 확인하지 않았다.
+   * 이 확인은 **건너뛸 수 없는 게이트**다 — 사용자가 개입할 수 있는 마지막 지점이다.
+   */
+  personaConfirmedAt: string | null;
+  joinedAt: string;
+}
+
+export interface MemberRepository {
+  /** 초대 링크로 입장. 같은 사용자가 다시 들어와도 행이 늘지 않는다 */
+  join(roomId: string, userId: string, role?: MemberRow['role']): Promise<MemberRow>;
+  list(roomId: string): Promise<MemberRow[]>;
+  get(roomId: string, userId: string): Promise<MemberRow | undefined>;
+  /** 페르소나 확인 게이트 통과 */
+  confirmPersona(roomId: string, userId: string): Promise<MemberRow | undefined>;
 }
 
 export interface SurveyRow {
@@ -180,6 +206,244 @@ export interface PlanningNodeRepository {
   history(runId: string, nodeId: PlanningNodeId): Promise<PlanningNodeRow[]>;
 }
 
+/**
+ * 라운드 행 참조. `rounds.id`는 `${runId}:${roundId}`다.
+ * 라운드에 매달린 저장소(후보·발화·판결·점수)는 전부 이 참조로 쓴다 —
+ * 호출자가 행 id 조합 규칙을 알 필요가 없어야 규칙이 한 곳에만 남는다.
+ *
+ * **선행 조건**: 이 참조로 쓰기 전에 `RunRepository.recordRound`가 먼저 호출되어야 한다.
+ * 라운드 행이 없으면 외래키가 거부한다 — 조용히 만들지 않는다.
+ */
+export interface RoundRef {
+  runId: string;
+  roundId: RoundId;
+}
+
+export function roundRowId(ref: RoundRef): string {
+  return `${ref.runId}:${ref.roundId}`;
+}
+
+/**
+ * 심판이 Data Agent로 조달한 정규화 후보.
+ * 에이전트는 여기 없는 항목을 계획서에 올릴 수 없다 — Validation Pass의 external_id
+ * 전수 검증이 이 테이블을 원본으로 삼는다 (validation.ts 1번 검증).
+ */
+export interface CandidateInput {
+  /** 제공자가 부여한 후보 식별자. 계획서 항목이 이 값을 참조한다 */
+  externalId: string;
+  provider: string;
+  /** 정규화된 Candidate. 제공자 원본 JSON은 절대 넣지 않는다 (6.6) */
+  payload: unknown;
+  disqualified?: boolean;
+  disqualifyReason?: string | null;
+}
+
+export interface CandidateRow extends CandidateInput {
+  /** 행 id. 라운드 스코프이며 `${roundRowId}:${externalId}`로 만든다 */
+  candidateId: string;
+  disqualified: boolean;
+  disqualifyReason: string | null;
+}
+
+export interface CandidateRepository {
+  /** 같은 external_id가 다시 들어오면 payload를 갱신한다 (잡 재시도 멱등) */
+  saveMany(ref: RoundRef, rows: readonly CandidateInput[]): Promise<CandidateRow[]>;
+  listByRound(ref: RoundRef): Promise<CandidateRow[]>;
+  /** 실격은 삭제가 아니다. 왜 탈락했는지가 회의록에 남아야 한다 */
+  disqualify(ref: RoundRef, externalId: string, reason: string): Promise<void>;
+  /** run 전체에서 실제 조달된 external_id. Validation Pass 입력 */
+  sourcedExternalIds(runId: string): Promise<string[]>;
+}
+
+export type SpeakerType = 'persona' | 'referee' | 'supervisor' | 'system';
+
+export interface MessageInput {
+  speakerType: SpeakerType;
+  speakerId: string | null;
+  content: string;
+  /** 발화가 참조한 후보·근거 id. 팩트체크가 이 값을 검사한다 */
+  refs?: Record<string, unknown>;
+}
+
+export interface MessageRow extends MessageInput {
+  roundId: RoundId;
+  seq: number;
+  refs: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** 회의록. "왜 이 결정인가"가 남는 곳이며 사용자에게 전문이 공개된다 */
+export interface MessageRepository {
+  /** seq는 저장소가 채번한다. 병렬 발화에서도 순서가 하나로 결정되어야 한다 */
+  append(ref: RoundRef, message: MessageInput): Promise<MessageRow>;
+  listByRound(ref: RoundRef): Promise<MessageRow[]>;
+  /** run 전체 회의록 (라운드 순서 → seq 순서) */
+  transcript(runId: string): Promise<MessageRow[]>;
+}
+
+export interface VerdictReview {
+  /** REVIEW 단계 판정 결과 (rerun / accept 등) */
+  result: string | null;
+  reasons: string[];
+}
+
+export interface VerdictRow {
+  roundId: RoundId;
+  verdict: Verdict;
+  minSatisfaction: number | null;
+  satisfactionGap: number | null;
+  review: VerdictReview;
+  createdAt: string;
+}
+
+export interface VerdictRepository {
+  /** 라운드당 판결 1건. 재판결이면 덮어쓴다 */
+  save(ref: RoundRef, verdict: Verdict, review?: VerdictReview): Promise<VerdictRow>;
+  get(ref: RoundRef): Promise<VerdictRow | undefined>;
+  listByRun(runId: string): Promise<VerdictRow[]>;
+}
+
+export interface ScoreRow {
+  candidateId: string;
+  userId: string;
+  satisfaction: number;
+  breakdown: Record<string, number>;
+}
+
+/**
+ * Scoring Engine 산출값. 심판이 만드는 값이 아니라 코드가 만드는 값이다 (INV-2).
+ */
+export interface ScoreRepository {
+  /** 라운드 단위 통째 교체. 점수는 한 번에 계산되므로 부분 갱신이 없다 */
+  replaceRound(ref: RoundRef, rows: readonly ScoreRow[]): Promise<void>;
+  listByRound(ref: RoundRef): Promise<ScoreRow[]>;
+}
+
+export interface ConcessionEntry {
+  roomId: string;
+  userId: string;
+  roundId: RoundId | null;
+  delta: number;
+  /** 반영 후 잔액 */
+  ccAfter: number;
+}
+
+/** 양보 크레딧 원장. 다음 라운드 발언 순서와 가중치가 여기서 나온다 */
+export interface ConcessionRepository {
+  /** 같은 (방·사용자·라운드)는 한 번만 기록한다. 재시도가 크레딧을 두 번 깎지 않는다 */
+  append(entry: ConcessionEntry): Promise<void>;
+  /** userId → 최신 잔액 */
+  creditsByRoom(roomId: string): Promise<Record<string, number>>;
+  history(roomId: string): Promise<ConcessionEntry[]>;
+}
+
+export interface DispatchDecisionEntry {
+  runId: string;
+  seq: number;
+  legalMoves: unknown;
+  proposal: unknown | null;
+  validationResult: unknown | null;
+  /** 거부된 검증 규칙 (V1~V10) */
+  rejectedRules: string[];
+  fallbackUsed: boolean;
+  decidedBy: 'supervisor' | 'default';
+  latencyMs?: number | null;
+  costUsd?: number | null;
+}
+
+/** Supervisor 제안과 검증 결과. 폴백률이 프롬프트 회귀 지표다 (12.2) */
+export interface DispatchDecisionRepository {
+  /** 같은 (run, seq)는 한 번만 기록한다 */
+  record(entry: DispatchDecisionEntry): Promise<void>;
+  listByRun(runId: string): Promise<DispatchDecisionEntry[]>;
+  fallbackRate(runId: string): Promise<{ decisions: number; fallbacks: number; rate: number }>;
+}
+
+export interface LlmUsageEntry {
+  /** 멱등 키. 같은 requestId가 다시 들어오면 원가를 두 번 세지 않는다 */
+  requestId: string;
+  roomId: string | null;
+  runId: string | null;
+  roundId: string | null;
+  purpose: string;
+  model: string;
+  promptVersion?: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  /** 캐시 읽기 토큰. 0이면 프롬프트 캐싱이 걸리지 않은 것이다 (llm-runtime-config 3.2) */
+  cacheTokens: number;
+  latencyMs?: number | null;
+  costUsd: number;
+  batch?: boolean;
+  fallbackReason?: string | null;
+}
+
+export interface LlmUsageTotals {
+  calls: number;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheTokens: number;
+}
+
+/**
+ * LLM 원가 원장. `RUN_COST_CAP_USD`가 지켜지는지는 실측으로만 알 수 있고
+ * 실측의 원본이 이 테이블이다 (llm-runtime-config.md 3.3).
+ */
+export interface LlmUsageRepository {
+  record(entry: LlmUsageEntry): Promise<void>;
+  totals(runId: string): Promise<LlmUsageTotals>;
+  byRoom(roomId: string): Promise<LlmUsageTotals>;
+}
+
+export interface ItineraryInput {
+  roomId: string;
+  runId: string;
+  plan: unknown;
+  budgetSummary?: unknown;
+  /** Validation Pass 결과. PARTIAL 발행 사유가 여기 남는다 */
+  validationReport?: unknown;
+}
+
+export interface ItineraryRow extends ItineraryInput {
+  itineraryId: string;
+  version: number;
+  publishedAt: string | null;
+}
+
+export interface ItineraryRepository {
+  /** 방마다 버전이 올라간다. 이전 계획서는 지우지 않는다 */
+  save(input: ItineraryInput): Promise<ItineraryRow>;
+  latest(roomId: string): Promise<ItineraryRow | undefined>;
+  /** 발행. 검증을 통과하지 못한 계획서는 PARTIAL 배지로만 나간다 */
+  publish(itineraryId: string): Promise<void>;
+}
+
+export interface ApprovalInput {
+  roomId: string;
+  /** 'booked_node_change' | 'late_hard_constraint' 등 */
+  type: string;
+  options: unknown[];
+  objectionId?: string | null;
+}
+
+export interface ApprovalRow extends ApprovalInput {
+  approvalId: string;
+  objectionId: string | null;
+  raisedAt: string;
+  respondedAt: string | null;
+  response: unknown | null;
+}
+
+/**
+ * 승인 요청. 예약 완료 노드는 자동 STALE 대상이 아니라 승인 요청 대상이다 (INV-5).
+ */
+export interface ApprovalRepository {
+  raise(input: ApprovalInput): Promise<ApprovalRow>;
+  respond(approvalId: string, response: unknown): Promise<ApprovalRow | undefined>;
+  pending(roomId: string): Promise<ApprovalRow[]>;
+}
+
 export interface Repositories {
   kind: 'postgres' | 'memory';
   rooms: RoomRepository;
@@ -188,5 +452,15 @@ export interface Repositories {
   runs: RunRepository;
   cache: CacheRepository;
   planningNodes: PlanningNodeRepository;
+  members: MemberRepository;
+  candidates: CandidateRepository;
+  messages: MessageRepository;
+  verdicts: VerdictRepository;
+  scores: ScoreRepository;
+  concessions: ConcessionRepository;
+  dispatchDecisions: DispatchDecisionRepository;
+  llmUsage: LlmUsageRepository;
+  itineraries: ItineraryRepository;
+  approvals: ApprovalRepository;
   close(): Promise<void>;
 }

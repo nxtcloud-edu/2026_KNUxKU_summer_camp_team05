@@ -72,6 +72,10 @@ async function main(): Promise<void> {
   }
   console.log(`migrations: ${applied.map((row) => row.version).join(', ')}`);
 
+  // 이전 실행이 중간에 죽었으면 외래키 없는 테이블에 찌꺼기가 남는다. 먼저 지운다.
+  await query('DELETE FROM llm_usage WHERE run_id = $1', ['run_smoke']);
+  await query('DELETE FROM data_requests WHERE run_id = $1', ['run_smoke']);
+
   const repos = createPostgresRepositories();
   let roomId: string | undefined;
 
@@ -213,6 +217,196 @@ async function main(): Promise<void> {
     check('markCompleted → COMPLETED', completed?.status === 'COMPLETED', completed?.status);
     check('예산 기준선 갱신', completed?.budgetBaselinePerPersonKrw === 850000, completed?.budgetBaselinePerPersonKrw);
 
+    console.log('members');
+    const host = await repos.members.join(room.roomId, 'user_a', 'host');
+    check('join → host', host.role === 'host', host.role);
+    check('설문 제출이 반영된다', host.surveySubmitted === true, host.surveySubmitted);
+    check('페르소나 확인 전에는 null', host.personaConfirmedAt === null);
+
+    await repos.members.join(room.roomId, 'user_a', 'member');
+    check('같은 사용자 재입장 → 행 추가 없음', (await repos.members.list(room.roomId)).length === 1);
+    check(
+      '재입장이 역할을 강등시키지 않는다',
+      (await repos.members.get(room.roomId, 'user_a'))?.role === 'host',
+    );
+
+    await repos.members.join(room.roomId, 'user_c');
+    check('설문 없는 멤버는 미제출', (await repos.members.get(room.roomId, 'user_c'))?.surveySubmitted === false);
+
+    const confirmed = await repos.members.confirmPersona(room.roomId, 'user_a');
+    check('페르소나 확인 기록', confirmed?.personaConfirmedAt !== null, confirmed?.personaConfirmedAt);
+    check('없는 멤버 확인 → undefined', (await repos.members.confirmPersona(room.roomId, 'nobody')) === undefined);
+
+    console.log('candidates · messages · verdicts · scores');
+    const ref = { runId: 'run_smoke', roundId: 'r_2' } as const;
+
+    const savedCandidates = await repos.candidates.saveMany(ref, [
+      { externalId: 'H1', provider: 'rakuten_travel', payload: { name: '난바 호텔', price: 82000 } },
+      { externalId: 'H2', provider: 'rakuten_travel', payload: { name: '우메다 호텔', price: 96000 } },
+    ]);
+    check('saveMany → 2건', savedCandidates.length === 2, savedCandidates.length);
+
+    await repos.candidates.saveMany(ref, [
+      { externalId: 'H1', provider: 'rakuten_travel', payload: { name: '난바 호텔', price: 84000 } },
+    ]);
+    const candidateList = await repos.candidates.listByRound(ref);
+    check('같은 external_id 재조달 → 행 추가 없이 갱신', candidateList.length === 2, candidateList.length);
+    check(
+      'payload 갱신',
+      (candidateList.find((row) => row.externalId === 'H1')?.payload as { price: number }).price === 84000,
+    );
+
+    await repos.candidates.disqualify(ref, 'H2', '알레르기 대응 미확인');
+    const disqualified = (await repos.candidates.listByRound(ref)).find((row) => row.externalId === 'H2');
+    check('실격은 삭제가 아니라 사유 기록', disqualified?.disqualified === true && disqualified.disqualifyReason !== null);
+
+    const sourced = await repos.candidates.sourcedExternalIds('run_smoke');
+    check('Validation Pass 입력 = 조달된 external_id', sourced.sort().join(',') === 'H1,H2', sourced);
+
+    const first = await repos.messages.append(ref, {
+      speakerType: 'referee',
+      speakerId: 'referee:accommodation',
+      content: '후보 2건을 조달했습니다.',
+      refs: { candidateIds: ['H1', 'H2'] },
+    });
+    const second = await repos.messages.append(ref, {
+      speakerType: 'persona',
+      speakerId: 'user_a',
+      content: '난바가 좋습니다.',
+    });
+    check('seq는 저장소가 채번한다', first.seq === 1 && second.seq === 2, [first.seq, second.seq]);
+    check('refs 왕복', (first.refs as { candidateIds: string[] }).candidateIds[0] === 'H1');
+    check('회의록 전문 조회', (await repos.messages.transcript('run_smoke')).length === 2);
+
+    const verdict = {
+      roundId: 'r_2' as const,
+      category: 'accommodation' as const,
+      winner: { type: 'single' as const, candidateIds: ['H1'], detail: '난바 호텔' },
+      rationale: '역세권이고 최소 만족도가 가장 높습니다.',
+      runnerUp: 'H2',
+      disqualified: [{ candidateId: 'H2', reason: '알레르기 대응 미확인' }],
+      intensityProfile: [],
+      dissent: [],
+      scores: { H1: 7.2 },
+      minSatisfaction: 6.4,
+      satisfactionGap: 2.1,
+      budgetImpact: { allocated: 300000, actual: 246000, delta: -54000 },
+      handoff: {},
+      uncertainties: ['조식 포함 여부 미확인'],
+      warnings: [],
+      followups: [],
+      toolCalls: ['hotel.search'],
+      partialSourcing: false,
+      detail: {},
+    };
+
+    const savedVerdict = await repos.verdicts.save(ref, verdict, { result: 'pass', reasons: [] });
+    check('판결 저장 → minSatisfaction 컬럼 승격', savedVerdict.minSatisfaction === 6.4, savedVerdict.minSatisfaction);
+    check('판결 왕복', (await repos.verdicts.get(ref))?.verdict.winner.candidateIds[0] === 'H1');
+
+    await repos.verdicts.save(ref, { ...verdict, minSatisfaction: 7.0 }, { result: 'rerun', reasons: ['C1'] });
+    check('재판결은 덮어쓴다 (라운드당 1건)', (await repos.verdicts.listByRun('run_smoke')).length === 1);
+    check('재심 사유 왕복', (await repos.verdicts.get(ref))?.review.reasons[0] === 'C1');
+
+    await repos.scores.replaceRound(ref, [
+      { candidateId: 'H1', userId: 'user_a', satisfaction: 7.2, breakdown: { price: 0.4 } },
+      { candidateId: 'H1', userId: 'user_b', satisfaction: 6.4, breakdown: { price: 0.6 } },
+    ]);
+    await repos.scores.replaceRound(ref, [
+      { candidateId: 'H1', userId: 'user_a', satisfaction: 7.5, breakdown: { price: 0.4 } },
+    ]);
+    const scoreRows = await repos.scores.listByRound(ref);
+    check('점수는 라운드 단위로 교체된다', scoreRows.length === 1, scoreRows.length);
+    check('numeric 왕복', scoreRows[0]?.satisfaction === 7.5, scoreRows[0]?.satisfaction);
+
+    console.log('양보 크레딧 · 디스패치 · 원가');
+    await repos.concessions.append({
+      roomId: room.roomId,
+      userId: 'user_a',
+      roundId: 'r_2',
+      delta: -0.2,
+      ccAfter: 0.8,
+    });
+    await repos.concessions.append({
+      roomId: room.roomId,
+      userId: 'user_a',
+      roundId: 'r_2',
+      delta: -0.2,
+      ccAfter: 0.6,
+    });
+    check(
+      '같은 방·사용자·라운드는 한 번만 (재시도가 크레딧을 두 번 깎지 않는다)',
+      (await repos.concessions.history(room.roomId)).length === 1,
+    );
+    check('잔액 조회', (await repos.concessions.creditsByRoom(room.roomId))['user_a'] === 0.8);
+
+    const dispatchEntry = {
+      runId: 'run_smoke',
+      seq: 1,
+      legalMoves: [{ moveId: 'mv_r_2' }],
+      proposal: null,
+      validationResult: null,
+      rejectedRules: [],
+      fallbackUsed: true,
+      decidedBy: 'default' as const,
+    };
+    await repos.dispatchDecisions.record(dispatchEntry);
+    await repos.dispatchDecisions.record(dispatchEntry);
+    check('같은 (run, seq)는 한 번만', (await repos.dispatchDecisions.listByRun('run_smoke')).length === 1);
+    check('폴백률 집계', (await repos.dispatchDecisions.fallbackRate('run_smoke')).rate === 1);
+
+    const usage = {
+      // llm_usage는 rooms에 외래키가 없어 CASCADE로 지워지지 않는다.
+      // requestId가 멱등 키이므로 고정값을 쓰면 두 번째 실행부터 삽입이 건너뛰어진다.
+      requestId: `llm_${room.roomId}`,
+      roomId: room.roomId,
+      runId: 'run_smoke',
+      roundId: 'r_2',
+      purpose: 'referee.accommodation',
+      model: 'claude-sonnet-5',
+      promptVersion: 'referee.v1',
+      inputTokens: 4200,
+      outputTokens: 380,
+      cacheTokens: 3100,
+      costUsd: 0.0183,
+    };
+    await repos.llmUsage.record(usage);
+    await repos.llmUsage.record(usage);
+    const totals = await repos.llmUsage.totals('run_smoke');
+    check('같은 requestId는 원가를 두 번 세지 않는다', totals.calls === 1, totals.calls);
+    check('원가 합계', Math.abs(totals.costUsd - 0.0183) < 1e-6, totals.costUsd);
+    check('캐시 토큰 합계', totals.cacheTokens === 3100, totals.cacheTokens);
+    check('방 단위 집계', (await repos.llmUsage.byRoom(room.roomId)).calls === 1);
+
+    console.log('계획서 · 승인 요청');
+    const itinerary = await repos.itineraries.save({
+      roomId: room.roomId,
+      runId: 'run_smoke',
+      plan: { days: [] },
+      budgetSummary: { perPerson: 820000 },
+      validationReport: { passed: false, blockers: [{ kind: 'unverified_fail_closed' }] },
+    });
+    check('버전 1로 시작', itinerary.version === 1, itinerary.version);
+
+    const second2 = await repos.itineraries.save({ roomId: room.roomId, runId: 'run_smoke', plan: { days: [1] } });
+    check('재발행은 버전이 오른다', second2.version === 2, second2.version);
+    check('latest는 최신 버전', (await repos.itineraries.latest(room.roomId))?.version === 2);
+    check('발행 전에는 publishedAt이 null', second2.publishedAt === null);
+
+    await repos.itineraries.publish(second2.itineraryId);
+    check('발행 기록', (await repos.itineraries.latest(room.roomId))?.publishedAt !== null);
+
+    const approval = await repos.approvals.raise({
+      roomId: room.roomId,
+      type: 'booked_node_change',
+      options: [{ id: 'keep', label: '예약 유지' }, { id: 'cancel', label: '취소하고 재검토' }],
+    });
+    check('승인 대기 목록에 뜬다', (await repos.approvals.pending(room.roomId)).length === 1);
+
+    await repos.approvals.respond(approval.approvalId, { decision: 'approve' });
+    check('응답하면 대기 목록에서 빠진다', (await repos.approvals.pending(room.roomId)).length === 0);
+    check('없는 승인 응답 → undefined', (await repos.approvals.respond('apr_nope', {})) === undefined);
+
     console.log('objections');
     const request = objectionRequest(room.roomId, 'user_a');
     const record = await repos.objections.save(request, {
@@ -283,6 +477,9 @@ async function main(): Promise<void> {
     check('같은 사용자·같은 라운드 중복 이의 차단', duplicateBlocked);
   } finally {
     if (roomId !== undefined) {
+      // 외래키가 없는 테이블은 직접 지운다.
+      await query('DELETE FROM llm_usage WHERE room_id = $1 OR run_id = $2', [roomId, 'run_smoke']);
+      await query('DELETE FROM data_requests WHERE run_id = $1', ['run_smoke']);
       await query('DELETE FROM rooms WHERE id = $1', [roomId]);
       const leftover = await query<{ count: string }>('SELECT count(*) FROM objections WHERE room_id = $1', [roomId]);
       check('CASCADE 정리', leftover[0]?.count === '0', leftover[0]?.count);

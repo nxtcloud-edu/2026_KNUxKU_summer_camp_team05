@@ -1,8 +1,30 @@
-import type { ObjectionRecord, ObjectionRequest, PlanningNodeId, RoundId } from '@tm/contracts';
-import { closePool, query, queryOne, withTransaction } from './client.js';
 import type {
+  ObjectionRecord,
+  ObjectionRequest,
+  PlanningNodeId,
+  RoundId,
+  Verdict,
+} from '@tm/contracts';
+import { closePool, query, queryOne, withTransaction } from './client.js';
+import { roundRowId } from './ports.js';
+import type {
+  ApprovalRepository,
+  ApprovalRow,
   CacheRecord,
   CacheRepository,
+  CandidateRepository,
+  CandidateRow,
+  ConcessionRepository,
+  DispatchDecisionEntry,
+  DispatchDecisionRepository,
+  ItineraryRepository,
+  ItineraryRow,
+  LlmUsageRepository,
+  LlmUsageTotals,
+  MemberRepository,
+  MemberRow,
+  MessageRepository,
+  MessageRow,
   ObjectionRepository,
   PlanningNodeRepository,
   PlanningNodeRow,
@@ -11,8 +33,11 @@ import type {
   RoomRow,
   RunRepository,
   RunRow,
+  ScoreRepository,
   SurveyRepository,
   SurveyRow,
+  VerdictRepository,
+  VerdictRow,
 } from './ports.js';
 
 interface RoomDbRow {
@@ -20,6 +45,7 @@ interface RoomDbRow {
   pack_id: string;
   status: string;
   setting: Record<string, unknown>;
+  deadline_at: Date | null;
   created_at: Date;
 }
 
@@ -74,7 +100,7 @@ export function createPostgresRepositories(): Repositories {
       const id = nextId('rm');
       const row = await queryOne<RoomDbRow>(
         `INSERT INTO rooms (id, pack_id, setting) VALUES ($1, $2, $3::jsonb)
-         RETURNING id, pack_id, status, setting, created_at`,
+         RETURNING id, pack_id, status, setting, deadline_at, created_at`,
         [id, packId, JSON.stringify(setting)],
       );
       if (row === undefined) throw new Error('방 생성 실패');
@@ -85,13 +111,14 @@ export function createPostgresRepositories(): Repositories {
         setting: row.setting,
         completedRounds: [],
         bookedNodes: [],
+        deadlineAt: row.deadline_at?.toISOString() ?? null,
         createdAt: row.created_at.toISOString(),
       };
     },
 
     async get(roomId) {
       const row = await queryOne<RoomDbRow & { budget_baseline: number | null }>(
-        `SELECT id, pack_id, status, setting, created_at,
+        `SELECT id, pack_id, status, setting, deadline_at, created_at,
                 (setting->>'budgetPerPersonKrw')::int AS budget_baseline
            FROM rooms WHERE id = $1`,
         [roomId],
@@ -108,6 +135,7 @@ export function createPostgresRepositories(): Repositories {
         ...(row.budget_baseline === null
           ? {}
           : { budgetBaselinePerPersonKrw: row.budget_baseline }),
+        deadlineAt: row.deadline_at?.toISOString() ?? null,
         createdAt: row.created_at.toISOString(),
       };
     },
@@ -561,6 +589,638 @@ export function createPostgresRepositories(): Repositories {
     },
   };
 
+  interface MemberDbRow {
+    room_id: string;
+    user_id: string;
+    role: string;
+    survey_status: string;
+    persona_confirmed_at: Date | null;
+    joined_at: Date;
+  }
+
+  const toMember = (row: MemberDbRow): MemberRow => ({
+    roomId: row.room_id,
+    userId: row.user_id,
+    role: row.role as MemberRow['role'],
+    surveySubmitted: row.survey_status === 'submitted',
+    personaConfirmedAt: row.persona_confirmed_at?.toISOString() ?? null,
+    joinedAt: row.joined_at.toISOString(),
+  });
+
+  const MEMBER_COLUMNS = 'room_id, user_id, role, survey_status, persona_confirmed_at, joined_at';
+
+  const members: MemberRepository = {
+    async join(roomId, userId, role = 'member') {
+      await query(
+        `INSERT INTO room_members (room_id, user_id, role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (room_id, user_id) DO UPDATE SET role = room_members.role`,
+        [roomId, userId, role],
+      );
+      // 설문 제출 여부는 surveys가 원본이다. RETURNING만으로는 알 수 없다.
+      const saved = await this.get(roomId, userId);
+      if (saved === undefined) throw new Error('멤버 등록 실패');
+      return saved;
+    },
+
+    async list(roomId) {
+      // 설문 제출 여부는 surveys가 원본이다. survey_status 컬럼과 어긋나도 원본을 따른다.
+      const rows = await query<MemberDbRow & { submitted: boolean }>(
+        `SELECT ${MEMBER_COLUMNS},
+                EXISTS (SELECT 1 FROM surveys s WHERE s.room_id = m.room_id AND s.user_id = m.user_id) AS submitted
+           FROM room_members m WHERE room_id = $1 ORDER BY joined_at`,
+        [roomId],
+      );
+      return rows.map((row) => ({ ...toMember(row), surveySubmitted: row.submitted }));
+    },
+
+    async get(roomId, userId) {
+      const row = await queryOne<MemberDbRow & { submitted: boolean }>(
+        `SELECT ${MEMBER_COLUMNS},
+                EXISTS (SELECT 1 FROM surveys s WHERE s.room_id = m.room_id AND s.user_id = m.user_id) AS submitted
+           FROM room_members m WHERE room_id = $1 AND user_id = $2`,
+        [roomId, userId],
+      );
+      return row === undefined ? undefined : { ...toMember(row), surveySubmitted: row.submitted };
+    },
+
+    async confirmPersona(roomId, userId) {
+      const row = await queryOne<MemberDbRow>(
+        `UPDATE room_members SET persona_confirmed_at = now()
+          WHERE room_id = $1 AND user_id = $2
+         RETURNING ${MEMBER_COLUMNS}`,
+        [roomId, userId],
+      );
+      if (row === undefined) return undefined;
+      return this.get(roomId, userId);
+    },
+  };
+
+  // ── 라운드에 매달린 저장소들 ─────────────────────────────────────────────
+  // 후보·발화·판결·점수는 rounds 행에 외래키로 붙는다. 라운드 행이 먼저 있어야 한다.
+
+  const candidates: CandidateRepository = {
+    async saveMany(ref, rows) {
+      if (rows.length === 0) return [];
+      const roundId = roundRowId(ref);
+      const saved: CandidateRow[] = [];
+      await withTransaction(async (client) => {
+        for (const row of rows) {
+          await client.query(
+            `INSERT INTO candidates (id, round_id, external_id, provider, payload, disqualified, disqualify_reason)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+             ON CONFLICT (round_id, external_id) DO UPDATE
+               SET provider = EXCLUDED.provider,
+                   payload = EXCLUDED.payload,
+                   disqualified = EXCLUDED.disqualified,
+                   disqualify_reason = EXCLUDED.disqualify_reason`,
+            [
+              `${roundId}:${row.externalId}`,
+              roundId,
+              row.externalId,
+              row.provider,
+              JSON.stringify(row.payload),
+              row.disqualified ?? false,
+              row.disqualifyReason ?? null,
+            ],
+          );
+          saved.push({
+            candidateId: `${roundId}:${row.externalId}`,
+            externalId: row.externalId,
+            provider: row.provider,
+            payload: row.payload,
+            disqualified: row.disqualified ?? false,
+            disqualifyReason: row.disqualifyReason ?? null,
+          });
+        }
+      });
+      return saved;
+    },
+
+    async listByRound(ref) {
+      const rows = await query<{
+        id: string;
+        external_id: string;
+        provider: string;
+        payload: unknown;
+        disqualified: boolean;
+        disqualify_reason: string | null;
+      }>(
+        `SELECT id, external_id, provider, payload, disqualified, disqualify_reason
+           FROM candidates WHERE round_id = $1 ORDER BY external_id`,
+        [roundRowId(ref)],
+      );
+      return rows.map((row) => ({
+        candidateId: row.id,
+        externalId: row.external_id,
+        provider: row.provider,
+        payload: row.payload,
+        disqualified: row.disqualified,
+        disqualifyReason: row.disqualify_reason,
+      }));
+    },
+
+    async disqualify(ref, externalId, reason) {
+      await query(
+        `UPDATE candidates SET disqualified = true, disqualify_reason = $3
+          WHERE round_id = $1 AND external_id = $2`,
+        [roundRowId(ref), externalId, reason],
+      );
+    },
+
+    async sourcedExternalIds(runId) {
+      // 실격 후보도 조달된 것이다. Validation Pass는 "조달 근거가 있는가"만 본다.
+      const rows = await query<{ external_id: string }>(
+        `SELECT DISTINCT c.external_id
+           FROM candidates c JOIN rounds r ON r.id = c.round_id
+          WHERE r.run_id = $1`,
+        [runId],
+      );
+      return rows.map((row) => row.external_id);
+    },
+  };
+
+  const toMessage = (
+    roundId: RoundId,
+    row: { seq: number; speaker_type: string; speaker_id: string | null; content: string; refs: Record<string, unknown>; created_at: Date },
+  ): MessageRow => ({
+    roundId,
+    seq: row.seq,
+    speakerType: row.speaker_type as MessageRow['speakerType'],
+    speakerId: row.speaker_id,
+    content: row.content,
+    refs: row.refs,
+    createdAt: row.created_at.toISOString(),
+  });
+
+  const messages: MessageRepository = {
+    async append(ref, message) {
+      const roundId = roundRowId(ref);
+      // seq는 저장소가 채번한다. 페르소나가 병렬로 발화하면 같은 seq를 노려 충돌할 수
+      // 있으므로 유니크 위반은 재시도한다 — 순서를 잃는 것보다 낫다.
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        try {
+          const row = await queryOne<{
+            seq: number;
+            speaker_type: string;
+            speaker_id: string | null;
+            content: string;
+            refs: Record<string, unknown>;
+            created_at: Date;
+          }>(
+            `INSERT INTO messages (round_id, seq, speaker_type, speaker_id, content, refs)
+             SELECT $1, COALESCE(MAX(seq), 0) + 1, $2, $3, $4, $5::jsonb
+               FROM messages WHERE round_id = $1
+             RETURNING seq, speaker_type, speaker_id, content, refs, created_at`,
+            [
+              roundId,
+              message.speakerType,
+              message.speakerId,
+              message.content,
+              JSON.stringify(message.refs ?? {}),
+            ],
+          );
+          if (row === undefined) throw new Error('발화 저장 실패');
+          return toMessage(ref.roundId, row);
+        } catch (error) {
+          const code = (error as { code?: string }).code;
+          if (code !== '23505' || attempt === 5) throw error;
+        }
+      }
+      throw new Error('발화 seq 채번 재시도 실패');
+    },
+
+    async listByRound(ref) {
+      const rows = await query<{
+        seq: number;
+        speaker_type: string;
+        speaker_id: string | null;
+        content: string;
+        refs: Record<string, unknown>;
+        created_at: Date;
+      }>(
+        `SELECT seq, speaker_type, speaker_id, content, refs, created_at
+           FROM messages WHERE round_id = $1 ORDER BY seq`,
+        [roundRowId(ref)],
+      );
+      return rows.map((row) => toMessage(ref.roundId, row));
+    },
+
+    async transcript(runId) {
+      const rows = await query<{
+        round_id: string;
+        seq: number;
+        speaker_type: string;
+        speaker_id: string | null;
+        content: string;
+        refs: Record<string, unknown>;
+        created_at: Date;
+      }>(
+        `SELECT r.round_id, m.seq, m.speaker_type, m.speaker_id, m.content, m.refs, m.created_at
+           FROM messages m JOIN rounds r ON r.id = m.round_id
+          WHERE r.run_id = $1
+          ORDER BY r.seq, m.seq`,
+        [runId],
+      );
+      return rows.map((row) => toMessage(row.round_id as RoundId, row));
+    },
+  };
+
+  interface VerdictDbRow {
+    round_id: string;
+    payload: Verdict;
+    min_satisfaction: string | null;
+    satisfaction_gap: string | null;
+    review_result: string | null;
+    review_reasons: string[];
+    created_at: Date;
+  }
+
+  const toVerdict = (row: VerdictDbRow, roundId: RoundId): VerdictRow => ({
+    roundId,
+    verdict: row.payload,
+    minSatisfaction: row.min_satisfaction === null ? null : Number(row.min_satisfaction),
+    satisfactionGap: row.satisfaction_gap === null ? null : Number(row.satisfaction_gap),
+    review: { result: row.review_result, reasons: row.review_reasons },
+    createdAt: row.created_at.toISOString(),
+  });
+
+  const verdicts: VerdictRepository = {
+    async save(ref, verdict, review) {
+      const row = await queryOne<VerdictDbRow>(
+        `INSERT INTO verdicts
+           (id, round_id, payload, min_satisfaction, satisfaction_gap, review_result, review_reasons)
+         VALUES ($1,$1,$2::jsonb,$3,$4,$5,$6::jsonb)
+         ON CONFLICT (id) DO UPDATE
+           SET payload = EXCLUDED.payload,
+               min_satisfaction = EXCLUDED.min_satisfaction,
+               satisfaction_gap = EXCLUDED.satisfaction_gap,
+               review_result = EXCLUDED.review_result,
+               review_reasons = EXCLUDED.review_reasons,
+               created_at = now()
+         RETURNING round_id, payload, min_satisfaction, satisfaction_gap,
+                   review_result, review_reasons, created_at`,
+        [
+          roundRowId(ref),
+          JSON.stringify(verdict),
+          verdict.minSatisfaction,
+          verdict.satisfactionGap,
+          review?.result ?? null,
+          JSON.stringify(review?.reasons ?? []),
+        ],
+      );
+      if (row === undefined) throw new Error('판결 저장 실패');
+      return toVerdict(row, ref.roundId);
+    },
+
+    async get(ref) {
+      const row = await queryOne<VerdictDbRow>(
+        `SELECT round_id, payload, min_satisfaction, satisfaction_gap,
+                review_result, review_reasons, created_at
+           FROM verdicts WHERE id = $1`,
+        [roundRowId(ref)],
+      );
+      return row === undefined ? undefined : toVerdict(row, ref.roundId);
+    },
+
+    async listByRun(runId) {
+      const rows = await query<VerdictDbRow & { rid: string }>(
+        `SELECT v.round_id, v.payload, v.min_satisfaction, v.satisfaction_gap,
+                v.review_result, v.review_reasons, v.created_at, r.round_id AS rid
+           FROM verdicts v JOIN rounds r ON r.id = v.round_id
+          WHERE r.run_id = $1
+          ORDER BY r.seq`,
+        [runId],
+      );
+      return rows.map((row) => toVerdict(row, row.rid as RoundId));
+    },
+  };
+
+  const scores: ScoreRepository = {
+    async replaceRound(ref, rows) {
+      const roundId = roundRowId(ref);
+      await withTransaction(async (client) => {
+        await client.query('DELETE FROM scores WHERE round_id = $1', [roundId]);
+        for (const row of rows) {
+          await client.query(
+            `INSERT INTO scores (round_id, candidate_id, user_id, satisfaction, breakdown)
+             VALUES ($1,$2,$3,$4,$5::jsonb)`,
+            [roundId, row.candidateId, row.userId, row.satisfaction, JSON.stringify(row.breakdown)],
+          );
+        }
+      });
+    },
+
+    async listByRound(ref) {
+      const rows = await query<{
+        candidate_id: string;
+        user_id: string;
+        satisfaction: string;
+        breakdown: Record<string, number>;
+      }>(
+        `SELECT candidate_id, user_id, satisfaction, breakdown
+           FROM scores WHERE round_id = $1 ORDER BY candidate_id, user_id`,
+        [roundRowId(ref)],
+      );
+      return rows.map((row) => ({
+        candidateId: row.candidate_id,
+        userId: row.user_id,
+        satisfaction: Number(row.satisfaction),
+        breakdown: row.breakdown,
+      }));
+    },
+  };
+
+  const concessions: ConcessionRepository = {
+    async append(entry) {
+      await query(
+        `INSERT INTO concession_ledger (room_id, user_id, round_id, delta, cc_after)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (room_id, user_id, round_id) WHERE round_id IS NOT NULL DO NOTHING`,
+        [entry.roomId, entry.userId, entry.roundId, entry.delta, entry.ccAfter],
+      );
+    },
+
+    async creditsByRoom(roomId) {
+      const rows = await query<{ user_id: string; cc_after: string }>(
+        `SELECT DISTINCT ON (user_id) user_id, cc_after
+           FROM concession_ledger WHERE room_id = $1
+          ORDER BY user_id, id DESC`,
+        [roomId],
+      );
+      return Object.fromEntries(rows.map((row) => [row.user_id, Number(row.cc_after)]));
+    },
+
+    async history(roomId) {
+      const rows = await query<{
+        user_id: string;
+        round_id: string | null;
+        delta: string;
+        cc_after: string;
+      }>(
+        `SELECT user_id, round_id, delta, cc_after
+           FROM concession_ledger WHERE room_id = $1 ORDER BY id`,
+        [roomId],
+      );
+      return rows.map((row) => ({
+        roomId,
+        userId: row.user_id,
+        roundId: row.round_id as RoundId | null,
+        delta: Number(row.delta),
+        ccAfter: Number(row.cc_after),
+      }));
+    },
+  };
+
+  const dispatchDecisions: DispatchDecisionRepository = {
+    async record(entry) {
+      await query(
+        `INSERT INTO dispatch_decisions
+           (run_id, seq, legal_moves, proposal, validation_result, rejected_rules,
+            fallback_used, decided_by, latency_ms, cost_usd)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6::jsonb,$7,$8,$9,$10)
+         ON CONFLICT (run_id, seq) DO NOTHING`,
+        [
+          entry.runId,
+          entry.seq,
+          JSON.stringify(entry.legalMoves),
+          entry.proposal === null ? null : JSON.stringify(entry.proposal),
+          entry.validationResult === null ? null : JSON.stringify(entry.validationResult),
+          JSON.stringify(entry.rejectedRules),
+          entry.fallbackUsed,
+          entry.decidedBy,
+          entry.latencyMs ?? null,
+          entry.costUsd ?? null,
+        ],
+      );
+    },
+
+    async listByRun(runId) {
+      const rows = await query<{
+        seq: number;
+        legal_moves: unknown;
+        proposal: unknown | null;
+        validation_result: unknown | null;
+        rejected_rules: string[];
+        fallback_used: boolean;
+        decided_by: string;
+        latency_ms: number | null;
+        cost_usd: string | null;
+      }>(
+        `SELECT seq, legal_moves, proposal, validation_result, rejected_rules,
+                fallback_used, decided_by, latency_ms, cost_usd
+           FROM dispatch_decisions WHERE run_id = $1 ORDER BY seq`,
+        [runId],
+      );
+      return rows.map((row) => ({
+        runId,
+        seq: row.seq,
+        legalMoves: row.legal_moves,
+        proposal: row.proposal,
+        validationResult: row.validation_result,
+        rejectedRules: row.rejected_rules,
+        fallbackUsed: row.fallback_used,
+        decidedBy: row.decided_by as DispatchDecisionEntry['decidedBy'],
+        latencyMs: row.latency_ms,
+        costUsd: row.cost_usd === null ? null : Number(row.cost_usd),
+      }));
+    },
+
+    async fallbackRate(runId) {
+      const row = await queryOne<{ decisions: string; fallbacks: string }>(
+        `SELECT COUNT(*) AS decisions,
+                COUNT(*) FILTER (WHERE fallback_used) AS fallbacks
+           FROM dispatch_decisions WHERE run_id = $1`,
+        [runId],
+      );
+      const decisions = Number(row?.decisions ?? 0);
+      const fallbacks = Number(row?.fallbacks ?? 0);
+      return { decisions, fallbacks, rate: decisions === 0 ? 0 : fallbacks / decisions };
+    },
+  };
+
+  const emptyTotals = (): LlmUsageTotals => ({
+    calls: 0,
+    costUsd: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheTokens: 0,
+  });
+
+  const totalsRow = (row: {
+    calls: string;
+    cost_usd: string | null;
+    input_tokens: string | null;
+    output_tokens: string | null;
+    cache_tokens: string | null;
+  }): LlmUsageTotals => ({
+    calls: Number(row.calls),
+    costUsd: Number(row.cost_usd ?? 0),
+    inputTokens: Number(row.input_tokens ?? 0),
+    outputTokens: Number(row.output_tokens ?? 0),
+    cacheTokens: Number(row.cache_tokens ?? 0),
+  });
+
+  const llmUsage: LlmUsageRepository = {
+    async record(entry) {
+      await query(
+        `INSERT INTO llm_usage
+           (request_id, room_id, run_id, round_id, purpose, model, prompt_version,
+            input_tokens, output_tokens, cache_tokens, latency_ms, cost_usd, batch, fallback_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT (request_id) WHERE request_id IS NOT NULL DO NOTHING`,
+        [
+          entry.requestId,
+          entry.roomId,
+          entry.runId,
+          entry.roundId,
+          entry.purpose,
+          entry.model,
+          entry.promptVersion ?? null,
+          entry.inputTokens,
+          entry.outputTokens,
+          entry.cacheTokens,
+          entry.latencyMs ?? null,
+          entry.costUsd,
+          entry.batch ?? false,
+          entry.fallbackReason ?? null,
+        ],
+      );
+    },
+
+    async totals(runId) {
+      const row = await queryOne<Parameters<typeof totalsRow>[0]>(
+        `SELECT COUNT(*) AS calls, SUM(cost_usd) AS cost_usd,
+                SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
+                SUM(cache_tokens) AS cache_tokens
+           FROM llm_usage WHERE run_id = $1`,
+        [runId],
+      );
+      return row === undefined ? emptyTotals() : totalsRow(row);
+    },
+
+    async byRoom(roomId) {
+      const row = await queryOne<Parameters<typeof totalsRow>[0]>(
+        `SELECT COUNT(*) AS calls, SUM(cost_usd) AS cost_usd,
+                SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
+                SUM(cache_tokens) AS cache_tokens
+           FROM llm_usage WHERE room_id = $1`,
+        [roomId],
+      );
+      return row === undefined ? emptyTotals() : totalsRow(row);
+    },
+  };
+
+  interface ItineraryDbRow {
+    id: string;
+    room_id: string;
+    run_id: string;
+    version: number;
+    plan: unknown;
+    budget_summary: unknown | null;
+    validation_report: unknown | null;
+    published_at: Date | null;
+  }
+
+  const toItinerary = (row: ItineraryDbRow): ItineraryRow => ({
+    itineraryId: row.id,
+    roomId: row.room_id,
+    runId: row.run_id,
+    version: row.version,
+    plan: row.plan,
+    budgetSummary: row.budget_summary,
+    validationReport: row.validation_report,
+    publishedAt: row.published_at?.toISOString() ?? null,
+  });
+
+  const itineraries: ItineraryRepository = {
+    async save(input) {
+      const row = await queryOne<ItineraryDbRow>(
+        `INSERT INTO itineraries (id, room_id, run_id, version, plan, budget_summary, validation_report)
+         SELECT $1, $2, $3, COALESCE(MAX(version), 0) + 1, $4::jsonb, $5::jsonb, $6::jsonb
+           FROM itineraries WHERE room_id = $2
+         RETURNING id, room_id, run_id, version, plan, budget_summary, validation_report, published_at`,
+        [
+          nextId('itn'),
+          input.roomId,
+          input.runId,
+          JSON.stringify(input.plan),
+          input.budgetSummary === undefined ? null : JSON.stringify(input.budgetSummary),
+          input.validationReport === undefined ? null : JSON.stringify(input.validationReport),
+        ],
+      );
+      if (row === undefined) throw new Error('계획서 저장 실패');
+      return toItinerary(row);
+    },
+
+    async latest(roomId) {
+      const row = await queryOne<ItineraryDbRow>(
+        `SELECT id, room_id, run_id, version, plan, budget_summary, validation_report, published_at
+           FROM itineraries WHERE room_id = $1 ORDER BY version DESC LIMIT 1`,
+        [roomId],
+      );
+      return row === undefined ? undefined : toItinerary(row);
+    },
+
+    async publish(itineraryId) {
+      await query('UPDATE itineraries SET published_at = now() WHERE id = $1', [itineraryId]);
+    },
+  };
+
+  interface ApprovalDbRow {
+    id: string;
+    room_id: string;
+    type: string;
+    options: unknown[];
+    objection_id: string | null;
+    raised_at: Date;
+    responded_at: Date | null;
+    response: unknown | null;
+  }
+
+  const toApproval = (row: ApprovalDbRow): ApprovalRow => ({
+    approvalId: row.id,
+    roomId: row.room_id,
+    type: row.type,
+    options: row.options,
+    objectionId: row.objection_id,
+    raisedAt: row.raised_at.toISOString(),
+    respondedAt: row.responded_at?.toISOString() ?? null,
+    response: row.response,
+  });
+
+  const approvals: ApprovalRepository = {
+    async raise(input) {
+      const row = await queryOne<ApprovalDbRow>(
+        `INSERT INTO approval_requests (id, room_id, type, options, objection_id)
+         VALUES ($1,$2,$3,$4::jsonb,$5)
+         RETURNING id, room_id, type, options, objection_id, raised_at, responded_at, response`,
+        [nextId('apr'), input.roomId, input.type, JSON.stringify(input.options), input.objectionId ?? null],
+      );
+      if (row === undefined) throw new Error('승인 요청 저장 실패');
+      return toApproval(row);
+    },
+
+    async respond(approvalId, response) {
+      const row = await queryOne<ApprovalDbRow>(
+        `UPDATE approval_requests SET response = $2::jsonb, responded_at = now()
+          WHERE id = $1
+         RETURNING id, room_id, type, options, objection_id, raised_at, responded_at, response`,
+        [approvalId, JSON.stringify(response)],
+      );
+      return row === undefined ? undefined : toApproval(row);
+    },
+
+    async pending(roomId) {
+      const rows = await query<ApprovalDbRow>(
+        `SELECT id, room_id, type, options, objection_id, raised_at, responded_at, response
+           FROM approval_requests WHERE room_id = $1 AND responded_at IS NULL ORDER BY raised_at`,
+        [roomId],
+      );
+      return rows.map(toApproval);
+    },
+  };
+
   return {
     kind: 'postgres',
     rooms,
@@ -569,6 +1229,16 @@ export function createPostgresRepositories(): Repositories {
     runs,
     cache,
     planningNodes,
+    members,
+    candidates,
+    messages,
+    verdicts,
+    scores,
+    concessions,
+    dispatchDecisions,
+    llmUsage,
+    itineraries,
+    approvals,
     close: closePool,
   };
 }
