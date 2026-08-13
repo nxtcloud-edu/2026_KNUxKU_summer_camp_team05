@@ -1140,19 +1140,19 @@ v1.1 대비 변경점: `DATE_RESOLVING`/`DATE_BLOCKED` 상태 신설, `date_reso
 
 ### 14.1 포함 (Must)
 
-- [x] 카카오 로그인, **목적지만 선택하는** 방 생성(30초), 링크 초대
-- [x] 설문(**가용 일정** + 하드 제약 + 슬라이더 12 + **Pack 전용 카드 20** + 자유서술 2)
-- [x] **DateResolver** — 전원 가능 구간 자동 산출 + 항공료·요일·계절 스코어링
-- [x] 날짜 확정 실패 시 완화 탐색 및 방장 선택 플로우
-- [x] 페르소나 카드 생성 및 **필수 확인 게이트**
-- [x] 트리거 3종 (전원완료 / 방장시작 / 마감기한)
-- [x] 라운드 R0~R6 **비동기 배치 실행**
-- [x] 심판 6종 + Chief (자동 재심 포함)
-- [x] Validation Pass (환각·모순·실현가능성 전수 검증)
-- [x] 완료 알림 (카카오 알림톡 / 웹푸시)
-- [x] 최종 계획서 웹 뷰 + 회의록 리플레이 + 공유 링크
-- [x] 사후 재개최 (카테고리 지정, 방당 2회)
-- [x] Destination Pack 11종 (한국 5 + 일본 6)
+- **[Must · 설계 완료 / 구현 미착수]** 카카오 로그인, **목적지만 선택하는** 방 생성(30초), 링크 초대
+- **[Must · 설계 완료 / 구현 미착수]** 설문(**가용 일정** + 하드 제약 + 슬라이더 12 + **Pack 전용 카드 20** + 자유서술 2)
+- **[Must · 설계 완료 / 구현 미착수]** **DateResolver** — 전원 가능 구간 자동 산출 + 항공료·요일·계절 스코어링
+- **[Must · 설계 완료 / 구현 미착수]** 날짜 확정 실패 시 완화 탐색 및 방장 선택 플로우
+- **[Must · 설계 완료 / 구현 미착수]** 페르소나 카드 생성 및 **필수 확인 게이트**
+- **[Must · 설계 완료 / 구현 미착수]** 트리거 3종 (전원완료 / 방장시작 / 마감기한)
+- **[Must · 설계 완료 / 구현 미착수]** 라운드 R0~R6 **비동기 배치 실행**
+- **[Must · 설계 완료 / 구현 미착수]** 심판 6종 + Chief (자동 재심 포함)
+- **[Must · 설계 완료 / 구현 미착수]** Validation Pass (환각·모순·실현가능성 전수 검증)
+- **[Must · 설계 완료 / 구현 미착수]** 완료 알림 (카카오 알림톡 / 웹푸시)
+- **[Must · 설계 완료 / 구현 미착수]** 최종 계획서 웹 뷰 + 회의록 리플레이 + 공유 링크
+- **[Must · 설계 완료 / 구현 미착수]** 사후 재개최 (카테고리 지정, 방당 2회)
+- **[Must · 설계 완료 / 구현 미착수]** Destination Pack 11종 (한국 5 + 일본 6)
 
 ### 14.2 제외 (Won't — MVP)
 
@@ -1767,7 +1767,7 @@ C7  존재하지 않는 후보를 참조         → 즉시 재조달
 {
   "roomId": "rm_401",
   "packId": "jp-osaka",
-  "method": "auto",
+  "method": "debated",
   "nights": 3,
   "candidates": [
     { "start": "2026-10-15", "end": "2026-10-18", "attendees": 6,
@@ -1783,7 +1783,7 @@ C7  존재하지 않는 후보를 참조         → 즉시 재조달
   "chosen": { "start": "2026-10-15", "end": "2026-10-18" },
   "attendees": ["u_882","u_913","u_501","u_774","u_318","u_265"],
   "absentees": [],
-  "debated": false,
+  "debated": true,
   "reason": "1위가 2위를 0.07 앞서 토론을 진행했고, Chief가 항공료 차이(1인 4.2만원)를 근거로 확정",
   "resolvedAt": "2026-08-13T02:12:44Z"
 }
@@ -1798,3 +1798,153 @@ C7  존재하지 않는 후보를 참조         → 즉시 재조달
 2. **환각 한 번이면 끝이다.** 존재하지 않는 료칸을 추천하는 순간 신뢰는 회복 불가다. 사용자가 실시간으로 걸러줄 수 없으므로 Validation Pass가 v1.0보다 훨씬 중요하다. 후보는 API 응답에서만, 계획서 발행 전 전수 검증.
 
 3. **공정성이 제품의 정체성이다.** 양보 크레딧, 최소 만족도, 소수 의견 기록은 부가 기능이 아니다. 사용자가 회의에 참여하지 못한 상태에서 "그래도 공정했다"를 증명할 수 있는 유일한 수단이며, 이것이 없으면 그냥 또 하나의 AI 여행 플래너다.
+
+
+---
+
+## 19. v1.3 실행 보강 — 전역 계획·검증·협업 계약
+
+> 이 장은 기존 설명 중 실행 책임이 모호했던 부분을 보강하는 **권위 있는 계약**이다. 같은 주제에서 이 장과 예시가 충돌하면 이 장을 우선한다. Activity, Dining, Scheduler, Budget, Chief의 개별 상세 구현은 담당 팀이 작성하되, 이 장의 공통 계약은 모든 라운드에 적용한다.
+
+## 19.1 용어·책임 정합성
+
+- **Round**는 R0~R6의 의사결정 단계다. R1에는 Flight와 Transport라는 두 referee instance가 있을 수 있다.
+- **Category**는 flight, transport, accommodation, activity, dining, scheduler, budget의 도메인이다.
+- **Referee instance**는 한 round/category를 실행하는 심판 프로세스다. Chief는 메타 검증자이며 일반 category 심판 수에 포함하지 않는다.
+- R0의 거점 지역은 `provisionalAreaPreference`다. R2 Accommodation만 `areaDecision`을 최종 확정할 수 있다.
+- `Must` 목록의 `[x]`는 구현 완료 표시가 아니다. 앞으로는 `설계/구현/검증` 상태 매트릭스로 관리한다.
+- Pack 등급 A는 숙소 가격·로컬 미식·대중교통 상세가 모두 현재 데이터로 검증 가능한 경우에만 사용한다. 한국 숙소처럼 가격이 밴드 추정인 Pack은 기본 B이며, 실시간 가격 제휴가 확보될 때 A로 승격한다.
+
+## 19.2 Preference & Mandate Contract
+
+페르소나 카드 확인 단계는 단순 요약 확인이 아니라 사용자가 대리인에게 협상 권한을 위임하는 계약이다. 모든 항목은 `hard`, `strong_preference`, `negotiable`, `approval_required`와 privacy label을 가진다.
+
+```json
+{
+  "userId": "u_882",
+  "hard": ["no_red_eye", "crustacean_safe_only", "total_budget_lte_900000"],
+  "strongPreferences": ["one_onsen_visit", "daily_walk_lte_6km"],
+  "negotiableRanges": {
+    "hotelTransitExtraMinPerDay": 15,
+    "foodBudgetExtraKrw": 10000
+  },
+  "approvalRequired": ["exclude_attendee", "date_change", "budget_over_10_percent"],
+  "privacy": {
+    "roomingPreferences": "private",
+    "healthAndBeliefDetails": "private"
+  }
+}
+```
+
+승인 필요 항목은 완전 방치 원칙의 예외가 아니라, 되돌리기 어렵거나 인적 관계에 영향을 주는 변경을 위한 **비동기 승인 요청**이다. 승인 전에는 해당 후보를 `BLOCKED`로 유지하며 자동 확정하지 않는다.
+
+## 19.3 전역 Planning Graph와 수렴 규칙
+
+여행은 독립 라운드의 단순 연쇄가 아니다. 다음 노드를 버전·입력 해시·근거·상태와 함께 저장한다.
+
+```text
+Date → Flight ─┬→ Accommodation Area → Accommodation
+               ├→ Mobility Policy ───┐
+               └→ Budget Snapshot ───┼→ Activity / Dining → Schedule
+Accommodation ────────────────────────┘                  ↓
+                                             Pass / Budget / Booking Readiness
+```
+
+각 노드는 `{nodeId, version, inputHash, dependencyVersions, status, confidence, evidenceRefs}`를 가진다. 상위 노드가 바뀌면 하위 노드는 삭제하지 않고 `STALE`로 전환한다.
+
+```text
+PROVISIONAL → VERIFIED → BOOKABLE → BOOKED
+     └──────────────→ BLOCKED
+     └──────────────→ STALE → 재계산
+     └──────────────→ FAILED → 대체 후보 또는 사용자 안내
+```
+
+- R1의 교통패스는 R3/R5 결과로 재계산한다. 값이 바뀌어 예산·숙소·시간 제약을 침범하면 Chief에만 알리는 것으로 끝내지 않고 영향을 받는 노드를 `STALE` 처리한다.
+- R2 숙소 변경 시 Activity, Dining, Schedule, 교통패스, Budget을 재계산한다.
+- 재계산은 `최대 3회` 또는 후보 순위·하드 제약·총비용이 안정화될 때까지 수행한다. 수렴하지 않으면 최선의 검증 가능 계획과 충돌 설명을 `BLOCKED` 상태로 제시한다.
+- 수동 확정·예약 완료 노드는 잠긴다. 이를 바꾸려면 취소 비용·대체 예약 위험·영향 범위를 먼저 보여주고 사용자 승인을 받아야 한다.
+
+## 19.4 전역 일정 최적화 계약
+
+R5의 그리디/2-opt는 후보 순서의 초기 해일 뿐, 계획의 실행 가능성 판정은 결정론적 제약 최적화기가 담당한다. optimizer는 검증된 top-K 전체 계획을 만들고, Maximin은 이 전역 계획 집합에서 선택한다.
+
+필수 제약: 시간대와 IANA timezone, 운영시간·휴관일, 입장·식사 예약 슬롯, 체류시간, 공항·입국·수하물·체크인 버퍼, 식사 간격, 막차, 도보·계단·피로 상한, 체크인/아웃·짐 보관, 날씨 대체, 분할 숙박 이동, 예산, 예약 상태다. 모든 시간은 `timestamp + timezone + confidence`로 저장하며, 단순 HH:MM 문자열만으로 물리적 실행 가능성을 판단하지 않는다.
+
+## 19.5 Negotiation Causality Ledger
+
+토론은 연출이 아니라 검증된 탐색을 변경해야 한다. 모든 실질 발언과 심판 반박은 아래 구조로 저장하고 결과 화면에서 요약한다.
+
+```json
+{
+  "claimId": "clm_104",
+  "speaker": "persona:u_882",
+  "claim": "하루 8km 도보는 수용할 수 없다",
+  "evidenceRefs": ["survey.mobility.maxWalkKmPerDay", "route.ttm_v4"],
+  "affected": {"constraint": "daily_walk_km", "previous": 8.0, "required": 6.0},
+  "counteroffer": "5km 이후 조건부 택시와 예비비 추가",
+  "recalculation": {"minSatisfaction": [4.8, 6.7], "budgetDeltaKrw": 3000},
+  "planEffect": "Day 2 저녁 이동을 taxi로 변경"
+}
+```
+
+발언 강도는 쟁점 식별·대안 설계·최소 만족도 하한에만 사용한다. 후보 선택은 검증된 만족도·하드 제약·불확실성을 반영한 Maximin으로 한다. CC는 라운드 종료 후의 공정성 원장 및 명시된 동점 해소에만 적용하며, 발언 순서·강도·최종 점수에 중복으로 가중하지 않는다.
+
+## 19.6 증거, 불확실성, fail-closed 정책
+
+모든 공급자 데이터는 `{source, retrievedAt, validUntil, confidence, termsRef}`를 포함한다. 만족도와 비용은 단일값이 아니라 추정 구간과 confidence를 보존하며, Maximin은 불확실성이 큰 후보에 robust penalty를 적용한다. 초기 임계치(예: C1 5.0, C2 4.0)는 고정 진실이 아니라 사후 여행 만족도·재실행·실패 데이터를 이용해 보정한다.
+
+| 필드 유형 | 검증 실패 시 정책 |
+| --- | --- |
+| 가격·리뷰·일반 이동시간 | 추정 허용. 범위·조회시각·신뢰도 표기 |
+| 그룹 수용 인원·객실 조합 | **fail-closed**. winner/BOOKABLE 금지 |
+| 알레르기·식이 안전, 휠체어·계단 접근성 | **fail-closed**. winner/BOOKABLE 금지 |
+| 필수 영업 여부·예약 시간 슬롯·막차 | **fail-closed** 또는 검증된 안전 대체안 필수 |
+| 취소·변경 조건 | 미확인 시 BOOKABLE 금지, VERIFIED에는 경고 가능 |
+
+따라서 기존 예시의 H-05처럼 6인 동시 재고와 갑각류 대응이 미확인인 후보는 `winner`가 될 수 없다. 두 조건을 공급자 또는 숙소에 확인한 뒤에만 `VERIFIED/BOOKABLE`로 승격한다.
+
+## 19.7 Booking Readiness와 링크아웃 Saga
+
+MVP는 결제·발권을 하지 않지만, 예약 가능한 계획을 책임 있게 넘겨야 한다. Booking Coordinator는 예약 행위를 대신하지 않고 의존성, 담당자, 만료, 대안을 관리한다.
+
+```text
+flight price/inventory verified
+→ hotel room combination verified
+→ activity/restaurant time slot verified
+→ schedule final validation
+→ booking checklist issued
+```
+
+각 항목은 `{status, owner, deadline, priceAsOf, expiresAt, fallbackIds, dependentNodeIds, proofUrl}`를 가진다. 링크아웃 예약이 실패·만료·가격 급등하면 의존 노드를 `STALE`로 만들고 다음 후보로 전환한다. 이미 예약된 항목을 변경할 때는 취소·재예약·보상 작업을 순서대로 표시한다. 예약 순서, 동시 예약 필요성, 취소 가능성을 그래프로 노출한다.
+
+## 19.8 DateResolver와 출발지 기반 총비용
+
+DateResolver의 후보 점수는 `airfareIndex`만으로 결정하지 않는다. 빠른 사전 견적의 항공, 숙박, 현지 교통, 주요 티켓, 재고 신뢰도, 휴관 위험, 성수기, 날씨 불확실성을 포함한 `estimatedTotalTripCostRange`를 사용한다. 해외 Pack은 참여자의 출발 권역·공항 도착 가능 시간창을 필수 입력으로 받아 집/출발지→공항 비용과 첫차·막차를 비교한다.
+
+기존 부록 C.4의 `score` 1·2위 차이 0.07 예시는 토론 조건에 해당한다. 따라서 그 레코드는 `method: "debated"`, `debated: true`여야 하며, 이후 문서·fixture도 이 규칙을 자동 검증한다.
+
+## 19.9 결과 UX·프라이버시·재실행
+
+결과 화면의 우선순위는 일정표가 아니라 다음이다.
+
+1. 내 하드 제약 충족 및 계획 품질 상태
+2. 내 대리인이 지켜낸 조건, 양보한 조건, 그 대가로 얻은 보상
+3. 후보별 실격·근거·불확실성·runner-up 차이·CC 실제 영향
+4. 일정표와 예약 체크리스트
+5. 선택형 전체 회의록
+
+회의록 리플레이에는 `이미 완료된 AI 중재 기록`을 상시 표시한다. 기본은 즉시 전체 보기이며, 타이핑·pause 연출은 선택 기능이다. 공동 뷰는 최소 만족도·익명화된 우려·최종 배정만 보이고, 설문 원문, 건강·신념·예산 상세, 방 배정 선호와 개인 만족도 상세는 본인 전용 뷰로 분리한다.
+
+Rerun 전에는 변경될 노드, 예상 비용·시간, 예약 취소 위험, 전후 만족도·예산·동선 diff를 보여준다. `DRAFT/PARTIAL/VERIFIED/BOOKABLE/BOOKED` 상태와 누락된 안전 검증을 명확히 표시하며, PARTIAL은 예약 행동을 유도하지 않는다.
+
+## 19.10 LLM 비용·지연·품질 관측 계약
+
+결정론적 제약 컴파일·점수·예산·검증은 코드가 담당하고, LLM은 구조화된 주장·대안·설명에 한정한다. 후보 원본 전체 대신 conflict-relevant 속성 diff와 evidence ID만 전달한다. 애매한 강도만 소형 분류기/규칙 이후 LLM으로 보낸다.
+
+각 호출은 `{round, purpose, model, promptVersion, inputTokens, outputTokens, cacheTokens, toolCalls, latencyMs, cost, fallbackReason}`를 기록한다. 비용 목표는 모델·단가·입출력 토큰·캐시 할인·Batch SLA를 명시한 가정표와 p50/p95 실측으로만 갱신한다. 라운드별 token/tool/latency budget을 별도로 두고, 초과 시 안전 검증을 축약하지 않는다.
+
+## 19.11 GitHub 협업·품질 기준
+
+현재는 문서 저장소이므로 CI는 Markdown 구조·로컬 링크·핵심 설계 불변식·비밀값 패턴을 검사한다. 코드 도입 후 lint, typecheck, unit, schema/contract, provider fixture, deterministic replay, prompt regression/eval, build를 required check로 추가한다. 실제 API 호출은 PR 검사에서 금지하고 sandbox/nightly에서만 비용 상한과 함께 실행한다.
+
+`main`은 보호 브랜치로 운영하고, PR 최소 1인 승인·필수 검사 통과·직접 push 금지를 GitHub 저장소 설정에서 강제한다. PR은 영향받는 Planning Graph 노드, 스키마/프롬프트 버전, 재현 방법, 비용/eval 변화를 명시한다. ADR·기여·보안·소유권 정책은 코드 착수 시 팀 합의로 추가하되, 실제 GitHub 계정이 확정되기 전 임의 CODEOWNERS는 등록하지 않는다.

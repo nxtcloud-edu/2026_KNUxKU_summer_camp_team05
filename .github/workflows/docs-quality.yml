@@ -1,0 +1,73 @@
+name: Documentation quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.md'
+      - '.github/workflows/docs-quality.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Validate Markdown structure and local links
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $markdownFiles = Get-ChildItem -Recurse -File -Filter '*.md'
+          if ($markdownFiles.Count -eq 0) { throw 'No Markdown files found.' }
+
+          foreach ($file in $markdownFiles) {
+            $content = Get-Content -Raw -Encoding utf8 -LiteralPath $file.FullName
+            $h1Count = ([regex]::Matches($content, '(?m)^#\s+')).Count
+            if ($h1Count -ne 1) { throw "$($file.FullName) must contain exactly one H1; found $h1Count." }
+
+            foreach ($match in [regex]::Matches($content, '\]\(([^)#]+)(?:#[^)]+)?\)')) {
+              $target = $match.Groups[1].Value
+              if ($target -match '^(https?://|mailto:|#)') { continue }
+              $resolved = Join-Path $file.DirectoryName $target
+              if (-not (Test-Path -LiteralPath $resolved)) {
+                throw "Broken local link in $($file.FullName): $target"
+              }
+            }
+          }
+      - name: Validate design invariants
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $requiredMarkers = @{
+            'docs/travel-mediation-plan.md' = @('## 19. v1.3 실행 보강', 'Negotiation Causality Ledger', 'fail-closed', 'Booking Readiness')
+            'docs/flight-referee-implementation.md' = @('OriginAccessProfile', 'groupInventoryVerified', '## 19. v1.1 실행 보강')
+            'docs/transport-referee-implementation.md' = @('matrixVersion', '## 19. v1.1 실행 보강', 'fail-closed')
+            'docs/accommodation-referee-implementation.md' = @('groupInventoryVerified', '## 20. v1.1 실행 보강', '원자적 객실 조합 검증')
+          }
+          foreach ($path in $requiredMarkers.Keys) {
+            $content = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+            foreach ($marker in $requiredMarkers[$path]) {
+              if (-not $content.Contains($marker)) { throw "Missing design invariant in ${path}: $marker" }
+            }
+          }
+          $plan = Get-Content -Raw -Encoding utf8 -LiteralPath 'docs/travel-mediation-plan.md'
+          if ($plan -match '(?m)^- \[x\]') { throw 'MVP scope must not be marked as implemented.' }
+          if (-not $plan.Contains('"method": "debated"') -or -not $plan.Contains('"debated": true')) {
+            throw 'Date resolution example must represent the documented debated decision.'
+          }
+      - name: Reject committed secret-like values
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pattern = '(api[_-]?key|client[_-]?secret|password)\s*[:=]\s*["'']?[A-Za-z0-9_\-]{16,}'
+          $matches = git grep -n -I -E $pattern -- . ':!docs/*.md'
+          if ($LASTEXITCODE -gt 1) { throw 'Secret scan failed to run.' }
+          if ($matches) {
+            Write-Error "Potential secret detected:`n$matches"
+            exit 1
+          }

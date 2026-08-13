@@ -957,3 +957,85 @@ VERDICT
 1. **항공료만 보고 판결하면 실패한다.** 실효 총액(항공료 + 공항이동 + 수하물)이 기준이다.
 2. **강도를 선택 기준으로 쓰면 실패한다.** 강도는 쟁점 식별과 절충 설계에만 쓰고, 승자는 Maximin이 정한다.
 3. **불확실성을 숨기면 실패한다.** 사용자가 개입할 수 없으므로, 확인 못 한 것은 반드시 표면화한다.
+
+
+---
+
+## 19. v1.1 실행 보강 — Door-to-door·예약 검증·전역 그래프
+
+이 장은 `travel-mediation-plan.md` 19장의 전역 계약을 항공 심판에 적용한다. 항공은 링크아웃 MVP에서도 이후 모든 일정의 시간·재고·취소 위험을 결정하므로, 검색 결과만으로 확정하지 않는다.
+
+## 19.1 입력·시간 모델 보강
+
+`FlightRefereeInput`은 참여자별 출발 권역과 공항 도착 가능 시간창을 받는다. 모든 시각은 IANA timezone을 포함한 ISO-8601 timestamp로 저장한다.
+
+```typescript
+interface OriginAccessProfile {
+  userId: string;
+  area: string;
+  earliestAirportArrivalAt: string;
+  latestHomeArrivalAt?: string;
+  modes: Array<'transit' | 'taxi' | 'driving'>;
+}
+```
+
+`effectiveTotal`은 항공료·수하물·목적지 공항 이동뿐 아니라 그룹의 출발 권역→출발 공항 비용·시간, 공항 수속, 출입국·수하물, 터미널 이동, 최소 연결 시간을 반영한다. 각 구간은 점추정이 아니라 duration range와 confidence를 가진다. 새벽 출발 여부는 항공편 이륙 시각만이 아니라 가장 제약적인 참여자의 공항 도착 가능 시각으로 판정한다.
+
+## 19.2 운임·재고·예약 가능 상태
+
+최종 후보에는 다음 정보를 정규화한다.
+
+```text
+fareFamily, seatAvailabilityAsOf, groupInventoryVerified,
+checkedBagRule, seatSelectionRule, refundPolicy, changePolicy,
+priceAsOf, priceExpiresAt, bookingStatus
+```
+
+- `groupInventoryVerified !== true`이면 그룹 항공편은 `VERIFIED` 또는 `BOOKABLE`이 될 수 없다.
+- 가격 검증은 후보 1~2개에만 수행하되, 운임 만료·±5% 이상 가격 변동·수하물 변경은 해당 후보와 모든 하위 계획 노드를 `STALE`로 만든다.
+- 분리발권·왕복 분리에는 missed-connection, 환불 책임, 수하물 재위탁 위험을 후보 카드와 판결문에 명시한다. 위험을 확인할 수 없으면 편의성 점수로 상쇄하지 않는다.
+- 아동·유아·특수 지원·좌석 등급은 명시적으로 수집된 경우에만 처리하며 추론하지 않는다.
+
+## 19.3 링크아웃 Booking Coordinator handoff
+
+항공 판결은 예약 URL만 넘기지 않고 다음 의존성 작업을 생성한다.
+
+```json
+{
+  "type": "flight_booking",
+  "status": "verified",
+  "owner": "host",
+  "deadline": "2026-09-01T23:59:59+09:00",
+  "preconditions": ["groupInventoryVerified", "farePriceVerified"],
+  "fallbackCandidateIds": ["F-02", "F-04"],
+  "invalidates": ["arrivalTime", "airportTransfer", "accommodationCheckIn", "schedule"]
+}
+```
+
+예약·재가격 실패 시 후보를 조용히 교체하지 않는다. Flight node를 `FAILED`로, 숙소·교통·일정 노드를 `STALE`로 표시하고, 동일 Mandate 범위에서 대체 후보를 재검증한다. 날짜 변경은 `approval_required`다.
+
+## 19.4 fail-closed와 폴백
+
+| 항목 | 폴백 허용 여부 | 처리 |
+| --- | --- | --- |
+| 항공 가격 | 허용 | 추정으로 표시하되 BOOKABLE 금지 |
+| 그룹 좌석 재고 | 불가 | 확인 전 winner 금지 |
+| 수하물·운임 규정 | 불가 | 확인 전 총액 확정 금지 |
+| 출발/도착·최소 연결 시각 | 불가 | 확인 전 일정 handoff 금지 |
+| 지연 확률·정시율 | 허용 | confidence 하향과 경고 |
+
+기존의 `partialSourcing: true`는 초안 후보를 보여줄 수 있지만, 필수 재고·운임 검증이 빠진 상태에서 판결 또는 예약 체크리스트를 발행하는 근거가 될 수 없다.
+
+## 19.5 전역 재최적화와 검증 케이스
+
+항공의 도착 공항·도착 시각·귀국 시각·실효 총액·운임 조건이 바뀌면 Transport, Accommodation, Scheduler, Budget을 `STALE`로 하고 전역 수렴 규칙을 실행한다. 항공 심판은 대체 후보의 단독 점수뿐 아니라 재계산된 전체 계획의 `min satisfaction`, 총비용 범위, 첫날/마지막날 실질 활동시간을 Chief에 넘긴다.
+
+기존 테스트에 다음을 추가한다.
+
+| # | 시나리오 | 기대 동작 |
+| --- | --- | --- |
+| T13 | 지방 출발 참여자가 06:30 인천편을 타야 함 | 집→공항 첫차/도착 가능 시각 반영, 불가능하면 실격 |
+| T14 | 검색 후 단체 재고가 사라짐 | 후보 BLOCKED, 하위 노드 STALE, 차순위 재검증 |
+| T15 | 저가 분리발권이 연결 실패 위험을 가짐 | 위험·보상 불가를 명시하고 단일 발권안과 비교 |
+| T16 | 항공 변경으로 22:30 도착 | 늦은 체크인·공항 이동·Day 1 계획을 전역 재검증 |
+| T17 | 가격만 추정되고 운임 규정 미확인 | 초안 표시는 가능, VERDICT/BOOKABLE 승격 금지 |
