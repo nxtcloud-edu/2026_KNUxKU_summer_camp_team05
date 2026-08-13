@@ -1,4 +1,4 @@
-import type { QueryClass, RoundId } from '@tm/contracts';
+import type { DestinationPack, RoundId } from '@tm/contracts';
 import {
   createDataAgent,
   planPrefetch,
@@ -9,6 +9,7 @@ import {
   type PrefetchReport,
   type ProviderSetup,
   type QuotaCounter,
+  type SearchRequest,
 } from '@tm/data-agents';
 import type { Repositories, RoomRow, RoundRef } from '@tm/db';
 
@@ -54,8 +55,24 @@ export interface RoundPrefetchInput {
   runId: string;
   roundId: RoundId;
   packId: string;
-  /** 클래스별 조회 파라미터. 라운드마다 무엇을 미리 받을지는 호출자가 정한다 */
-  params: Partial<Record<QueryClass, readonly Record<string, unknown>[]>>;
+  /** 무엇을 조달할지. 후보탐색 에이전트가 정한다 */
+  requests: readonly SearchRequest[];
+}
+
+/**
+ * 후보탐색 에이전트가 붙는 자리.
+ *
+ * **무엇을 찾을지는 에이전트가 정하고, 어떻게 가져올지는 코드가 정한다.**
+ * 코드가 강제하는 것은 정책(fail-closed·캐시 금지·advisory)·쿼터·정규화 검증뿐이다.
+ * 제안이 없으면 조달을 건너뛴다 — 코드가 대신 추측하지 않는다.
+ */
+export interface CandidateSearchPort {
+  propose(input: {
+    runId: string;
+    roundId: RoundId;
+    room: RoomRow;
+    pack: DestinationPack | null;
+  }): Promise<readonly SearchRequest[] | null>;
 }
 
 /**
@@ -70,8 +87,13 @@ export async function prefetchRound(
     runId: input.runId,
     roundId: input.roundId,
     packId: input.packId,
-    params: input.params,
+    requests: input.requests,
   });
+
+  for (const skip of plan.skipped) {
+    // 정책이 막은 요청은 조용히 빼지 않는다. 에이전트가 왜 막혔는지 알아야 한다.
+    console.warn(`[prefetch] ${input.roundId} ${skip.queryClass} 제외: ${skip.reason}`);
+  }
 
   const report = await runPrefetch(deps.gateway, plan, {
     sink: createCandidateSink(deps.repos, { runId: input.runId, roundId: input.roundId }),
@@ -128,69 +150,4 @@ export function createWorkerGateway(
     providers: providerSetup().registry(packProviders),
     ...(quota === undefined ? {} : { quota }),
   });
-}
-
-const text = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim() !== '' ? value : undefined;
-
-const count = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-
-/**
- * 방 정보에서 프리페치 파라미터를 만든다.
- *
- * 필요한 입력이 없으면 그 클래스를 **넣지 않는다.** 값을 지어내면 캐시 키가 조용히
- * 틀리고, 나중에 6인 조회에 1인 캐시가 재사용되는 식의 사고가 난다 (canonical.ts).
- * 날짜가 필요한 클래스는 DateResolver가 붙기 전까지 비어 있는 것이 정상이다.
- */
-export function paramsFromRoom(
-  room: RoomRow,
-  roundId: RoundId,
-): Partial<Record<QueryClass, readonly Record<string, unknown>[]>> {
-  const setting = room.setting;
-  const packId = room.packId;
-  const area = text(setting['area']);
-  const guests = count(setting['pax']) ?? count(setting['guests']);
-  const origin = text(setting['originAirport']);
-  const destination = text(setting['destinationAirport']);
-  const departureDate = text(setting['departureDate']);
-  const returnDate = text(setting['returnDate']);
-
-  switch (roundId) {
-    case 'r_0':
-      return { 'ref.pack_config': [{ packId }] };
-
-    case 'r_1a':
-      if (origin === undefined || destination === undefined || departureDate === undefined) return {};
-      return {
-        'flight.offers_search': [
-          {
-            packId,
-            origin,
-            destination,
-            departureDate,
-            ...(returnDate === undefined ? {} : { returnDate }),
-            pax: guests ?? 1,
-          },
-        ],
-      };
-
-    case 'r_2':
-      if (area === undefined || guests === undefined) return {};
-      return {
-        'hotel.area_profile': [{ packId, area }],
-        'hotel.search': [{ packId, area, type: text(setting['lodgingType']) ?? 'hotel', guests }],
-      };
-
-    case 'r_3':
-      if (area === undefined) return {};
-      return { 'poi.search': [{ packId, area, category: text(setting['activityCategory']) ?? 'all' }] };
-
-    case 'r_4':
-      if (area === undefined || guests === undefined) return {};
-      return { 'dining.search': [{ packId, area, genre: text(setting['diningGenre']) ?? 'all', pax: guests }] };
-
-    default:
-      return {};
-  }
 }

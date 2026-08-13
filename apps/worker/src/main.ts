@@ -20,9 +20,10 @@ import {
 } from './orchestrator/graph-store.js';
 import {
   createWorkerGateway,
-  paramsFromRoom,
   prefetchRound,
+  type CandidateSearchPort,
 } from './orchestrator/prefetch-runner.js';
+import { finalizeRun, type DocumentPort } from './orchestrator/finalize.js';
 import {
   alreadyApplied,
   applyRerunOutcome,
@@ -56,6 +57,26 @@ const supervisor: SupervisorPort = {
     return null; // 제안 없음 → Orchestrator가 기본 위상 순서로 진행
   },
 };
+
+/**
+ * 후보탐색 에이전트가 붙는 자리 (김동욱).
+ * 무엇을 조달할지 제안하면 코드가 정책·쿼터·정규화를 강제해 실행한다.
+ * 구현이 없으면 조달을 건너뛴다 — 코드가 대신 추측하지 않는다.
+ */
+function loadCandidateSearch(): CandidateSearchPort | null {
+  return null;
+}
+
+/**
+ * 마무리 에이전트가 붙는 자리 (김동욱).
+ * 계획서 초안을 주면 코드가 Validation Pass로 검증하고 발행 여부를 정한다.
+ */
+function loadDocumentAgent(): DocumentPort | null {
+  return null;
+}
+
+const candidateSearch = loadCandidateSearch();
+const documentAgent = loadDocumentAgent();
 
 /** 심판이 아직 없다는 사실. 결과에 그대로 노출한다 */
 const PLACEHOLDER_REASON =
@@ -96,9 +117,22 @@ const worker = new Worker(
     });
     const meterPort: MeterPort = { snapshot: () => meter.snapshot() };
 
-    // 쿼터 카운터는 run 단위다. 게이트웨이는 캐시·정책·상한을 여기서만 강제한다.
-    const gateway = createWorkerGateway(repos, createMemoryQuotaCounter());
     const room = await repos.rooms.get(payload.roomId);
+
+    // 제공자 우선순위는 Pack이 정한다. 지역별 분기를 코드에 넣지 않기 위한 경로다.
+    const pack = room === undefined ? undefined : await repos.packs.get(room.packId);
+    if (room !== undefined && pack === undefined) {
+      console.warn(
+        `[worker] Pack ${room.packId}이 DB에 없습니다. npm run packs:sync --workspace @tm/db 를 먼저 실행하세요.`,
+      );
+    }
+
+    // 쿼터 카운터는 run 단위다. 게이트웨이는 캐시·정책·상한을 여기서만 강제한다.
+    const gateway = createWorkerGateway(
+      repos,
+      createMemoryQuotaCounter(),
+      pack === undefined ? {} : { [pack.packId]: pack.pack.providers },
+    );
 
     let seq = 0;
     const referee: RefereePort = {
@@ -126,10 +160,20 @@ const worker = new Worker(
         console.warn(`[prefetch] ${roundId} 방 정보를 찾지 못해 건너뜁니다`);
         return;
       }
+      if (candidateSearch === null) {
+        console.log(`[prefetch] ${roundId} 후보탐색 에이전트가 없어 조달을 건너뜁니다`);
+        return;
+      }
 
-      const params = paramsFromRoom(room, roundId);
-      if (Object.keys(params).length === 0) {
-        console.log(`[prefetch] ${roundId} 조달 입력이 아직 없습니다 — 건너뜁니다`);
+      // 무엇을 찾을지는 에이전트가 정한다. 코드가 대신 추측하지 않는다.
+      const requests = await candidateSearch.propose({
+        runId: payload.runId,
+        roundId,
+        room,
+        pack: pack?.pack ?? null,
+      });
+      if (requests === null || requests.length === 0) {
+        console.log(`[prefetch] ${roundId} 조달 요청이 없습니다 — 건너뜁니다`);
         return;
       }
 
@@ -137,7 +181,7 @@ const worker = new Worker(
         runId: payload.runId,
         roundId,
         packId: room.packId,
-        params,
+        requests,
       });
     };
 
@@ -178,6 +222,23 @@ const worker = new Worker(
         graph: graphPort,
         meter: meterPort,
         prefetch,
+        // 계획서 발행. 검증과 발행 판정은 코드가 하고, 에이전트는 서술만 한다.
+        async finalize() {
+          const draft =
+            documentAgent === null
+              ? null
+              : await documentAgent.draft({ runId: payload.runId, roomId: payload.roomId });
+          const result = await finalizeRun(repos, {
+            runId: payload.runId,
+            roomId: payload.roomId,
+            draft,
+          });
+          console.log(
+            result.itineraryId === null
+              ? `[finalize] 계획서를 만들지 못했습니다: ${result.reason ?? ''}`
+              : `[finalize] ${result.itineraryId} 배지 ${result.badge}${result.published ? ' (발행)' : ` (미발행: ${result.reason ?? ''})`}`,
+          );
+        },
         // 폴백률은 프롬프트 회귀 지표다. 결정마다 남긴다 (12.2).
         async recordDispatch(record) {
           await repos.dispatchDecisions.record({

@@ -183,6 +183,8 @@ export async function runPipeline(
     recordDispatch?: (record: DispatchRecord) => Promise<void>;
     /** 라운드 시작 전 프리페치. 실패해도 라운드를 막지 않는다 */
     prefetch?: (roundId: RoundId) => Promise<void>;
+    /** finalize_plan에 도달했을 때 계획서를 발행한다 */
+    finalize?: () => Promise<void>;
   },
   state: RunState,
 ): Promise<RunState> {
@@ -293,6 +295,10 @@ export async function runPipeline(
           `[orchestrator] 그래프가 실행 가능한 라운드를 내지 못했습니다 — 기본 위상 순서로 ${fallbackRound}를 진행합니다`,
         );
       } else {
+        // 계획서 발행은 라운드가 아니라 종료 수다. 여기서 한 번만 부른다.
+        if (chosen.type === 'finalize_plan' && ports.finalize !== undefined) {
+          await ports.finalize();
+        }
         // 남은 라운드가 없으면 정상 종료다. 사유를 남기면 정상 완료가 이상 종료로 보인다.
         const stoppedWithWorkLeft = chosen.type === 'block_run' && pendingRounds.length > 0;
         current = {
