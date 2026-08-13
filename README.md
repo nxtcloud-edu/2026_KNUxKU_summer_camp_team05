@@ -1,135 +1,149 @@
-# 멀티 에이전트 여행 계획 중재 서비스
+# MOA: 멀티 에이전트 그룹 여행 계획 서비스
 
-> 2026 강원대x고려대 Summer Agentic AI 심화 몰입 캠프 5팀 레포지토리
+> 2026 강원대×고려대 Summer Agentic AI 심화 몰입 캠프 5팀
 
 ## 한 줄 소개
 
-목적지가 정해진 방에 지인들이 모여 각자의 취향·신념·예산을 설문으로 입력해두면, 각자를 대변하는 AI 에이전트들이 알아서 토론하고 카테고리별 심판 에이전트가 실제 여행 API로 팩트체크하며 조정해, 나중에 결과만 확인하면 되는 여행 계획 서비스입니다.
+목적지와 목표 페이스를 정한 방에 지인들이 모여 취향·가치 정책·개인 예산·제약을 입력하면, 각자를 대변하는 AI 에이전트들이 카테고리별로 토론하고 실제 여행 데이터로 검증해 나중에 근거와 결과만 확인하게 하는 비동기 그룹 여행 계획 서비스입니다.
 
-## 왜 만드나
+## MVP 범위
 
-3~8명 규모의 지인 여행에서 계획이 무산되는 이유는 정보 부족이 아니라 **의사결정 비용**입니다. 총무 한 명이 과부하되고, "아무거나 괜찮아"라고 말한 사람이 가장 불만족하며, 단톡방에는 링크만 쌓입니다. 무엇보다 **6명이 동시에 모여 논의할 시간대는 존재하지 않습니다.**
+- 사용자: 한국어를 쓰는 20대 그룹 여행자
+- 목적지: 서울, 부산, 도쿄, 오사카
+- 방장 권한: 지원 목적지와 설명용 목표 페이스 확정
+- 참여자 입력: 가용 날짜, 하드 제약, 개인 목표·절대상한 예산, 가치 정책, 취향
+- 토론 중 사용자 개입: 없음
+- 사후 재논의: 결과가 나온 뒤 문제 카테고리만 영향 기반으로 재개방
 
-그래서 이 서비스는 실시간 합의를 요구하지 않습니다. 각자 편한 시간에 7분 설문만 하고 잊어버리면, 나중에 결과가 도착해 있습니다.
+## 전체 흐름
 
-## 어떻게 동작하나
-
-```
-방장     목적지만 선택 → 초대 링크 공유                       30초
-참여자   설문 응답 → 페르소나 카드 확인 → 앱을 닫는다          7분
-시스템   날짜 자동 확정 → R0~R6 라운드 자동 실행 (백그라운드)   5~20분
-알림     "여행 계획이 완성되었습니다"
-결과     최종 계획서 + 회의록 전문 + 만족도·양보 기록 확인      5분
-```
-
-- **날짜는 방장이 정하지 않습니다.** 설문으로 모은 가용 일정에서 DateResolver가 전원 가능한 구간을 계산하고, 항공료·요일·계절을 점수화해 자동 확정합니다.
-- **7개 라운드**(프레이밍 / 이동 / 숙소 / 액티비티 / 식사 / 동선 / 예산)를 순차 실행하며, 라운드마다 전용 심판 에이전트가 실제 API로 후보를 조달하고 판결합니다.
-- **총괄 심판(Chief)** 이 만족도·예산·제약 위반을 검사해 기준 미달이면 해당 라운드를 자동 재개최합니다.
-- 결과를 본 참여자는 **이의를 제기해 다시 토론시킬 수 있습니다.** 방 3회, 1인 1회. 회의록의 특정 발언·판결을 지목하면 심판이 그 지점을 다시 검증합니다.
-
-## 핵심 설계
-
-| 항목 | 내용 |
-| --- | --- |
-| 완전 비동기 | 실시간 개입 채널 없음. 설문이 유일한 입력, 페르소나 확인이 마지막 통제 지점 |
-| 환각 없는 그라운딩 | 에이전트는 심판이 API로 가져온 실제 후보 안에서만 논쟁 |
-| 평등주의 합의 | 총합이 아니라 **최소 만족도 극대화(Maximin)** 로 후보 선택 |
-| 양보 크레딧 | 많이 양보한 사람에게 다음 라운드 발언 우선권과 가중치 부여 |
-| Destination Pack | 목적지 하나 = 데이터 패키지 하나. 코드 배포 없이 DB 추가로 확장 |
-| 관전 가능한 의사결정 | "왜 이 숙소인가"가 회의록으로 남고, 소수 의견도 기록 |
-
-MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
-
-## 문서
-
-| 문서 | 내용 |
-| --- | --- |
-| [travel-mediation-plan.md](docs/travel-mediation-plan.md) | 종합 기획서 — 문제 정의, 설문 설계, 에이전트 아키텍처, 합의 알고리즘, 시스템 구성, 로드맵 |
-| [agent-architecture.md](docs/agent-architecture.md) | 에이전트 아키텍처와 제어 계약 — 제어 평면 분리, 심판 호출 순서 디스패치 프로토콜, Data Agent 캐시 계약 |
-| [development-and-deployment.md](docs/development-and-deployment.md) | 개발 환경과 배포 계획 — 저장소 구조, 스택 결정, 로컬 실행, 프론트–백엔드 계약, AWS EC2 배포 |
-| [objection-and-rerun.md](docs/objection-and-rerun.md) | 이의 제기와 재토론 — 횟수 상한, 심사·승인 규칙, 재실행 범위 산출, 늦은 하드 제약 등록 |
-| [team-assignments.md](docs/team-assignments.md) | 팀 역할과 작업 폴더 — 4개 트랙의 소유 범위, 첫 과제, 트랙 간 접점 |
-| [survey-v3-proposal.md](docs/survey-v3-proposal.md) | 설문 v3 제안 검토 — 4단계 중요도 척도, 기존 설계와의 충돌과 결정 |
-| [llm-runtime-config.md](docs/llm-runtime-config.md) | LLM 런타임 설정 — 모델 티어, 프롬프트 캐싱 제약, 원가 상한과 실측 항목 |
-| [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
-| [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
-| [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
-
-## 포지셔닝
-
-> **"모두의 의견이 반영된 납득 가능한 초안을, 아무도 고생하지 않고 얻는다."**
-
-사용자가 중간에 개입할 수 없는 서비스는 "완벽한 계획"을 약속하면 안 됩니다. 대신 결과에 불만이 있으면 카테고리를 지정해 재개최(rerun)를 요청할 수 있습니다.
-
-
-## 로컬에서 실행하기
-
-Node 20.10+ (`.nvmrc` = 20.20.2), npm 10+, Docker Desktop이 필요합니다.
-
-```bash
-npm install        # 워크스페이스 전체 설치
-npm run local:up   # PostgreSQL 16 · Redis 7 (docker compose)
-npm run dev        # 프론트엔드 개발 서버 → http://localhost:5173
-npm run typecheck  # 워크스페이스 전체 검증
-```
-
-백엔드를 붙일 때는 DB를 먼저 준비하고 실행 검증을 통과시킨다.
-
-```bash
-export DATABASE_URL=postgres://tm:tm_local@localhost:5432/travel_mediation
-npm run migrate --workspace @tm/db   # 스키마 적용
-npm run smoke   --workspace @tm/db   # 리포지토리 왕복 검증
-```
-
-`VITE_API_BASE_URL`을 비워두면 폼 제출이 `sessionStorage`에 적재되어, 백엔드 없이도 전체 화면 흐름을 확인할 수 있습니다. 구조·스택·환경변수·배포는 [development-and-deployment.md](docs/development-and-deployment.md)를 참고하세요.
-
-```text
-apps/web/          MOA 프론트엔드 (React 19 + Vite 7 + Tailwind)
-packages/contracts/ 공용 타입·zod 스키마
-docs/              설계 문서
-```
-
-## 현재 제공 상태
-
-이 저장소는 **설계 문서 단계**입니다. 문서에 적힌 `Must` 항목은 MVP에 포함할 범위이며, 구현·통합·운영 검증이 끝났다는 뜻이 아닙니다.
-
-| 기능 | 설계 | 구현 | 검증 |
+| 단계 | 사용자에게 보이는 범위 | 시스템 처리 | 핵심 출력 |
 | --- | --- | --- | --- |
-| 전역 계획 그래프 (버전·STALE 전파) | 완료 | 완료 | 테스트 16개 + 실행 검증 |
-| DateResolver | 완료 | 미착수 | 미착수 |
-| Orchestrator·Supervisor 제어 분리 · Data Agent 캐시 계약 | 완료 | 미착수 | 미착수 |
-| 프론트엔드 화면 흐름 (MOA MVP) | 완료 | 진행 | 미착수 |
-| API·Worker 골격 (방·설문·이의 접수, 잡 큐) | 완료 | 진행 | API 경로 실행 검증 |
-| PostgreSQL 스키마·리포지토리 | 완료 | 진행 | 로컬 실행 검증 통과 |
-| 합의 알고리즘 (만족도·Maximin·양보 크레딧) | 완료 | 완료 | 테스트 28개 통과 |
-| 디스패치 검증 V1~V10 · Validation Pass | 완료 | 완료 | 테스트 30개 통과 |
-| Data Agent 게이트웨이·캐시 정책 | 완료 | 진행 | 테스트 26개 통과 |
-| 제공자 어댑터 (Amadeus·Rakuten·ODsay 등) | 완료 | 미착수 | 미착수 |
-| 심판·Supervisor·페르소나 구현 | 완료 | 미착수 | 미착수 |
-| 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 접수→큐→워커→기록 한 바퀴 검증 |
-| Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
-| Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |
-| 예약 상태·재계획·사용자 결과 UX | 완료 | 미착수 | 미착수 |
+| 0 | 여행 헌장·리스크 설정 | 프로필 스냅샷, 결정론적 `DateResolver`, `TripCharter` 생성 | `DateDecision`, `TripCharter` |
+| 1 | 오는 길·가는 길 | 대리인 토론·중재·검증 | `CategoryDecisionContract` |
+| 2 | 체류 거점·숙소 | 대리인 토론·중재·검증 | `CategoryDecisionContract` |
+| 3 | 갈 곳·할 일 | 대리인 토론·중재·검증 | `CategoryDecisionContract` |
+| 4 | 식사 | 대리인 토론·중재·검증 | `CategoryDecisionContract` |
+| 5 | 날짜별 일정·현지 이동 | 대리인 토론·중재·검증 | `CategoryDecisionContract` |
+| 6 | 통합 확정·실행 준비 | 별도 토론 없이 연속성·예산·날씨·예약·시간 통합 검사 | `FinalPlanRecord` 또는 차단 사유 |
 
-## 신뢰할 수 있는 대리인 원칙
+예산, 날씨, 예약 가능성, 취소 조건은 6단계에서 처음 확인하지 않습니다. 각 후보와 계약을 만들 때 계속 검사하고, 6단계에서 결합 결과를 다시 검사합니다.
 
-MVP의 에이전트는 항공사·호텔과 가격을 직접 협상하지 않는다. 검증된 공급자 데이터를 비교하고, 사용자가 사전에 위임한 범위 안에서 후보·객실 조합·이동 정책을 다시 탐색하는 **사용자 대리인**이다. 모든 최종 결정에는 `주장 → 근거 → 바뀐 제약 또는 점수 → 대안 → 최종 계획 변화`의 감사 기록을 남긴다.
+## 공식 역할과 권한
 
-계획은 다음 상태를 명확히 구분한다.
+### LLM 에이전트 5종
 
-- **초안**: 후보는 있으나 핵심 검증이 끝나지 않은 상태
-- **검증됨**: 하드 제약, 시간, 동선, 예산을 통과한 상태
-- **예약 가능**: 가격·재고·시간 슬롯 등 예약 전 필수 확인을 통과한 상태
-- **예약 완료**: 사용자가 링크아웃 예약을 확인했거나 향후 공급자 연동으로 확정된 상태
+| 역할 | 책임 |
+| --- | --- |
+| `UserProxyAgent` | 확정 프로필과 이번 여행 예외를 근거로 한 사용자를 대변 |
+| `CandidateEvidenceAgent` | 승인된 공급자로 후보와 출처 있는 근거를 수집 |
+| `CategoryArbiterAgent` | 1~5단계의 토론을 중재하고 종료·카테고리 결론 계약을 작성 |
+| `TripOrchestratorAgent` | 날짜·페이스·개인별 예산·근거·전역 제약 이탈을 감사 |
+| `PlanFinalizerAgent` | 승인 계약들의 의미 연속성을 대조하고 사용자용 최종 초안을 구성 |
 
-알레르기 대응, 그룹 수용 인원·객실 조합, 접근성, 필수 영업·시간 슬롯처럼 안전 또는 실행 가능성에 직결되는 조건은 확인 전 최종 후보가 될 수 없다.
+### 결정론적 제어 3종
 
-## 개발·협업 기준
+| 구성요소 | 책임 |
+| --- | --- |
+| `DateResolver` | 참여자의 가용 날짜·박수·유연성으로 날짜를 계산 |
+| `FactConstraintValidator` | 가격·재고·주소·시간·동선·예산·제약을 기계적으로 검사 |
+| `RunController` | 호출 순서, 큐, 상한, 계약 버전·잠금, 상태 전이를 집행 |
 
-- `main`에는 PR로만 병합하고, 브랜치 보호·필수 검사·최소 1인 승인은 GitHub 저장소 설정에서 활성화한다.
-- 작은 기능 브랜치와 단일 목적 PR을 사용한다. 프롬프트·점수·스키마 변경 PR은 영향받는 Planning Graph 노드와 재현/eval 결과를 명시한다.
-- 외부 API 호출은 mock/fixture 계약 테스트로 기본 검증하고, 실제 API 호출은 비용 상한이 있는 sandbox 또는 nightly 작업으로 분리한다.
-- 민감한 설문·객실 배정 정보·API 키는 커밋하지 않는다. 로컬 값은 `.env`에 두고, 운영 비밀은 GitHub Actions Secrets 또는 배포 환경의 시크릿 저장소로 관리한다.
-- 문서 링크와 구조 검증은 GitHub Actions에서 실행한다. 코드 도입 후 lint, typecheck, unit, schema/contract, provider mock, deterministic replay, prompt regression, build를 필수 검사로 확장한다.
+후보 조달, 사실 판정, 카테고리 결론은 한 에이전트가 동시에 소유하지 않습니다. LLM은 검증 실패를 덮어쓸 수 없고 DB 상태를 직접 바꾸지 않습니다.
 
-`CODEOWNERS`의 실제 사용자/팀 매핑은 조직의 GitHub 계정이 확정된 뒤 추가한다. 잘못된 소유자를 임의로 지정하지 않는다.
+## 공정성과 계약
+
+1. 안전·접근성·개인 절대예산·실행 가능성을 먼저 통과시킵니다.
+2. 같은 `proposalSetVersion`의 `CategoryProposal`에 모든 대리인이 `ProxyBallot`을 냅니다.
+3. 만족도 벡터에 `leximin`을 적용해 최저 만족 사용자부터 차례로 보호합니다.
+4. 동률이면 평균 만족도, 양보 불균형, 비용·동선·취소 가능성, 근거 품질 순으로 풉니다.
+5. 양보 크레딧은 원장과 최종 동률 해소에만 쓰며 발언권·성격·점수를 강화하지 않습니다.
+
+`CategoryDecisionContract`는 불변입니다. 검증 결과와 생명주기는 `CategoryContractView`로 투영하고, 상태 사건은 append-only `DecisionLedger`에 기록합니다. `CONTINUE`는 체크포인트만 저장하며, `NO_SAFE_DECISION`은 선택안 없이 `blockReason`을 가진 차단 계약을 남깁니다.
+
+## Survey v4 + Profile Schema v1
+
+- 행동축 47개는 질문 47개가 아니라 백엔드 후보 라이브러리입니다.
+- 최초에는 공통 핵심축 5개와 도시별 초기축 6개를 사용합니다.
+- 도시별 축은 후보 순위를 가를 가능성이 큰 초기 가설이며, 실제 후보 분산에 따라 최대 2개를 교체합니다.
+- 취향 질문은 정확히 11개 블록, 적응형 질문은 최대 2개입니다.
+- 날짜·하드 제약·개인 예산·가치 정책은 11개 취향 질문과 별도 필수 입력입니다.
+- 예산은 비율이 아니라 보호할 1·2순위와 선택형 추가 지불 가능 금액으로 받습니다.
+- 자유서술은 최대 5개 `ProfilePatchCandidate`로 바꾸고, 사용자가 체크한 항목만 `CanonicalProfile`에 저장합니다.
+- `approval_required`는 선호 강도가 아니라 에이전트의 자동 확정 권한을 막는 상태입니다.
+
+자세한 문항·매핑·데이터 계약은 [Survey v4 + Profile Schema v1](docs/survey-v4-profile-v1.md)에 있습니다.
+
+## 외부 데이터와 예약 상태
+
+MVP의 기본 공급자는 공개·셀프서비스 범위 안에서 사용합니다. 빈 공급자 슬롯은 사실처럼 메우지 않습니다.
+
+| 범위 | 한국 | 일본 |
+| --- | --- | --- |
+| POI·장소 메타데이터 | TourAPI, Google Places | Google Places |
+| 식당 메타데이터 | Google Places, TourAPI | HotPepper, Google Places |
+| 숙소 메타데이터 | TourAPI, Google Places | Rakuten Travel, Google Places |
+| 숙소 날짜별 재고 | 미확보 | Rakuten Travel |
+| 현지 경로 | Kakao Maps, Google Routes | Google Routes 도보·자동차 |
+| 대중교통 | Kakao Maps | 미확보 |
+| 날씨·환율 | Open-Meteo, Frankfurter | Open-Meteo, Frankfurter |
+
+타베로그는 공개 셀프서비스 API가 확인되지 않았고 이용약관상 영리 목적 접근과 리뷰 무단 이용 제한이 있으므로 자동 수집·DB 적재 공급자에서 제외합니다. 사용자가 직접 여는 링크는 참고용일 뿐 검증 근거가 아닙니다. 세부 출처와 공급자별 한계는 [외부 데이터·검증 정책](docs/provider-evidence-policy.md)을 참고하세요.
+
+상태는 다음처럼 구분합니다.
+
+- `PROVISIONAL`: 메타데이터는 있으나 날짜별 가격·재고 등 핵심 사실 미확인
+- `VERIFIED`: 하드 제약과 핵심 사실이 검증됐지만 예약 가능성을 뜻하지 않음
+- `BOOKABLE`: 날짜별 가격·재고·시간·취소 조건이 유효기간 안에서 확인됨
+- `BOOKED`: 별도 `ReservationRecord`로 예약 완료가 확인됨
+- `NEEDS_USER_CHOICE` / `BLOCKED`: 사용자 권한 또는 외부 상태 없이는 안전하게 확정할 수 없음
+
+## 문서 지도
+
+| 문서 | 권위 범위 |
+| --- | --- |
+| [종합 기획서](docs/travel-mediation-plan.md) | 제품 목표, 0/1~5/6단계, 프로필·공정성·계약·평가 |
+| [에이전트 아키텍처](docs/agent-architecture.md) | 공식 역할, 책임, 권한, 데이터 계약 |
+| [Survey v4 + Profile Schema v1](docs/survey-v4-profile-v1.md) | 질문·축·태그 매핑, 프로필 저장, 적응형 중단·검증 |
+| [외부 데이터·검증 정책](docs/provider-evidence-policy.md) | 공급자 허용 범위, 팩트체크·예약 상태·약관 경계 |
+| [이의 제기와 재토론](docs/objection-and-rerun.md) | 재논의 권한·상한·영향 범위·프로필 반영 |
+| [개발·배포](docs/development-and-deployment.md) | 현재 구현과 목표 계약의 차이, 런타임·배포 경계 |
+| [팀 역할](docs/team-assignments.md) | 새 공식 역할 기준의 담당 범위 |
+| [LLM 런타임](docs/llm-runtime-config.md) | 역할별 모델·비용·프롬프트 관리 원칙 |
+| [항공](docs/flight-referee-implementation.md), [교통](docs/transport-referee-implementation.md), [숙소](docs/accommodation-referee-implementation.md) | 카테고리 도메인 자료와 새 공통 파이프라인 적용 메모 |
+
+## 현재 구현 상태
+
+이 브랜치의 문서는 목표 설계를 갱신하지만 코드 마이그레이션을 주장하지 않습니다. 현재 코드는 이전 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 포함합니다. Planning Graph, DateResolver, 합의 점수, 데이터 게이트웨이, API·Worker 골격의 기존 테스트가 있더라도 새 `TripCharter → CategoryDecisionContract × 5 → FinalPlanRecord` 종단 흐름이나 Survey v4가 구현·검증됐다는 뜻은 아닙니다.
+
+제품 완결 기준은 다음 모두입니다.
+
+1. 0단계 입력·날짜·헌장 생성
+2. 1~5단계의 실제 승인 계약 5개
+3. 6단계 연속성·통합 검증
+4. 사용자에게 `FinalPlanRecord` 또는 정직한 차단 결과 공개
+
+한 카테고리 vertical slice나 fixture 기반 검증은 이 전체 제품 또는 `BOOKABLE`의 증거가 아닙니다.
+
+## 로컬 실행
+
+Node 20.10+, npm 10+, Docker Desktop이 필요합니다.
+
+```bash
+npm install
+npm run local:up
+npm run dev
+npm run typecheck
+npm run test
+npm run build
+```
+
+`VITE_API_BASE_URL`을 비워두면 기존 프론트 흐름이 `sessionStorage`에 저장됩니다. 이는 UI 목업 경로이며 새 백엔드 계약이 연결됐다는 뜻은 아닙니다.
+
+## 협업 원칙
+
+- `main`에는 PR로만 병합하고, 프롬프트·점수·스키마 변경은 영향 계약과 평가 결과를 명시합니다.
+- 외부 API 호출은 fixture 계약 테스트와 실제 sandbox 검증을 구분합니다.
+- 민감한 프로필·건강·가치·개인 예산과 API 키를 커밋하지 않습니다.
+- 공급자 응답에 없는 값을 만들지 않고, 출처·조회 시각·유효기간·약관 참조를 보존합니다.
+- 문서, 코드, 테스트, 실데이터 검증을 서로 다른 완료 증거로 표시합니다.
