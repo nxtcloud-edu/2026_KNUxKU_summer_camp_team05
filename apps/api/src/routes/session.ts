@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { SessionView } from '@tm/contracts';
 
 /**
  * 간이 세션 — 사용자를 식별하는 최소 장치.
@@ -77,9 +78,12 @@ export async function registerSession(app: FastifyInstance): Promise<void> {
   });
 
   /** 현재 사용자 확인. 프론트가 앱 진입 시 한 번 호출해 식별자를 확보한다 */
-  app.get('/api/session', async (request) => ({
-    userId: currentUserId(request),
-    /** 이것은 인증이 아니다. 프론트가 이 값을 권한 판단에 쓰면 안 된다 */
-    authenticated: false,
-  }));
+  app.get(
+    '/api/session',
+    async (request): Promise<SessionView> => ({
+      userId: currentUserId(request),
+      // 이것은 인증이 아니다. 프론트가 이 값을 권한 판단에 쓰면 안 된다.
+      authenticated: false,
+    }),
+  );
 }

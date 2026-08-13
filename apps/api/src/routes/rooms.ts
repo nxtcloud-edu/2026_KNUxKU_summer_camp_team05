@@ -1,4 +1,13 @@
 import type { FastifyInstance } from 'fastify';
+import type {
+  ApprovalView,
+  MemberView,
+  RoomDetailView,
+  StartCheckView,
+  StartRunView,
+  StartTriggerId,
+  TriggerDecisionView,
+} from '@tm/contracts';
 import {
   evaluateStartTrigger,
   startTriggers,
@@ -64,7 +73,7 @@ export async function registerRoomRoutes(
               personaConfirmedAt: me.personaConfirmedAt,
             },
       pendingApprovals: (await repos.approvals.pending(roomId)).length,
-    });
+    } satisfies RoomDetailView);
   });
 
   app.get('/api/rooms/:roomId/members', async (request, reply) => {
@@ -72,7 +81,7 @@ export async function registerRoomRoutes(
     if ((await repos.rooms.get(roomId)) === undefined) {
       return reply.status(404).send({ error: 'room_not_found' });
     }
-    return reply.send({ members: await repos.members.list(roomId) });
+    return reply.send({ members: await repos.members.list(roomId) } satisfies { members: MemberView[] });
   });
 
   /** 초대 링크로 입장. 같은 사용자가 다시 들어와도 행이 늘지 않는다 */
@@ -136,10 +145,10 @@ export async function registerRoomRoutes(
             deadlineAt: room.deadlineAt,
             now,
             requesterId: userId,
-          }),
+          }) satisfies TriggerDecisionView,
         ]),
-      ),
-    });
+      ) as StartCheckView['triggers'],
+    } satisfies StartCheckView);
   });
 
   /**
@@ -190,11 +199,11 @@ export async function registerRoomRoutes(
       runId,
       jobId,
       enqueued,
-      trigger,
+      trigger: trigger satisfies StartTriggerId,
       attendees: decision.attendees,
       // 참석하지 못한 사람을 숨기지 않는다. 결과 화면에 그대로 표시된다.
       absentees: decision.absentees,
-    });
+    } satisfies StartRunView);
   });
 
   /** 승인 요청 목록. 예약 완료 노드에 영향이 갈 때 여기로 올라온다 (INV-5) */
@@ -203,7 +212,9 @@ export async function registerRoomRoutes(
     if ((await repos.rooms.get(roomId)) === undefined) {
       return reply.status(404).send({ error: 'room_not_found' });
     }
-    return reply.send({ approvals: await repos.approvals.pending(roomId) });
+    return reply.send({
+      approvals: (await repos.approvals.pending(roomId)) satisfies ApprovalView[],
+    });
   });
 
   app.post('/api/rooms/:roomId/approvals/:approvalId', async (request, reply) => {

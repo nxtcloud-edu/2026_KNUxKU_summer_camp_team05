@@ -55,6 +55,120 @@ export interface ResultEnvelope<T> {
   data: T | null;
 }
 
+/* ------------------------------------------------------------------ 세션·방 */
+
+/**
+ * `GET /api/session`.
+ *
+ * `authenticated`가 항상 false인 것은 버그가 아니라 사실이다 — 쿠키는 서명되지
+ * 않았고 위조할 수 있다. 프론트는 이 값을 **권한 판단에 쓰면 안 된다.**
+ */
+export interface SessionView {
+  userId: string;
+  authenticated: false;
+}
+
+export const memberRoles = ['host', 'member'] as const;
+export type MemberRole = (typeof memberRoles)[number];
+
+/** 참여자 1명. `@tm/db`의 MemberRow를 프론트가 쓸 수 있게 계약으로 올린 것 */
+export interface MemberView {
+  roomId: string;
+  userId: string;
+  role: MemberRole;
+  surveySubmitted: boolean;
+  /** 페르소나 카드를 확인한 시각. null이면 건너뛸 수 없는 게이트 앞에 서 있다 */
+  personaConfirmedAt: string | null;
+  joinedAt: string;
+}
+
+/** `GET /api/rooms/:roomId` — 어느 화면을 보여줄지가 `me`에서 결정된다 */
+export interface RoomDetailView {
+  roomId: string;
+  packId: string;
+  status: RoomStatus;
+  deadlineAt: string | null;
+  completedRounds: RoundId[];
+  bookedNodes: PlanningNodeId[];
+  memberCount: number;
+  surveyDone: number;
+  personaConfirmed: number;
+  me: {
+    userId: string;
+    role: MemberRole;
+    surveySubmitted: boolean;
+    personaConfirmedAt: string | null;
+  } | null;
+  pendingApprovals: number;
+}
+
+/**
+ * 회의 시작 트리거 3종.
+ *
+ * 값이 `host`이지 `host_start`가 아니다 — `@tm/core`의 `startTriggers`가 원본이며
+ * 이 배열은 그것을 프론트가 쓸 수 있게 옮긴 것이다. 둘이 어긋나면 400이 난다.
+ */
+export const startTriggerIds = ['all_done', 'host', 'deadline'] as const;
+export type StartTriggerId = (typeof startTriggerIds)[number];
+
+export const triggerRejectionReasons = [
+  'already_running',
+  'not_enough_members',
+  'survey_incomplete',
+  'persona_unconfirmed',
+  'not_host',
+  'deadline_not_set',
+  'deadline_not_reached',
+  'not_enough_attendees',
+] as const;
+export type TriggerRejectionReason = (typeof triggerRejectionReasons)[number];
+
+/** 참석하지 못하는 사람. 결과 화면에 그대로 표시한다 — 침묵 금지 */
+export interface AbsenteeView {
+  userId: string;
+  reason: 'no_survey' | 'no_persona_confirm';
+}
+
+export interface TriggerDecisionView {
+  allowed: boolean;
+  reason: TriggerRejectionReason | null;
+  /** 회의에 대변인을 세울 사람 */
+  attendees: string[];
+  absentees: AbsenteeView[];
+}
+
+/** `GET /api/rooms/:roomId/start-check` — 방장 화면 버튼의 활성 조건 */
+export interface StartCheckView {
+  triggers: Record<StartTriggerId, TriggerDecisionView>;
+}
+
+/** `POST /api/rooms/:roomId/start` — 202면 큐에 들어갔다 */
+export interface StartRunView {
+  runId: string;
+  jobId: string | null;
+  /** false면 큐에 들어가지 않았다. 이때 방을 대기 중으로 표시하면 안 된다 */
+  enqueued: boolean;
+  trigger: StartTriggerId;
+  attendees: string[];
+  absentees: AbsenteeView[];
+}
+
+/**
+ * 승인 요청. 예약 완료 노드에 영향이 갈 때 올라온다 (INV-5).
+ * 취소 수수료가 발생할 수 있어 방장만 응답한다.
+ */
+export interface ApprovalView {
+  approvalId: string;
+  roomId: string;
+  /** 'booked_node_change' | 'late_hard_constraint' 등 */
+  type: string;
+  options: unknown[];
+  objectionId: string | null;
+  raisedAt: string;
+  respondedAt: string | null;
+  response: unknown | null;
+}
+
 /* ------------------------------------------------------------------ 진행 상태 */
 
 export interface RoundProgress {
