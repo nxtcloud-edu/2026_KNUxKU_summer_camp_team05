@@ -105,6 +105,8 @@
 | 일본 대중교통의 기계 판정 | 자동 `VERIFIED` 금지. 도보·자동차 경로 또는 사용자 확인 링크만 제공. 제휴형 ODPT/NAVITIME 등은 후속 |
 | 한국 숙소 날짜별 가격·객실 재고 | 메타데이터 후보는 가능하지만 `PROVISIONAL`. 공급자 페이지에서 사용자 확인 필요 |
 | 한·일 식당 날짜·시간별 빈 좌석 | `PROVISIONAL` 또는 `NEEDS_USER_CHOICE`. `reservable`·총 좌석 수로 추정 금지 |
+| 장소·회차의 그룹 정원 | 총 좌석·정적 최대 인원을 live 그룹 슬롯으로 추정하지 않는다. 정확한 날짜·시간·인원 응답이 없으면 `UNKNOWN` |
+| 복수 객실·테이블·차량 배정 | 단위별 정원과 참여자 전원 배정을 검증한다. 일부만 확인되거나 분리 동의가 없으면 `PASS` 금지 |
 | 항공·JR·KTX·버스의 실시간 좌석·운임·취소 조건 | 일정과 재고를 분리. live inventory 공급자가 없으면 `BOOKABLE` 금지 |
 | 활동 티켓 재고 | 메타데이터·영업시간까지만 검증, 날짜별 티켓은 사용자 확인 |
 
@@ -125,15 +127,17 @@ type EvidenceSnapshot = {
 };
 ```
 
+인원·정원 사실의 `fields`에는 가능한 경우 `requestedPartySize`, `partyComposition`, `resourceUnitType`, `requestedUnitCount`, `confirmedCapacity`, `confirmedUnitCount`, `allocationPolicy`를 분리해 둔다. 정원 검증은 장소의 정적 총수용량이 아니라 정확한 날짜·시간·인원·객실 또는 회차 요청의 응답에 결합한다. 공급자가 반환하지 않은 침대 수, 테이블 배치, 인접 좌석, 수하물 포함 차량 정원을 에이전트가 채우지 않는다.
+
 | 확인 상태 | 결과 상태 상한 |
 | --- | --- |
 | 기본 메타데이터와 출처·신선도 확인 | `VERIFIED` 가능 |
 | 날짜별 가격·재고가 없음 | `PROVISIONAL` |
 | 링크를 열어 사용자가 선택해야 함 | `NEEDS_USER_CHOICE` |
-| 날짜별 재고·가격·시간·취소 조건을 유효기간 내 조회 | `BOOKABLE` 가능 |
+| 날짜별 재고·가격·시간·취소 조건과 전체 참여자 정원을 유효기간 내 조회 | `BOOKABLE` 가능 |
 | 예약 확인 번호 또는 공급자 확인 수신 | 별도 `ReservationRecord`의 `BOOKED` |
 
-`BOOKABLE`의 `statusValidUntil`은 사용한 근거 중 가장 빠른 `validUntil`을 넘을 수 없다. 주소·영업시간·가격·재고 중 하나라도 `FAIL`, `UNKNOWN`, `STALE`, `CONTRADICTED`이면 해당 사실에 의존한 승격을 막는다.
+`BOOKABLE`의 `statusValidUntil`은 사용한 근거 중 가장 빠른 `validUntil`을 넘을 수 없다. 주소·영업시간·가격·재고·인원 정원 중 하나라도 `FAIL`, `UNKNOWN`, `STALE`, `CONTRADICTED`이면 해당 사실에 의존한 승격을 막는다. `N`명 요청에서 일부 인원만 배정된 응답도 전체 계획의 `PASS`가 아니다.
 
 ## 6. 저장 원칙
 
@@ -151,6 +155,7 @@ type EvidenceSnapshot = {
 | 타베로그 자동 영리 이용·리뷰 무단 이용을 피해야 함 | 높음 | 현재 공식 이용약관에 직접 명시 |
 | Kakao Maps가 한국 대중교통·도보 경로를 제공 | 높음 | 공식 REST API 레퍼런스에 endpoint와 인증 방식 명시 |
 | 기존 6개만으로 네 도시 `BOOKABLE` 전체를 보장할 수 없음 | 높음 | 일본 대중교통, 한국 숙소 live 재고, 한·일 식당 슬롯 등 명시적 공급자 공백 존재 |
+| Rakuten Travel 공실 검색이 날짜·성인 인원·객실 수 조건을 받음 | 높음 | 공식 요청 파라미터가 명시되지만 침대 구성·동일 객실 요구 등은 별도 필드·사용자 확인이 필요 |
 | 각 공급자의 운영 승인·쿼터·상업 조건 | 중간 | 정책과 요금은 변경 가능하므로 배포 직전 재확인 필요 |
 
 ## 8. 공식 출처
