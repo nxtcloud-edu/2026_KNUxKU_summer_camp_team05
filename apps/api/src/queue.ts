@@ -21,8 +21,16 @@ export interface EnqueueResult {
   enqueued: boolean;
 }
 
+export interface FullRunEnqueueInput {
+  runId: string;
+  roomId: string;
+  /** 트리거 3종. 워커의 `fullRunPayloadSchema`와 값이 같아야 한다 */
+  trigger: 'all_done' | 'host' | 'deadline';
+}
+
 export interface QueuePort {
   enqueueRerun(input: RerunEnqueueInput): Promise<EnqueueResult>;
+  enqueueFullRun(input: FullRunEnqueueInput): Promise<EnqueueResult>;
   close(): Promise<void>;
 }
 
@@ -78,6 +86,21 @@ export function createQueue(redisUrl: string): QueuePort {
       );
       return { jobId, enqueued: true };
     },
+    async enqueueFullRun(input) {
+      // 같은 run이 두 번 들어와도 결과는 1개다. 트리거가 중복 발화해도 안전하다.
+      const jobId = `run:${input.runId}`;
+      await queue.add(
+        'full_run',
+        {
+          kind: 'full_run',
+          roomId: input.roomId,
+          runId: input.runId,
+          trigger: input.trigger,
+        },
+        { jobId, attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+      );
+      return { jobId, enqueued: true };
+    },
     async close() {
       await queue.close();
     },
@@ -92,6 +115,11 @@ export function createNoopQueue(onSkip: (jobId: string) => void): QueuePort {
   return {
     async enqueueRerun(input) {
       const jobId = `rerun:${input.objectionId}`;
+      onSkip(jobId);
+      return { jobId, enqueued: false };
+    },
+    async enqueueFullRun(input) {
+      const jobId = `run:${input.runId}`;
       onSkip(jobId);
       return { jobId, enqueued: false };
     },

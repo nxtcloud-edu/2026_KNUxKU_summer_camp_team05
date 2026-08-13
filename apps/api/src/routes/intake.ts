@@ -36,6 +36,8 @@ export async function registerIntakeRoutes(
       return reply.status(404).send({ error: 'room_not_found' });
     }
 
+    // 설문 제출은 곧 참여다. 멤버 행이 없으면 트리거 판정에서 존재하지 않는 사람이 된다.
+    await repos.members.join(roomId, userId);
     const saved = await repos.surveys.save(roomId, userId, parsed.data);
 
     // 알레르기는 안전 축이라 별도 컬럼으로 승격해 저장한다.

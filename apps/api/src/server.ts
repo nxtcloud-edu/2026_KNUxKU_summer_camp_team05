@@ -4,6 +4,7 @@ import { createRepositories, isDatabaseConfigured, type Repositories } from '@tm
 import { loadEnv, type Env } from './env.js';
 import { registerIntakeRoutes } from './routes/intake.js';
 import { registerObjectionRoutes } from './routes/objections.js';
+import { registerRoomRoutes } from './routes/rooms.js';
 import { createNoopQueue, createQueue, type QueuePort } from './queue.js';
 
 export interface ServerDeps {
@@ -43,6 +44,7 @@ export async function buildServer(
   }));
 
   await registerIntakeRoutes(app, repos);
+  await registerRoomRoutes(app, repos, queue);
   await registerObjectionRoutes(app, env, repos, queue);
 
   app.addHook('onClose', async () => {

@@ -1,10 +1,13 @@
 import { Worker } from 'bullmq';
-import { executionCaps, type PlanningNodeId } from '@tm/contracts';
+import { executionCaps, roundIdToCategory, type PlanningNodeId, type RoundId } from '@tm/contracts';
+import { createRunMeter } from '@tm/core';
+import { createMemoryQuotaCounter } from '@tm/data-agents';
 import { createRepositories, isDatabaseConfigured } from '@tm/db';
 import { jobPayloadSchema, QUEUE_NAME } from './queue.js';
 import {
   runPipeline,
   type GraphPort,
+  type MeterPort,
   type RunState,
   type SupervisorPort,
   type RefereePort,
@@ -15,6 +18,11 @@ import {
   nodesForRound,
   recordNodeUpdate,
 } from './orchestrator/graph-store.js';
+import {
+  createWorkerGateway,
+  paramsFromRoom,
+  prefetchRound,
+} from './orchestrator/prefetch-runner.js';
 import {
   alreadyApplied,
   applyRerunOutcome,
@@ -77,7 +85,20 @@ const worker = new Worker(
       usdRemaining: costCapUsd,
       dispatchRejections: 0,
       fallbackCount: 0,
+      stopReason: null,
     };
+
+    // 원가·턴 상한은 run마다 새로 센다. 에이전트가 붙으면 호출마다 charge하고
+    // 그 결과를 llm_usage에 남긴다 — 지금은 LLM 호출이 없어 잔량이 그대로다.
+    const meter = createRunMeter({
+      usdCap: costCapUsd,
+      turnsCap: executionCaps.turnsPerRound,
+    });
+    const meterPort: MeterPort = { snapshot: () => meter.snapshot() };
+
+    // 쿼터 카운터는 run 단위다. 게이트웨이는 캐시·정책·상한을 여기서만 강제한다.
+    const gateway = createWorkerGateway(repos, createMemoryQuotaCounter());
+    const room = await repos.rooms.get(payload.roomId);
 
     let seq = 0;
     const referee: RefereePort = {
@@ -88,11 +109,46 @@ const worker = new Worker(
       },
     };
 
+    /**
+     * 라운드 시작 전 조달. 라운드 행을 먼저 만들어야 `candidates`의 외래키가 통과한다.
+     * 방 정보가 없거나 필요한 입력이 없으면 아무것도 요청하지 않는다 (값을 지어내지 않는다).
+     */
+    const prefetch = async (roundId: RoundId): Promise<void> => {
+      await repos.runs.recordRound({
+        runId: payload.runId,
+        roundId,
+        category: roundIdToCategory[roundId],
+        seq: seq + 1,
+        phase: 'SOURCING',
+      });
+
+      if (room === undefined) {
+        console.warn(`[prefetch] ${roundId} 방 정보를 찾지 못해 건너뜁니다`);
+        return;
+      }
+
+      const params = paramsFromRoom(room, roundId);
+      if (Object.keys(params).length === 0) {
+        console.log(`[prefetch] ${roundId} 조달 입력이 아직 없습니다 — 건너뜁니다`);
+        return;
+      }
+
+      await prefetchRound({ repos, gateway }, {
+        runId: payload.runId,
+        roundId,
+        packId: room.packId,
+        params,
+      });
+    };
+
     // Planning Graph는 DB가 원본이다. V4·V9가 run 경계를 넘어 작동하려면 필요하다.
     let graph = await loadGraph(repos, payload.runId);
     const graphPort: GraphPort = {
       async guards() {
         return guardsFromGraph(graph);
+      },
+      async load() {
+        return graph;
       },
       async settleRound(roundId) {
         const staled: PlanningNodeId[] = [];
@@ -114,11 +170,49 @@ const worker = new Worker(
       },
     };
 
-    const finished = await runPipeline(payload, { supervisor, referee, graph: graphPort }, state);
+    const finished = await runPipeline(
+      payload,
+      {
+        supervisor,
+        referee,
+        graph: graphPort,
+        meter: meterPort,
+        prefetch,
+        // 폴백률은 프롬프트 회귀 지표다. 결정마다 남긴다 (12.2).
+        async recordDispatch(record) {
+          await repos.dispatchDecisions.record({
+            runId: payload.runId,
+            seq: record.seq,
+            legalMoves: record.legalMoves,
+            proposal: record.proposal,
+            validationResult: record.validationResult,
+            rejectedRules: record.rejectedRules,
+            fallbackUsed: record.fallbackUsed,
+            decidedBy: record.decidedBy,
+          });
+        },
+      },
+      state,
+    );
     await repos.runs.finish(payload.runId, 'COMPLETED');
 
+    if (finished.stopReason !== null && finished.stopReason !== undefined) {
+      // 중간에 멈췄으면 그 사실을 남긴다. 부분 결과를 완주로 보이게 하지 않는다.
+      console.warn(`[worker] ${payload.runId} 조기 종료: ${finished.stopReason}`);
+    }
+
+    const usage = await repos.llmUsage.totals(payload.runId);
+    console.log(
+      `[worker] ${payload.runId} 원가 $${usage.costUsd.toFixed(4)} (호출 ${usage.calls}) · 캐시 토큰 ${usage.cacheTokens}`,
+    );
+
     if (payload.kind === 'rerun_from_objection') {
-      await applyRerunOutcome(repos, payload, finished, PLACEHOLDER_REASON);
+      await applyRerunOutcome(
+        repos,
+        payload,
+        finished,
+        finished.stopReason ?? PLACEHOLDER_REASON,
+      );
     } else {
       await repos.rooms.markCompleted(payload.roomId, finished.completedRounds);
     }
