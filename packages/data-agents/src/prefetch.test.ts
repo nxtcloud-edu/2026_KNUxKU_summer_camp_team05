@@ -83,13 +83,19 @@ function setup(options: { failing?: QueryClass[] } = {}) {
   return { gateway, provider, repos };
 }
 
-const plan = (params: Record<string, readonly Record<string, unknown>[]>) =>
+const plan = (requests: { queryClass: string; params: Record<string, unknown> }[]) =>
   planPrefetch({
     runId: 'run_1',
     roundId: 'r_2',
     packId: 'jp-osaka',
-    params: params as never,
+    requests: requests as never,
   });
+
+const HOTEL = { packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 };
+const search = (params: Record<string, unknown> = HOTEL) => ({
+  queryClass: 'hotel.search',
+  params,
+});
 
 test('캐시 금지 클래스는 프리페치하지 않는다', () => {
   // 확정가는 저장 자체가 금지다. 미리 받아도 버려지고 쿼터만 태운다.
@@ -111,33 +117,50 @@ test('웹·RAG는 후보 조달원이 아니므로 제외된다', () => {
   assert.equal(prefetchSkipReason('hotel.price_band'), null);
 });
 
-test('라운드별 프리페치 가능 클래스만 남는다', () => {
-  const classes = prefetchableClasses('r_2');
+test('미리 받아도 되는 클래스 목록을 준다', () => {
+  const classes = prefetchableClasses();
   assert.ok(classes.includes('hotel.search'));
   assert.equal(classes.includes('hotel.room_combination'), false);
 });
 
-test('라운드에 속하지 않는 클래스는 계획에서 빠지고 사유가 남는다', () => {
-  const result = plan({ 'flight.offers_search': [{ origin: 'ICN' }] });
+test('라운드와 무관하게 어떤 클래스든 요청할 수 있다', () => {
+  // 무엇을 찾을지는 후보탐색 에이전트가 정한다. 코드는 정책 위반만 거부한다.
+  const result = plan([
+    { queryClass: 'flight.offers_search', params: { origin: 'ICN', destination: 'KIX', pax: 6 } },
+    { queryClass: 'poi.search', params: { packId: 'jp-osaka', area: '난바', category: 'all' } },
+  ]);
 
-  assert.equal(result.requests.length, 0);
-  assert.equal(result.skipped[0]?.reason, 'not_in_round');
+  assert.equal(result.requests.length, 2);
+  assert.deepEqual(result.skipped, []);
+});
+
+test('정책이 막는 요청만 사유와 함께 걸러낸다', () => {
+  const result = plan([
+    { queryClass: 'hotel.room_combination', params: {} },
+    { queryClass: 'web.search', params: {} },
+    { queryClass: 'hotel.all_in_price', params: {} },
+    search(),
+  ]);
+
+  assert.equal(result.requests.length, 1, '통과한 것은 hotel.search 하나');
+  assert.deepEqual(
+    result.skipped.map((row) => row.reason),
+    ['fail_closed', 'advisory', 'cache_forbidden'],
+  );
 });
 
 test('계획의 목적은 항상 exploration이고 호출자는 orchestrator다', () => {
-  const result = plan({ 'hotel.search': [{ packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 }] });
+  const result = plan([search()]);
 
   assert.equal(result.requests[0]?.purpose, 'exploration');
   assert.equal(result.requests[0]?.callerId, 'orchestrator:prefetch');
 });
 
-test('한 클래스에 여러 조회를 넣을 수 있다', () => {
-  const result = plan({
-    'hotel.search': [
-      { packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 },
-      { packId: 'jp-osaka', area: '우메다', type: 'hotel', guests: 6 },
-    ],
-  });
+test('같은 클래스를 조건만 바꿔 여러 번 넣을 수 있다', () => {
+  const result = plan([
+    search(),
+    search({ packId: 'jp-osaka', area: '우메다', type: 'hotel', guests: 6 }),
+  ]);
 
   assert.equal(result.requests.length, 2);
   assert.notEqual(result.requests[0]?.requestId, result.requests[1]?.requestId);
@@ -154,7 +177,7 @@ test('실행하면 캐시가 채워지고 후보가 나온다', async () => {
 
   const report = await runPrefetch(
     gateway,
-    plan({ 'hotel.search': [{ packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 }] }),
+    plan([search()]),
     { sink },
   );
 
@@ -170,7 +193,7 @@ test('실행하면 캐시가 채워지고 후보가 나온다', async () => {
 
 test('두 번째 실행은 캐시 적중이라 제공자를 부르지 않는다', async () => {
   const { gateway, provider } = setup();
-  const request = plan({ 'hotel.search': [{ packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 }] });
+  const request = plan([search()]);
 
   await runPrefetch(gateway, request);
   const callsAfterFirst = (provider as unknown as { calls: unknown[] }).calls.length;
@@ -183,7 +206,7 @@ test('두 번째 실행은 캐시 적중이라 제공자를 부르지 않는다'
 test('제공자가 실패해도 던지지 않고 보고만 한다', async () => {
   const { gateway } = setup({ failing: ['hotel.search'] });
 
-  const report = await runPrefetch(gateway, plan({ 'hotel.search': [{ packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 }] }));
+  const report = await runPrefetch(gateway, plan([search()]));
 
   assert.equal(report.warmed, 0);
   assert.equal(report.failures.length, 1);
@@ -195,7 +218,7 @@ test('한 클래스가 실패해도 나머지는 계속 시도한다', async () 
 
   const report = await runPrefetch(
     gateway,
-    plan({ 'hotel.search': [{ packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 }], 'hotel.area_profile': [{ packId: 'jp-osaka', area: '난바' }] }),
+    plan([search(), { queryClass: 'hotel.area_profile', params: { packId: 'jp-osaka', area: '난바' } }]),
   );
 
   assert.equal(report.failures.length, 1);
@@ -205,9 +228,11 @@ test('한 클래스가 실패해도 나머지는 계속 시도한다', async () 
 test('쿼터를 넘기면 즉시 멈춘다 — 심판이 쓸 호출을 남겨야 한다', async () => {
   const { gateway } = setup();
   // hotel.search 상한은 4회. 6회를 계획해 초과시킨다.
-  const params = Array.from({ length: 6 }, (_, index) => ({ packId: 'jp-osaka', area: `area_${index}`, type: 'hotel', guests: 6 }));
+  const requests = Array.from({ length: 6 }, (_, index) =>
+    search({ packId: 'jp-osaka', area: `area_${index}`, type: 'hotel', guests: 6 }),
+  );
 
-  const report = await runPrefetch(gateway, plan({ 'hotel.search': params }));
+  const report = await runPrefetch(gateway, plan(requests));
 
   assert.ok(report.failures.some((failure) => failure.quotaExceeded));
   assert.ok(report.warmed <= 4, `상한을 넘겨 호출했다: ${report.warmed}`);

@@ -3,6 +3,7 @@ import {
   VerificationUnavailableError,
   candidateSchema,
   isAdvisoryOnly,
+  queryClasses,
   type DataRequest,
   type Evidence,
   type QueryClass,
@@ -25,23 +26,7 @@ import type { DataAgentGateway } from './gateway.js';
  * 근거: agent-architecture.md 6.8 프리페치와 프리컴퓨트 · 6.3 read-through
  */
 
-/** 프리페치를 시도할 클래스. 라운드가 무엇을 필요로 하는지의 결정론적 목록이다 */
-export const PREFETCH_CLASSES_BY_ROUND: Record<RoundId, readonly QueryClass[]> = {
-  r_0: ['ref.pack_config', 'ref.fx', 'ref.airport_codes', 'weather.forecast'],
-  r_1a: ['flight.cheapest_date', 'flight.offers_search', 'ref.airline_codes'],
-  r_1b: ['transit.airport_transfer', 'transit.route', 'transit.pass_rules', 'intercity.timetable'],
-  r_2: ['hotel.area_profile', 'hotel.search', 'hotel.price_band', 'geo.travel_time'],
-  r_3: ['poi.search', 'poi.hours', 'poi.ticket'],
-  r_4: ['dining.search', 'dining.hours'],
-  r_5: ['geo.matrix', 'geo.travel_time'],
-  r_6: ['ref.fx'],
-};
-
-export type PrefetchSkipReason =
-  | 'cache_forbidden'
-  | 'fail_closed'
-  | 'advisory'
-  | 'not_in_round';
+export type PrefetchSkipReason = 'cache_forbidden' | 'fail_closed' | 'advisory';
 
 /**
  * 이 클래스를 미리 받아도 되는가.
@@ -61,21 +46,31 @@ export function prefetchSkipReason(queryClass: QueryClass): PrefetchSkipReason |
   return null;
 }
 
-export function prefetchableClasses(roundId: RoundId): QueryClass[] {
-  return [...PREFETCH_CLASSES_BY_ROUND[roundId]].filter(
-    (queryClass) => prefetchSkipReason(queryClass) === null,
-  );
+/** 미리 받아도 되는 클래스 전체. 후보탐색 담당자가 선택지를 확인할 때 쓴다 */
+export function prefetchableClasses(): QueryClass[] {
+  return queryClasses.filter((queryClass) => prefetchSkipReason(queryClass) === null);
+}
+
+/**
+ * 조달 요청 한 건. **무엇을 찾을지는 호출자(후보탐색 에이전트)가 정한다.**
+ *
+ * 라운드별로 어떤 클래스가 필요한지는 여기서 정하지 않는다. 그건 조달 전략이고,
+ * 코드가 미리 정해두면 에이전트는 그 목록 밖을 시도할 수 없다. 코드가 하는 일은
+ * **정책 위반을 거부하는 것**뿐이다 (fail-closed·캐시 금지·advisory).
+ */
+export interface SearchRequest {
+  queryClass: QueryClass;
+  params: Record<string, unknown>;
+  /** 왜 이걸 찾는지. 로그와 회의록에 남는다 */
+  note?: string;
 }
 
 export interface PrefetchPlanInput {
   runId: string;
   roundId: RoundId;
   packId: string;
-  /**
-   * 클래스별 조회 파라미터. 한 클래스에 여러 건을 넣을 수 있다
-   * (예: 후보 지역 3곳의 `hotel.search`).
-   */
-  params: Partial<Record<QueryClass, readonly Record<string, unknown>[]>>;
+  /** 조달 요청 목록. 같은 클래스를 조건만 바꿔 여러 번 넣어도 된다 */
+  requests: readonly SearchRequest[];
   /** 기본 `orchestrator:prefetch`. 페르소나는 어떤 값으로도 호출할 수 없다 */
   callerId?: string;
 }
@@ -83,47 +78,42 @@ export interface PrefetchPlanInput {
 export interface PrefetchSkip {
   queryClass: QueryClass;
   reason: PrefetchSkipReason;
+  note?: string;
 }
 
 export interface PrefetchPlan {
   requests: DataRequest[];
-  /** 정책이 막아 제외된 클래스. 조용히 빼지 않고 보고한다 */
+  /** 정책이 막아 제외된 요청. 조용히 빼지 않고 사유와 함께 보고한다 */
   skipped: PrefetchSkip[];
 }
 
 export function planPrefetch(input: PrefetchPlanInput): PrefetchPlan {
-  const allowed = new Set(PREFETCH_CLASSES_BY_ROUND[input.roundId]);
   const requests: DataRequest[] = [];
   const skipped: PrefetchSkip[] = [];
   const callerId = input.callerId ?? 'orchestrator:prefetch';
 
-  for (const [queryClass, paramSets] of Object.entries(input.params) as [
-    QueryClass,
-    readonly Record<string, unknown>[] | undefined,
-  ][]) {
-    if (!allowed.has(queryClass)) {
-      skipped.push({ queryClass, reason: 'not_in_round' });
-      continue;
-    }
-    const reason = prefetchSkipReason(queryClass);
+  for (const [index, request] of input.requests.entries()) {
+    const reason = prefetchSkipReason(request.queryClass);
     if (reason !== null) {
-      skipped.push({ queryClass, reason });
+      skipped.push({
+        queryClass: request.queryClass,
+        reason,
+        ...(request.note === undefined ? {} : { note: request.note }),
+      });
       continue;
     }
 
-    for (const [index, params] of (paramSets ?? []).entries()) {
-      requests.push({
-        requestId: `pf_${input.runId}_${input.roundId}_${queryClass}_${index}`,
-        runId: input.runId,
-        roundId: input.roundId,
-        callerId,
-        queryClass,
-        // 프리페치는 언제나 탐색이다. 검증 목적으로 미리 받는 것은 계약 위반이다.
-        purpose: 'exploration',
-        packId: input.packId,
-        params,
-      });
-    }
+    requests.push({
+      requestId: `pf_${input.runId}_${input.roundId}_${request.queryClass}_${index}`,
+      runId: input.runId,
+      roundId: input.roundId,
+      callerId,
+      queryClass: request.queryClass,
+      // 프리페치는 언제나 탐색이다. 검증 목적으로 미리 받는 것은 계약 위반이다.
+      purpose: 'exploration',
+      packId: input.packId,
+      params: request.params,
+    });
   }
 
   return { requests, skipped };

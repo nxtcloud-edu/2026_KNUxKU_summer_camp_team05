@@ -43,10 +43,20 @@ const registry = setup.registry(packProviders);
 
 라운드가 시작되기 전에 후보를 조달해 캐시와 `candidates` 테이블에 채운다. 심판은 조달을 기다리는 대신 **감시와 판정**에 집중한다.
 
+**무엇을 찾을지는 후보탐색 에이전트가 정한다.** 라운드별 클래스 목록을 코드가 갖고 있지 않다 — 그러면 에이전트는 그 목록 밖을 시도할 수 없다. 코드가 하는 일은 정책 위반을 거부하는 것뿐이다.
+
 ```typescript
-const plan = planPrefetch({ runId, roundId: 'r_2', packId, params: { 'hotel.search': [{ ... }] } });
+const plan = planPrefetch({
+  runId, roundId: 'r_2', packId,
+  requests: [
+    { queryClass: 'hotel.search', params: { packId, area: '난바', type: 'hotel', guests: 6 } },
+    { queryClass: 'poi.search',   params: { packId, area: '난바', category: 'all' } },
+  ],
+});
 const report = await runPrefetch(gateway, plan, { sink });
 ```
+
+`prefetchableClasses()`가 미리 받아도 되는 클래스 전체를 알려준다. 정책이 막은 요청은 `plan.skipped`에 사유와 함께 남는다 — 조용히 빠지지 않는다.
 
 미리 받지 **않는** 것이 계약의 핵심이다.
 

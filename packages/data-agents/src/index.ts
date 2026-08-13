@@ -24,7 +24,6 @@ export {
 } from './gateway.js';
 export { createFixtureProvider, type FixtureConfig } from './providers/fixture.js';
 export {
-  PREFETCH_CLASSES_BY_ROUND,
   extractCandidates,
   planPrefetch,
   prefetchSkipReason,
@@ -39,6 +38,7 @@ export {
   type PrefetchSkip,
   type PrefetchSkipReason,
   type PrefetchedCandidate,
+  type SearchRequest,
 } from './prefetch.js';
 export { buildUrl, httpJson, isoDurationToMinutes, rawRefOf, requireEnv } from './providers/http.js';
 export { amadeusFromEnv, createAmadeusProvider, type AmadeusConfig } from './providers/amadeus.js';
