@@ -1,67 +1,83 @@
 # Destination Pack 데이터
 
-목적지 하나 = 파일 하나. 코드 배포 없이 이 폴더에 JSON을 추가하면 신규 목적지가 열린다.
-스키마의 유일한 출처는 [`packages/contracts/src/pack.ts`](../packages/contracts/src/pack.ts)이며, 설계 근거는 [기획서 4장](../docs/travel-mediation-plan.md)이다.
+목적지 하나를 후보·근거·질문 활성화 정책으로 묶는 데이터 패키지다. 파일을 추가했다고 해당 도시가 출시 가능해지는 것은 아니며, 스키마·데이터 권리·실제 제공자 호출·유효기간을 모두 검증해야 한다.
 
-## 파일 규칙
+스키마의 현재 코드 출처는 [`packages/contracts/src/pack.ts`](../packages/contracts/src/pack.ts), 목표 제품 사양은 [종합 기획서](../docs/travel-mediation-plan.md), 공급자 경계는 [외부 데이터·검증 정책](../docs/provider-evidence-policy.md)이다.
 
+## MVP 목적지
+
+| 국가 | 도시 | 목표 `packId` | 현재 저장소 상태 |
+| --- | --- | --- | --- |
+| 한국 | 서울 | `kr-seoul` | 미작성 |
+| 한국 | 부산 | `kr-busan` | 미작성 |
+| 일본 | 도쿄 | `jp-tokyo` | 미작성 |
+| 일본 | 오사카 | `jp-osaka` | 초안 존재 |
+
+기존 한국 5곳·일본 6곳 목표는 폐기한다. 네 도시 중에서도 첫 종단 검증은 한국 1곳과 일본 1곳으로 시작할 수 있지만, 이는 MVP 최종 범위를 두 도시로 축소했다는 뜻이 아니다.
+
+## 필수 데이터 묶음
+
+1. 도시 ID, 표시명, 국가, 시간대, 중심 좌표, 권역
+2. 후보 공급자와 허용 기능 범위
+3. 계절·휴관·날씨 위험과 근거
+4. 대표 체류시간·이동 버퍼·권역 간 이동
+5. Survey v4의 도시별 초기 활성축 6개와 후보 분산
+6. 자체 생성 태그 사전과 공급자 ID 매핑
+7. 가격 범위·재고·예약의 검증 상태와 만료시각
+
+## Survey v4 연결
+
+Pack은 질문 문구를 직접 복제하지 않고 버전된 질문·선택지 ID와 신호 매핑을 참조한다. 네 도시 공통 5축은 설문 계약이 소유하고, 도시별 초기 6축은 Pack이 가진 후보 속성 분산을 근거로 활성화한다.
+
+- 후보 사이의 축 분산이 거의 없으면 비활성화한다.
+- 장기 프로필에 신뢰도 높은 값이 있으면 같은 질문을 생략한다.
+- 기본 6축 중 후보 순위를 더 크게 뒤집는 미확인 축으로 최대 2개를 교체할 수 있다.
+- 질문을 생략해도 축을 중립값으로 채우지 않고 `unknown`으로 보존한다.
+
+## 공급자 원칙
+
+```text
+후보·근거 수집 에이전트
+  → 허용된 ProviderAdapter
+  → 정규화된 CandidateRecord + EvidenceSnapshot
+  → 사실·제약 검증기
 ```
-packs/<packId>.json        packId = <국가코드 소문자>-<도시>   예: jp-osaka, kr-gangneung
-```
 
-MVP 목표는 11개다. 한국 5(`kr-gangneung`, `kr-busan`, `kr-jeju`, `kr-seoul`, `kr-yeosu`) + 일본 6(`jp-osaka`, `jp-tokyo`, `jp-kyoto`, `jp-fukuoka`, `jp-sapporo`, `jp-osaka-kyoto`).
+- 타베로그는 자동 수집 공급자에 넣지 않는다.
+- 한국 숙소 실시간 재고, 일본 대중교통, 한·일 식당 예약 슬롯처럼 공급자가 없는 기능은 빈 배열로 남긴다.
+- 메타데이터와 날짜별 재고를 같은 사실로 취급하지 않는다.
+- 공급자 응답에 없는 값은 보간하지 않고 `unknown`으로 둔다.
+- 제3자 원문 대신 공급자 ID, 자체 태그, 출처, 조회·만료시각을 저장한다.
 
-`jp-osaka.json`이 작성 예시다. 구조는 채워져 있고 확인이 필요한 값은 `verification`에 나열되어 있다.
+## `verification` 블록
 
-## 채우는 순서
-
-1. **구조 먼저** — `packId`, `displayName`, `country`, `center`, `areas`, `roundPreset`, `typicalDurations`, `recommendedNights`
-2. **제공자 조사** — `providers`. 각 API가 이 도시를 실제로 커버하는지 테스트 호출로 확인한다
-3. **현지 상수** — `config`. `timezone`은 IANA 문자열이어야 한다 (일정 실행 가능성 판정에 쓰인다)
-4. **시기 정보** — `peakSeasons`, `avoidDates`, `weatherProfile`. DateResolver가 날짜 후보를 점수화할 때 쓴다
-5. **교통패스** — `transitPasses`. 공개 API가 없어 직접 만들어야 하는 자산이다
-6. **가격 밴드** — `priceBands`. 실시간 가격을 못 얻는 지역(주로 한국 숙소)만
-7. **등급 판정** — `coverage`
-
-## 등급 판정 규칙
-
-`coverage: "A"`는 숙소 가격·로컬 미식·대중교통 상세가 **모두 현재 데이터로 검증 가능할 때만** 쓴다.
-가격이 밴드 추정이면 기본 `B`다. `verification`에 `status !== "verified"` 항목이 하나라도 남아 있으면 A로 올릴 수 없다.
-
-`maxAllowedCoverage()` / `assertCoverageIsHonest()`가 이 규칙을 코드로 강제한다. 등급을 낙관적으로 적으면 DateResolver와 Budget이 더 좁은 오차 구간을 쓰게 되어 예산이 틀어진다.
-
-## verification 블록 — 이 폴더에서 가장 중요한 필드
-
-확인하지 못한 값은 **지우지 말고 남긴다.** 사용자는 회의에 개입할 수 없으므로, 불확실성을 숨기면 여행지에서 사고가 난다.
+확인하지 못한 값은 지우지 않는다.
 
 ```json
-{ "field": "transitPasses[osaka-amazing-pass-1d].priceMinor",
+{
+  "field": "transitPasses[osaka-pass].priceMinor",
   "status": "unverified",
-  "source": "https://…",
-  "checkedAt": "2026-08-20",
-  "note": "공식 사이트 가격 확인" }
+  "source": "https://example.invalid",
+  "checkedAt": "2026-08-14T00:00:00+09:00",
+  "validUntil": null,
+  "note": "공식 판매 페이지에서 다시 확인 필요"
+}
 ```
 
-`status`를 `verified`로 바꿀 때는 `source`와 `checkedAt`을 함께 적는다. 출처 없는 `verified`는 검증이 아니다.
+`verified`는 출처와 조회시각만 있다는 뜻이 아니라 그 필드가 실제로 출처와 일치함을 확인했다는 뜻이다. 날짜별 가격·재고는 별도 유효기간이 필요하다.
 
-## 조사 시 주의
+## 정직한 등급과 출시 조건
 
-- **요금·쿼터·약관은 수시로 바뀐다.** 상업적 이용 조건을 반드시 확인하고 `verification`에 조회 시각을 남긴다.
-- 값을 추측해서 채우지 않는다. 모르면 `unverified`로 남기는 것이 비어 있는 것보다 낫다.
-- 스폰서드 항목이 카드덱에 들어가면 선호도 신호가 오염된다. 제휴 Pack은 반드시 명시하고 스코어링 가중치에 영향을 주지 않아야 한다 (기획서 17.2).
-- 카드덱(20장)은 이 폴더가 아니라 설문 담당이 만든다. 여기서는 `cardDeck` ID만 참조한다.
+- `A`: 목적지의 핵심 후보·경로·가격·재고가 실데이터로 검증되고 필수 공급자 공백이 없음
+- `B`: 메타데이터와 일부 경로는 검증됐지만 가격·재고에 추정 또는 사용자 확인이 남음
+- `C`: fixture·정적 초안 중심
 
-## Pack별로 반드시 조사할 것
+현재 `jp-osaka.json`은 작성 예시이므로 내용·제공자 키가 있다는 이유만으로 `A` 또는 출시 가능으로 주장하지 않는다. 네 Pack을 출시 상태로 표시하기 전 다음을 통과해야 한다.
 
-| Pack | 핵심 쟁점 |
-| --- | --- |
-| `kr-gangneung` | KTX vs 자차. 시내 대중교통이 약해 도착 후 이동이 문제 — 렌터카·택시 예산 반영 |
-| `kr-jeju` | 렌터카 사실상 필수. 면허 보유자 0명일 때의 대안, 주차 가능 여부 |
-| `kr-busan` / `kr-seoul` | 지하철 커버리지. 자차는 주차난 |
-| `kr-yeosu` | 시내 이동 취약, 택시 의존도 |
-| `jp-osaka` | 주유패스 손익분기. 포함 관광지가 R3 결과에 따라 가치가 달라진다 |
-| `jp-tokyo` | HND vs NRT 실효 총액 비교. 메트로/도에이/JR 혼재 |
-| `jp-kyoto` | 성수기(단풍·벚꽃) 숙소 조기 마감. 버스 정시성 낮음 |
-| `jp-sapporo` | 겨울 결항·적설기 도보 시간 1.3~1.5배 보정 |
-| `jp-fukuoka` | 공항↔시내 지하철 5분. 단거리 노선 |
-| `jp-osaka-kyoto` | 복합 팩. 도시간 이동(한큐/게이한/JR)과 분할 숙박 |
+1. 스키마 검사
+2. 출처·약관·캐시 정책 검사
+3. 실제 공급자 sandbox 호출
+4. 후보 정규화와 중복 병합 검사
+5. 날짜별 사실의 만료 처리
+6. Survey v4 축 분산·질문 매핑 검사
+7. 한 개 실제 여행 시나리오의 종단 검증
