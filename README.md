@@ -25,6 +25,7 @@
 - **날짜는 방장이 정하지 않습니다.** 설문으로 모은 가용 일정에서 DateResolver가 전원 가능한 구간을 계산하고, 항공료·요일·계절을 점수화해 자동 확정합니다.
 - **7개 라운드**(프레이밍 / 이동 / 숙소 / 액티비티 / 식사 / 동선 / 예산)를 순차 실행하며, 라운드마다 전용 심판 에이전트가 실제 API로 후보를 조달하고 판결합니다.
 - **총괄 심판(Chief)** 이 만족도·예산·제약 위반을 검사해 기준 미달이면 해당 라운드를 자동 재개최합니다.
+- 결과를 본 참여자는 **이의를 제기해 다시 토론시킬 수 있습니다.** 방 3회, 1인 1회. 회의록의 특정 발언·판결을 지목하면 심판이 그 지점을 다시 검증합니다.
 
 ## 핵심 설계
 
@@ -46,6 +47,7 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | [travel-mediation-plan.md](docs/travel-mediation-plan.md) | 종합 기획서 — 문제 정의, 설문 설계, 에이전트 아키텍처, 합의 알고리즘, 시스템 구성, 로드맵 |
 | [agent-architecture.md](docs/agent-architecture.md) | 에이전트 아키텍처와 제어 계약 — 제어 평면 분리, 심판 호출 순서 디스패치 프로토콜, Data Agent 캐시 계약 |
 | [development-and-deployment.md](docs/development-and-deployment.md) | 개발 환경과 배포 계획 — 저장소 구조, 스택 결정, 로컬 실행, 프론트–백엔드 계약, AWS EC2 배포 |
+| [objection-and-rerun.md](docs/objection-and-rerun.md) | 이의 제기와 재토론 — 횟수 상한, 심사·승인 규칙, 재실행 범위 산출, 늦은 하드 제약 등록 |
 | [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
 | [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
 | [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
@@ -85,7 +87,9 @@ docs/              설계 문서
 | DateResolver·전역 계획 그래프 | 완료 | 미착수 | 미착수 |
 | Orchestrator·Supervisor 제어 분리 · Data Agent 캐시 계약 | 완료 | 미착수 | 미착수 |
 | 프론트엔드 화면 흐름 (MOA MVP) | 완료 | 진행 | 미착수 |
-| API·Worker·Data Agent 구현 | 완료 | 미착수 | 미착수 |
+| API·Worker 골격 (방·설문·이의 접수, 잡 큐) | 완료 | 진행 | 미착수 |
+| Data Agent·심판·Supervisor 구현 | 완료 | 미착수 | 미착수 |
+| 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 미착수 |
 | Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
 | Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |
 | 예약 상태·재계획·사용자 결과 UX | 완료 | 미착수 | 미착수 |

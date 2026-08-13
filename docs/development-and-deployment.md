@@ -46,15 +46,15 @@
 
 | 경로 | 역할 | 비고 |
 | --- | --- | --- |
-| `apps/api` | API Gateway — 인증, 방·설문 CRUD, Pack 레지스트리, 잡 디스패치 | 미착수 |
-| `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 미착수 |
-| `packages/core` | 결정론 엔진 — LegalMove, 디스패치 검증, Maximin, DateResolver, Validation Pass | 미착수 |
+| `apps/api` | API Gateway — 방·설문·이의 접수, 잡 디스패치 | 골격 완료 (Fastify). 인증·DB 미착수 |
+| `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 골격 완료 (BullMQ). 에이전트 미착수 |
+| `packages/core` | 결정론 엔진 — Planning Graph STALE 전파, 이의 영향 산출, 디스패치 검증 | 부분 구현 |
 | `packages/agents` | LLM 에이전트 — Supervisor, 심판 7종, 페르소나, 문서 생성 | 미착수 |
 | `packages/data-agents` | Data Agent read-through + 제공자 어댑터 | 미착수 |
-| `packages/db` | 마이그레이션·리포지토리 | 미착수 |
+| `packages/db` | 마이그레이션·리포지토리 (현재 `apps/api/src/store.ts` 인메모리) | 미착수 |
 | `packs/` | Destination Pack 데이터 (JSON) | 미착수 |
 
-`apps/api`·`apps/worker`의 프레임워크는 기획서 10.1의 "NestJS 또는 FastAPI" 중 **NestJS(TypeScript)** 를 기본안으로 둔다. 문서의 모든 코드 예시가 TypeScript이고 프론트도 TypeScript이므로 언어를 하나로 유지한다.
+`apps/api`는 **Fastify(ESM)** 로 확정했다. 기획서 10.1은 "NestJS 또는 FastAPI"였고 앞선 초안은 NestJS를 기본안으로 두었으나, 실제 복잡도는 게이트웨이가 아니라 워커(Orchestrator·심판)에 있다. 게이트웨이는 인증·CRUD·잡 디스패치로 얇게 유지되므로, NestJS의 DI·모듈 규약이 주는 이점보다 데코레이터·CommonJS 설정 비용이 크다. 저장소 전체를 ESM + TypeScript 하나로 유지하는 편이 낫다. 모듈 경계가 실제로 부족해지면 그때 NestJS로 옮긴다.
 
 ---
 
@@ -136,6 +136,11 @@ npm run lint
 | --- | --- | --- | --- |
 | POST | `/api/trip-rooms` | `RoomSubmissionPayload` `{ schemaVersion: 1, destinationId }` | 방장은 목적지만 선택 (기획서 v1.2) |
 | POST | `/api/survey-responses` | `SurveySubmissionPayload` `{ schemaVersion: 2, destinationId, availability, hardConstraints, travelStyles, activityScores, mustDo, avoid }` | `credentials: 'include'` |
+| GET | `/api/rooms/:roomId/objections` | — | 이의 상한·잔여·이력 |
+| POST | `/api/rooms/:roomId/objections/preview` | `ObjectionRequest` | 재실행 영향 예측 |
+| POST | `/api/rooms/:roomId/objections` | `ObjectionRequest` | 이의 접수 → 재토론 |
+
+서버는 `@tm/contracts`의 zod 스키마로만 페이로드를 검증한다. 프론트와 서버가 같은 정의를 쓰는 것이 A안(모노레포 통합)의 목적이다. 이의 제기 정책은 [objection-and-rerun.md](objection-and-rerun.md)에 있다.
 
 ### 5.1 설문 스키마 v2 — 알레르기를 식이 제약에서 분리
 

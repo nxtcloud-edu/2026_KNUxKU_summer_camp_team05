@@ -10,3 +10,5 @@ export * from './data-agent.js';
 export * from './dispatch.js';
 export * from './candidates.js';
 export * from './verdict.js';
+export * from './survey.js';
+export * from './objection.js';
