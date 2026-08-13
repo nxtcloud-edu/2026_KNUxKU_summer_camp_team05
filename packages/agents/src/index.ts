@@ -35,3 +35,14 @@ export {
   type LlmResponse,
   type LlmUsage,
 } from './client.js';
+
+export {
+  buildPersonaCard,
+  buildPersonaFacts,
+  describePersona,
+  fallbackVoice,
+  type PersonaCardInput,
+  type PersonaFactsInput,
+} from './persona.js';
+
+export { createStubClient, type StubClient, type StubClientOptions } from './testing.js';

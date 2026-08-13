@@ -2,6 +2,7 @@ import type {
   DestinationPack,
   ObjectionRecord,
   ObjectionRequest,
+  PersonaCard,
   PlanningNodeId,
   RoundId,
   Verdict,
@@ -26,6 +27,8 @@ import type {
   MemberRow,
   PackRepository,
   PackRow,
+  PersonaRepository,
+  PersonaRow,
   MessageRepository,
   MessageRow,
   ObjectionRepository,
@@ -159,6 +162,72 @@ export function createPostgresRepositories(): Repositories {
           WHERE id = $1`,
         [roomId, budgetBaselinePerPersonKrw ?? null],
       );
+    },
+  };
+
+  interface PersonaDbRow {
+    id: string;
+    user_id: string;
+    card: PersonaCard;
+    style: string | null;
+    revision: number;
+    confirmed_at: Date | null;
+  }
+
+  const toPersona = (row: PersonaDbRow, roomId: string): PersonaRow => ({
+    personaId: row.id,
+    roomId,
+    userId: row.user_id,
+    card: row.card,
+    style: row.style,
+    revision: row.revision,
+    confirmedAt: row.confirmed_at?.toISOString() ?? null,
+  });
+
+  const personas: PersonaRepository = {
+    async save({ roomId, userId, card }) {
+      // 덮어쓰지 않고 revision을 올린다. 사용자가 확인한 카드가 무엇이었는지 남아야 한다.
+      const row = await queryOne<PersonaDbRow>(
+        `INSERT INTO personas (id, room_id, user_id, card, style, revision)
+         SELECT $1, $2, $3, $4::jsonb, $5, COALESCE(MAX(revision), 0) + 1
+           FROM personas WHERE room_id = $2 AND user_id = $3
+         RETURNING id, user_id, card, style, revision, confirmed_at`,
+        [nextId('ps'), roomId, userId, JSON.stringify(card), card.voice.style],
+      );
+      if (row === undefined) throw new Error('페르소나 저장 실패');
+      return toPersona(row, roomId);
+    },
+
+    async latest(roomId, userId) {
+      const row = await queryOne<PersonaDbRow>(
+        `SELECT id, user_id, card, style, revision, confirmed_at
+           FROM personas WHERE room_id = $1 AND user_id = $2
+          ORDER BY revision DESC LIMIT 1`,
+        [roomId, userId],
+      );
+      return row === undefined ? undefined : toPersona(row, roomId);
+    },
+
+    async listByRoom(roomId) {
+      // 사용자마다 최신 revision 하나씩.
+      const rows = await query<PersonaDbRow>(
+        `SELECT DISTINCT ON (user_id) id, user_id, card, style, revision, confirmed_at
+           FROM personas WHERE room_id = $1
+          ORDER BY user_id, revision DESC`,
+        [roomId],
+      );
+      return rows.map((row) => toPersona(row, roomId));
+    },
+
+    async confirm(roomId, userId) {
+      const row = await queryOne<PersonaDbRow>(
+        `UPDATE personas SET confirmed_at = now()
+          WHERE room_id = $1 AND user_id = $2
+            AND revision = (SELECT MAX(revision) FROM personas WHERE room_id = $1 AND user_id = $2)
+        RETURNING id, user_id, card, style, revision, confirmed_at`,
+        [roomId, userId],
+      );
+      return row === undefined ? undefined : toPersona(row, roomId);
     },
   };
 
@@ -1329,6 +1398,7 @@ export function createPostgresRepositories(): Repositories {
     kind: 'postgres',
     rooms,
     surveys,
+    personas,
     objections,
     runs,
     cache,

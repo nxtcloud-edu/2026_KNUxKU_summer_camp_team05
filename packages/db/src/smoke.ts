@@ -513,6 +513,57 @@ async function main(): Promise<void> {
     check('listByRoom → 2건', (await repos.objections.listByRoom(room.roomId)).length === 2);
     check('countedByRoom → rejected 제외', (await repos.objections.countedByRoom(room.roomId)).length === 1);
 
+    console.log('페르소나');
+    const card = {
+      facts: {
+        userId: 'u_smoke',
+        constraints: [{ label: '새우 알레르기', kind: 'allergy' as const, safety: true }],
+        budget: { perPersonKrw: 900_000, includesFlight: true },
+        pace: { value: 2, label: '느긋한 편' },
+        nights: { preferred: '2', flexible: true },
+        topInterests: [{ cardId: 'onsen', score: 9 }],
+        bottomInterests: [{ cardId: 'theme_park', score: 2 }],
+        mustDo: '온천',
+        avoid: '빡빡한 일정',
+        weights: { pace_relaxed: 0.4 },
+        notes: [],
+      },
+      voice: {
+        headline: '느긋한 온천 여행자',
+        summary: '서두르지 않는 일정을 원합니다.',
+        style: '조정형' as const,
+        styleReason: '합의를 우선합니다.',
+      },
+      generatedBy: 'gemini-2.5-flash-lite',
+      generatedAt: new Date().toISOString(),
+    };
+
+    const persona1 = await repos.personas.save({ roomId: room.roomId, userId: 'u_smoke', card });
+    check('페르소나 저장 → revision 1', persona1.revision === 1, persona1.revision);
+    check('협상 스타일이 컬럼으로 승격된다', persona1.style === '조정형', persona1.style);
+
+    const persona2 = await repos.personas.save({
+      roomId: room.roomId,
+      userId: 'u_smoke',
+      card: { ...card, voice: { ...card.voice, style: '주장형' as const } },
+    });
+    check('다시 저장하면 revision이 올라간다 (덮어쓰지 않는다)', persona2.revision === 2, persona2.revision);
+
+    const latestPersona = await repos.personas.latest(room.roomId, 'u_smoke');
+    check('latest는 최신 revision', latestPersona?.revision === 2, latestPersona?.revision);
+    check('카드 JSON이 왕복한다', latestPersona?.card.facts.constraints[0]?.label === '새우 알레르기');
+    check('알레르기 safety 플래그가 보존된다', latestPersona?.card.facts.constraints[0]?.safety === true);
+    check('확인 전에는 confirmedAt이 null', latestPersona?.confirmedAt === null);
+
+    const confirmedPersona = await repos.personas.confirm(room.roomId, 'u_smoke');
+    check(
+      '확인은 최신 revision에 찍힌다',
+      confirmedPersona?.revision === 2 && confirmedPersona.confirmedAt !== null,
+    );
+
+    const byRoom = await repos.personas.listByRoom(room.roomId);
+    check('방 목록은 사용자당 최신 1건', byRoom.length === 1 && byRoom[0]?.revision === 2, byRoom.length);
+
     console.log('제약');
     let duplicateBlocked = false;
     try {

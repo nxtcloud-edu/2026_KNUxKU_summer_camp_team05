@@ -4,6 +4,7 @@ import type {
   NodeStatus,
   ObjectionRecord,
   ObjectionRequest,
+  PersonaCard,
   PlanningNodeId,
   RefereeCategory,
   RoundId,
@@ -75,6 +76,33 @@ export interface MemberRepository {
   get(roomId: string, userId: string): Promise<MemberRow | undefined>;
   /** 페르소나 확인 게이트 통과 */
   confirmPersona(roomId: string, userId: string): Promise<MemberRow | undefined>;
+}
+
+export interface PersonaRow {
+  personaId: string;
+  roomId: string;
+  userId: string;
+  card: PersonaCard;
+  style: string | null;
+  revision: number;
+  confirmedAt: string | null;
+}
+
+/**
+ * 페르소나 카드 저장소.
+ *
+ * 카드는 **덮어쓰지 않고 revision을 올린다.** 사용자가 확인한 카드와 회의에서 쓴
+ * 카드가 달라지면 확인 게이트가 아무것도 보장하지 못하므로, 어느 revision을
+ * 확인했는지가 남아야 한다.
+ */
+export interface PersonaRepository {
+  /** 새 revision으로 저장한다. 같은 (방·사용자)의 이전 카드는 지우지 않는다 */
+  save(input: { roomId: string; userId: string; card: PersonaCard }): Promise<PersonaRow>;
+  /** 가장 최근 revision */
+  latest(roomId: string, userId: string): Promise<PersonaRow | undefined>;
+  listByRoom(roomId: string): Promise<PersonaRow[]>;
+  /** 확인 시각을 기록한다. 멤버 행의 personaConfirmedAt과 짝을 이룬다 */
+  confirm(roomId: string, userId: string): Promise<PersonaRow | undefined>;
 }
 
 export interface SurveyRow {
@@ -479,6 +507,7 @@ export interface Repositories {
   kind: 'postgres' | 'memory';
   rooms: RoomRepository;
   surveys: SurveyRepository;
+  personas: PersonaRepository;
   objections: ObjectionRepository;
   runs: RunRepository;
   cache: CacheRepository;

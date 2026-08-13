@@ -21,6 +21,8 @@ import type {
   MemberRow,
   PackRepository,
   PackRow,
+  PersonaRepository,
+  PersonaRow,
   MessageRepository,
   MessageRow,
   ObjectionRepository,
@@ -86,6 +88,46 @@ export function createMemoryRepositories(): Repositories {
         completedRounds,
         ...(budgetBaselinePerPersonKrw === undefined ? {} : { budgetBaselinePerPersonKrw }),
       });
+    },
+  };
+
+  /** (roomId, userId) → revision 오름차순 카드 목록. 덮어쓰지 않고 쌓는다 */
+  const personaRows = new Map<string, PersonaRow[]>();
+  const personaKey = (roomId: string, userId: string): string => `${roomId}:${userId}`;
+
+  const personaRepo: PersonaRepository = {
+    async save({ roomId, userId, card }) {
+      const key = personaKey(roomId, userId);
+      const history = personaRows.get(key) ?? [];
+      const row: PersonaRow = {
+        personaId: nextId('ps'),
+        roomId,
+        userId,
+        card,
+        style: card.voice.style,
+        revision: history.length + 1,
+        confirmedAt: null,
+      };
+      personaRows.set(key, [...history, row]);
+      return row;
+    },
+    async latest(roomId, userId) {
+      const history = personaRows.get(personaKey(roomId, userId)) ?? [];
+      return history[history.length - 1];
+    },
+    async listByRoom(roomId) {
+      return [...personaRows.entries()]
+        .filter(([key]) => key.startsWith(`${roomId}:`))
+        .flatMap(([, history]) => (history.length === 0 ? [] : [history[history.length - 1] as PersonaRow]));
+    },
+    async confirm(roomId, userId) {
+      const key = personaKey(roomId, userId);
+      const history = personaRows.get(key) ?? [];
+      const last = history[history.length - 1];
+      if (last === undefined) return undefined;
+      const updated: PersonaRow = { ...last, confirmedAt: new Date().toISOString() };
+      personaRows.set(key, [...history.slice(0, -1), updated]);
+      return updated;
     },
   };
 
@@ -594,6 +636,7 @@ export function createMemoryRepositories(): Repositories {
     kind: 'memory',
     rooms: roomRepo,
     surveys: surveyRepo,
+    personas: personaRepo,
     objections: objectionRepo,
     runs: runRepo,
     cache: cacheRepo,
