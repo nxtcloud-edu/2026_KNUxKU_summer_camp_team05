@@ -107,8 +107,11 @@ packages/db/              마이그레이션·리포지토리                  �
 3. ~~**`packages/data-agents`** — read-through 게이트웨이~~ **골격 완료.** 게이트웨이 1벌 + 정책 카탈로그 38개 `queryClass` + 인스턴스 8종 + 픽스처 제공자, 테스트 26개가 키 없이 돈다. 캐시 금지·fail-closed·인원수 키·advisory·호출자 화이트리스트가 전부 테스트로 고정되어 있다.
    - **남은 것은 실제 제공자 어댑터다** — API 하나당 파일 하나. `packages/data-agents/README.md`에 추가 방법이 있다. 게이트웨이는 손대지 않는다.
    - 웹검색·RAG도 이 경로다. `web.search`·`web.page`·`kb.retrieve`는 심판만 호출하고, RAG는 별도 저장소 없이 `pack_cache` 위에서 돈다. 세 클래스 모두 **advisory** — 후보를 만들거나 승격시키지 못한다 ([agent-architecture.md](agent-architecture.md) 6.9).
-4. **`packages/agents`** — Supervisor부터. 심판은 Flight → Transport → Accommodation 순서로 붙인다(문서가 이미 있는 순서).
-5. **Orchestrator 검증 규칙 완성** — 현재 V1·V2·V5·V7만 구현되어 있다. **V9(fail-closed 미검증 노드 승격 금지)** 는 안전과 직결되므로 Validation Pass와 함께 반드시 추가한다.
+4. ~~**Scoring Engine**~~ **완료.** `packages/core/src/scoring.ts` — `Sat(i,c)`, Maximin 3단 타이브레이크, 양보 크레딧, 발언 순서. `review.ts` — C1~C7 기계 판정과 수치 산출. 테스트 28개.
+   - 심판은 이 값을 받아 **서술만** 한다. 후보 선택과 수치 산출은 코드가 한다(INV-2).
+   - 남은 접점: 설문 응답 → `ParticipantWeights` 변환기. v2·v3 중 무엇을 쓸지가 T4의 4번 결정에 달려 있다.
+5. **`packages/agents`** — Supervisor부터. 심판은 Flight → Transport → Accommodation 순서로 붙인다(문서가 이미 있는 순서). 모델·키·프롬프트 설정은 [llm-runtime-config.md](llm-runtime-config.md).
+6. **Orchestrator 검증 규칙 완성** — 현재 V1·V2·V5·V7만 구현되어 있다. **V9(fail-closed 미검증 노드 승격 금지)** 는 안전과 직결되므로 Validation Pass와 함께 반드시 추가한다. Data Agent가 `VerificationUnavailableError`를 던지므로 붙일 재료는 있다.
 
 지켜야 할 것
 

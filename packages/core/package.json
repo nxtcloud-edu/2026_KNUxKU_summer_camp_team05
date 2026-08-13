@@ -2,7 +2,7 @@
   "name": "@tm/core",
   "version": "0.0.0",
   "private": true,
-  "description": "결정론 엔진 — Planning Graph, 이의 영향 산출, 라운드 매핑. LLM을 호출하지 않는다.",
+  "description": "결정론 엔진 — Scoring Engine, Planning Graph, 재심 기계 판정, 이의 영향 산출. LLM을 호출하지 않는다.",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -10,9 +10,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test src/scoring.test.ts src/review.test.ts"
   },
   "dependencies": {
     "@tm/contracts": "*"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "tsx": "4.19.1",
+    "typescript": "~5.8.3"
   }
 }
