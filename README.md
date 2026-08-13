@@ -25,6 +25,7 @@
 - **날짜는 방장이 정하지 않습니다.** 설문으로 모은 가용 일정에서 DateResolver가 전원 가능한 구간을 계산하고, 항공료·요일·계절을 점수화해 자동 확정합니다.
 - **7개 라운드**(프레이밍 / 이동 / 숙소 / 액티비티 / 식사 / 동선 / 예산)를 순차 실행하며, 라운드마다 전용 심판 에이전트가 실제 API로 후보를 조달하고 판결합니다.
 - **총괄 심판(Chief)** 이 만족도·예산·제약 위반을 검사해 기준 미달이면 해당 라운드를 자동 재개최합니다.
+- 결과를 본 참여자는 **이의를 제기해 다시 토론시킬 수 있습니다.** 방 3회, 1인 1회. 회의록의 특정 발언·판결을 지목하면 심판이 그 지점을 다시 검증합니다.
 
 ## 핵심 설계
 
@@ -45,6 +46,11 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | --- | --- |
 | [travel-mediation-plan.md](docs/travel-mediation-plan.md) | 종합 기획서 — 문제 정의, 설문 설계, 에이전트 아키텍처, 합의 알고리즘, 시스템 구성, 로드맵 |
 | [agent-architecture.md](docs/agent-architecture.md) | 에이전트 아키텍처와 제어 계약 — 제어 평면 분리, 심판 호출 순서 디스패치 프로토콜, Data Agent 캐시 계약 |
+| [development-and-deployment.md](docs/development-and-deployment.md) | 개발 환경과 배포 계획 — 저장소 구조, 스택 결정, 로컬 실행, 프론트–백엔드 계약, AWS EC2 배포 |
+| [objection-and-rerun.md](docs/objection-and-rerun.md) | 이의 제기와 재토론 — 횟수 상한, 심사·승인 규칙, 재실행 범위 산출, 늦은 하드 제약 등록 |
+| [team-assignments.md](docs/team-assignments.md) | 팀 역할과 작업 폴더 — 4개 트랙의 소유 범위, 첫 과제, 트랙 간 접점 |
+| [survey-v3-proposal.md](docs/survey-v3-proposal.md) | 설문 v3 제안 검토 — 4단계 중요도 척도, 기존 설계와의 충돌과 결정 |
+| [llm-runtime-config.md](docs/llm-runtime-config.md) | LLM 런타임 설정 — 모델 티어, 프롬프트 캐싱 제약, 원가 상한과 실측 항목 |
 | [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
 | [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
 | [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
@@ -56,6 +62,33 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 사용자가 중간에 개입할 수 없는 서비스는 "완벽한 계획"을 약속하면 안 됩니다. 대신 결과에 불만이 있으면 카테고리를 지정해 재개최(rerun)를 요청할 수 있습니다.
 
 
+## 로컬에서 실행하기
+
+Node 20.10+ (`.nvmrc` = 20.20.2), npm 10+, Docker Desktop이 필요합니다.
+
+```bash
+npm install        # 워크스페이스 전체 설치
+npm run local:up   # PostgreSQL 16 · Redis 7 (docker compose)
+npm run dev        # 프론트엔드 개발 서버 → http://localhost:5173
+npm run typecheck  # 워크스페이스 전체 검증
+```
+
+백엔드를 붙일 때는 DB를 먼저 준비하고 실행 검증을 통과시킨다.
+
+```bash
+export DATABASE_URL=postgres://tm:tm_local@localhost:5432/travel_mediation
+npm run migrate --workspace @tm/db   # 스키마 적용
+npm run smoke   --workspace @tm/db   # 리포지토리 왕복 검증
+```
+
+`VITE_API_BASE_URL`을 비워두면 폼 제출이 `sessionStorage`에 적재되어, 백엔드 없이도 전체 화면 흐름을 확인할 수 있습니다. 구조·스택·환경변수·배포는 [development-and-deployment.md](docs/development-and-deployment.md)를 참고하세요.
+
+```text
+apps/web/          MOA 프론트엔드 (React 19 + Vite 7 + Tailwind)
+packages/contracts/ 공용 타입·zod 스키마
+docs/              설계 문서
+```
+
 ## 현재 제공 상태
 
 이 저장소는 **설계 문서 단계**입니다. 문서에 적힌 `Must` 항목은 MVP에 포함할 범위이며, 구현·통합·운영 검증이 끝났다는 뜻이 아닙니다.
@@ -64,6 +97,13 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | --- | --- | --- | --- |
 | DateResolver·전역 계획 그래프 | 완료 | 미착수 | 미착수 |
 | Orchestrator·Supervisor 제어 분리 · Data Agent 캐시 계약 | 완료 | 미착수 | 미착수 |
+| 프론트엔드 화면 흐름 (MOA MVP) | 완료 | 진행 | 미착수 |
+| API·Worker 골격 (방·설문·이의 접수, 잡 큐) | 완료 | 진행 | API 경로 실행 검증 |
+| PostgreSQL 스키마·리포지토리 | 완료 | 진행 | 로컬 실행 검증 통과 |
+| Data Agent 게이트웨이·캐시 정책 | 완료 | 진행 | 테스트 26개 통과 |
+| 제공자 어댑터 (Amadeus·Rakuten·ODsay 등) | 완료 | 미착수 | 미착수 |
+| 심판·Supervisor·페르소나 구현 | 완료 | 미착수 | 미착수 |
+| 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 접수→큐→워커→기록 한 바퀴 검증 |
 | Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
 | Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |
 | 예약 상태·재계획·사용자 결과 UX | 완료 | 미착수 | 미착수 |

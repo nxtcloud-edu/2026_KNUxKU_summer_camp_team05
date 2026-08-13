@@ -628,3 +628,5 @@
   .moa-scene-controls { gap:10px; padding-inline:2px; }
   .moa-scene-controls>div button { min-width:34px; height:34px; border-radius:9px; }
 }
+/* 설문 카드 내 보조 설명. 알레르기처럼 안전과 직결된 항목의 처리 방식을 미리 알린다. */
+.moa-card-note { margin:-6px 0 14px; font-size:12px; line-height:1.55; color:#7b6f61; }

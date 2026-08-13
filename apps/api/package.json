@@ -1,0 +1,26 @@
+{
+  "name": "@tm/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "API Gateway — 방·설문·이의 제기 접수, 잡 디스패치",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/cors": "10.0.1",
+    "@tm/contracts": "*",
+    "@tm/core": "*",
+    "@tm/db": "*",
+    "bullmq": "5.28.1",
+    "fastify": "5.1.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "tsx": "4.19.1",
+    "typescript": "~5.8.3"
+  }
+}
