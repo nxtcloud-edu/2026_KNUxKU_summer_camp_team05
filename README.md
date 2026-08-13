@@ -45,6 +45,7 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | --- | --- |
 | [travel-mediation-plan.md](docs/travel-mediation-plan.md) | 종합 기획서 — 문제 정의, 설문 설계, 에이전트 아키텍처, 합의 알고리즘, 시스템 구성, 로드맵 |
 | [agent-architecture.md](docs/agent-architecture.md) | 에이전트 아키텍처와 제어 계약 — 제어 평면 분리, 심판 호출 순서 디스패치 프로토콜, Data Agent 캐시 계약 |
+| [development-and-deployment.md](docs/development-and-deployment.md) | 개발 환경과 배포 계획 — 저장소 구조, 스택 결정, 로컬 실행, 프론트–백엔드 계약, AWS EC2 배포 |
 | [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
 | [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
 | [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
@@ -56,6 +57,25 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 사용자가 중간에 개입할 수 없는 서비스는 "완벽한 계획"을 약속하면 안 됩니다. 대신 결과에 불만이 있으면 카테고리를 지정해 재개최(rerun)를 요청할 수 있습니다.
 
 
+## 로컬에서 실행하기
+
+Node 20.10+ (`.nvmrc` = 20.20.2), npm 10+, Docker Desktop이 필요합니다.
+
+```bash
+npm install        # 워크스페이스 전체 설치
+npm run local:up   # PostgreSQL 16 · Redis 7 (docker compose)
+npm run dev        # 프론트엔드 개발 서버 → http://localhost:5173
+npm run typecheck  # 워크스페이스 전체 검증
+```
+
+`VITE_API_BASE_URL`을 비워두면 폼 제출이 `sessionStorage`에 적재되어, 백엔드 없이도 전체 화면 흐름을 확인할 수 있습니다. 구조·스택·환경변수·배포는 [development-and-deployment.md](docs/development-and-deployment.md)를 참고하세요.
+
+```text
+apps/web/          MOA 프론트엔드 (React 19 + Vite 7 + Tailwind)
+packages/contracts/ 공용 타입·zod 스키마
+docs/              설계 문서
+```
+
 ## 현재 제공 상태
 
 이 저장소는 **설계 문서 단계**입니다. 문서에 적힌 `Must` 항목은 MVP에 포함할 범위이며, 구현·통합·운영 검증이 끝났다는 뜻이 아닙니다.
@@ -64,6 +84,8 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | --- | --- | --- | --- |
 | DateResolver·전역 계획 그래프 | 완료 | 미착수 | 미착수 |
 | Orchestrator·Supervisor 제어 분리 · Data Agent 캐시 계약 | 완료 | 미착수 | 미착수 |
+| 프론트엔드 화면 흐름 (MOA MVP) | 완료 | 진행 | 미착수 |
+| API·Worker·Data Agent 구현 | 완료 | 미착수 | 미착수 |
 | Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
 | Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |
 | 예약 상태·재계획·사용자 결과 UX | 완료 | 미착수 | 미착수 |
