@@ -9,7 +9,7 @@ import {
 } from '@phosphor-icons/react'
 import {
   bookingChecklistItems, budget, destinationPacks, itineraryDays, meetingRounds, osakaPreferences,
-  planReadiness, preferenceSliders, replayMessages, reservations, roomMembers, type DestinationPack,
+  planReadiness, preferenceSliders, reservations, roomMembers, type DestinationPack,
 } from './data'
 import {
   createEmptySurveyDraft, createRoomSubmissionPayload, createSurveySubmissionPayload,
@@ -23,6 +23,11 @@ import { Home } from './components/Home'
 import { DestinationRequestModal, LoginModal, MarketingModal, ProfileModal } from './components/PrototypeModals'
 import { SurveyShell } from './components/SurveyShell'
 import { copyText, downloadTripCalendar, shareTrip } from './exportUtils'
+import airplaneImage from '../assets/04_airplane.png'
+import suitcaseImage from '../assets/05_suitcase.png'
+import airplaneWindowImage from '../assets/06_airplane_window.png'
+import passportTicketImage from '../assets/07_passport_ticket.png'
+import glovesImage from '../assets/gloves.png'
 
 type Stage = 'landing' | 'home' | 'destinations' | 'create' | 'invite' | 'lobby' | 'availability' | 'hard' | 'sliders' | 'cards' | 'free' | 'persona-loading' | 'persona' | 'submitted' | 'date-conflict' | 'running' | 'complete' | 'result' | 'replay'
 type ResultTab = 'summary' | 'itinerary' | 'booking' | 'decisions' | 'fairness' | 'backup'
@@ -68,6 +73,18 @@ const stageNav: Record<Stage, string> = {
   landing:'소개', home:'내 여행', destinations:'여행지', create:'방 만들기', invite:'친구 초대', lobby:'여행 방', availability:'설문', hard:'설문', sliders:'설문', cards:'설문', free:'설문',
   'persona-loading':'내 대리인', persona:'내 대리인', submitted:'준비 상태', 'date-conflict':'날짜 조율', running:'대리인 회의', complete:'합의 완료', result:'우리 여행', replay:'회의 구경하기',
 }
+
+const replayEpisodes = [
+  { redCorner:'여유 · 휴식', blueCorner:'경험 · 방문', conversation:[{side:'red',speaker:'민지의 대리인',text:'일정을 너무 빡빡하게 잡고 싶지 않아요.'},{side:'blue',speaker:'서연의 대리인',text:'짧아도 오사카를 많이 보고 싶어요.'},{side:'red',speaker:'지훈의 대리인',text:'저도 하루에 여유가 있었으면 해요.'},{side:'blue',speaker:'예린의 대리인',text:'핵심 장소는 놓치고 싶지 않아요.'},{side:'red',speaker:'수아의 대리인',text:'자유시간은 꼭 남겨주세요.'}] as const, score:'3 : 2', factTitle:'하루 3곳 일정', facts:['평균 이동 54분','자유시간 90분','6명 모두 가능'], compromise:['이 정도 여유면 괜찮아요.','좋아요. 핵심 장소는 지켜주세요.'], resultTitle:'하루 3곳 일정', resultCopy:'핵심 장소는 챙기되\n매일 자유시간을 남기기로 했어요.', concession:'지훈이 방문 수에서 한 번 양보했어요.' },
+  { redCorner:'택시 · 편의', blueCorner:'패스 · 예산', conversation:[{side:'red',speaker:'민지의 대리인',text:'공항에서는 편하게 택시를 타고 싶어요.'},{side:'blue',speaker:'서연의 대리인',text:'교통비는 최대한 아끼고 싶어요.'},{side:'blue',speaker:'지훈의 대리인',text:'저도 예산을 아끼는 쪽이 좋아요.'},{side:'red',speaker:'예린의 대리인',text:'짐이 많아서 환승은 부담스러워요.'},{side:'blue',speaker:'수아의 대리인',text:'빠른 열차면 충분히 편할 것 같아요.'}] as const, score:'2 : 4', factTitle:'라피트 특급', facts:['택시보다 -20,000원 / 인','난바까지 38분','6명 좌석 가능'], compromise:['38분이면 충분히 편하네요.','시내에서는 패스를 쓰면 좋아요.'], resultTitle:'라피트 + 대중교통', resultCopy:'공항에서는 라피트를 타고\n시내에서는 대중교통을 쓰기로 했어요.', concession:'민재가 이동 편의에서 한 번 양보했어요.' },
+  { redCorner:'맛집 · 경험', blueCorner:'위치 · 이동', conversation:[{side:'red',speaker:'민지의 대리인',text:'맛집에 더 쓰고 싶어요.'},{side:'blue',speaker:'서연의 대리인',text:'이동시간은 줄이고 싶어요.'},{side:'blue',speaker:'지훈의 대리인',text:'저도 위치는 포기하기 어려워요.'},{side:'red',speaker:'예린의 대리인',text:'여행에서는 먹는 경험이 더 중요해요.'},{side:'blue',speaker:'수아의 대리인',text:'매일 멀리 이동하는 건 힘들 것 같아요.'}] as const, score:'2 : 3', factTitle:'난바역 3분 호텔', facts:['+28,000원 / 인','이동시간 -64분','6인 가능'], compromise:['7분이면 괜찮네요.\n대신 식사 예산은 유지했으면 좋겠어요.','좋아요.'], resultTitle:'난바역 3분 호텔', resultCopy:'숙소 위치를 우선하되\n식사 예산은 유지하기로 했어요.', concession:'민지가 이번 라운드에서 한 번 양보했어요.' },
+  { redCorner:'강한 경험', blueCorner:'느긋한 일정', conversation:[{side:'red',speaker:'민지의 대리인',text:'강한 액티비티가 하나는 꼭 필요해요.'},{side:'blue',speaker:'서연의 대리인',text:'하루 종일 줄 서는 건 피하고 싶어요.'},{side:'blue',speaker:'지훈의 대리인',text:'저도 이동이 너무 많으면 힘들어요.'},{side:'red',speaker:'예린의 대리인',text:'기억에 남을 경험은 하나 넣어요.'},{side:'blue',speaker:'수아의 대리인',text:'쉬는 시간도 충분히 필요해요.'}] as const, score:'2 : 3', factTitle:'스파월드 + 교토', facts:['대기시간 -110분','만족 조건 5명 충족','예산 범위 내'], compromise:['스파월드가 있으면 괜찮아요.','교토 일정도 여유 있게 가요.'], resultTitle:'스파월드 + 교토', resultCopy:'강한 경험 하나를 남기고\n나머지는 느긋하게 구성했어요.', concession:'민재가 유니버설에서 한 번 양보했어요.' },
+  { redCorner:'로컬 맛집', blueCorner:'검증 · 예약', conversation:[{side:'red',speaker:'민지의 대리인',text:'현지인 맛집을 꼭 가보고 싶어요.'},{side:'blue',speaker:'서연의 대리인',text:'6명이 바로 앉을 수 있어야 해요.'},{side:'blue',speaker:'지훈의 대리인',text:'웨이팅이 짧은 곳이면 좋겠어요.'},{side:'red',speaker:'예린의 대리인',text:'관광객 식당은 피하고 싶어요.'},{side:'blue',speaker:'수아의 대리인',text:'예약 가능한 곳이 안전해요.'}] as const, score:'3 : 2', factTitle:'이자카야 B', facts:['6인 예약 가능','1인 ₩32,000','숙소 도보 8분'], compromise:['예약할 수 있으면 좋아요.','도보 8분도 괜찮아요.'], resultTitle:'이자카야 B', resultCopy:'로컬 분위기는 살리고\n6인 예약 가능한 곳으로 정했어요.', concession:'서연이 식당 분위기에서 한 번 양보했어요.' },
+  { redCorner:'많이 보기', blueCorner:'이동 최소', conversation:[{side:'red',speaker:'민지의 대리인',text:'교토까지 하루에 같이 보고 싶어요.'},{side:'blue',speaker:'서연의 대리인',text:'숙소를 옮기는 일정은 싫어요.'},{side:'blue',speaker:'지훈의 대리인',text:'저도 짐을 다시 싸는 건 싫어요.'},{side:'red',speaker:'예린의 대리인',text:'온 김에 최대한 많이 보고 싶어요.'},{side:'blue',speaker:'수아의 대리인',text:'한 숙소에서 이동하는 게 편해요.'}] as const, score:'2 : 4', factTitle:'난바 고정 동선', facts:['숙소 이동 0회','짐 보관 가능','총 이동 -42분'], compromise:['숙소를 안 옮기면 괜찮아요.','자유시간도 남겨주세요.'], resultTitle:'난바 숙소 유지', resultCopy:'난바에서 오가는 동선으로 바꾸고\n자유시간을 한 번 더 넣었어요.', concession:'예린이 방문 수에서 한 번 양보했어요.' },
+  { redCorner:'경험 예산', blueCorner:'전체 절약', conversation:[{side:'red',speaker:'민지의 대리인',text:'먹고 즐기는 예산은 지키고 싶어요.'},{side:'blue',speaker:'서연의 대리인',text:'1인 80만원은 넘기기 어려워요.'},{side:'blue',speaker:'지훈의 대리인',text:'예비비도 조금은 남겨두고 싶어요.'},{side:'red',speaker:'예린의 대리인',text:'기억에 남는 경험은 포기하지 말아요.'},{side:'blue',speaker:'수아의 대리인',text:'공동경비까지 포함해서 계산해요.'}] as const, score:'3 : 3', factTitle:'1인 예상 ₩780,000', facts:['전원 최대 예산 충족','공동경비 포함','예비비 ₩40,000'], compromise:['식사 예산이 유지되면 좋아요.','80만원 아래면 괜찮아요.'], resultTitle:'1인 ₩780,000', resultCopy:'모두의 최대 예산 안에서\n식사와 경험 예산을 지켰어요.', concession:'전원이 한 가지씩 조정했어요.' },
+] as const
+
+const replaySceneDurations = [2400,4200,11000,7200,5600,5600,2800]
 
 function App() {
   const [stage, setStage] = useState<Stage>(initialStage)
@@ -161,53 +178,72 @@ function Header({ stage, home, room, profile }: { stage: Stage; home: () => void
 
 function LandingMeetingDemo() {
   const reduceMotion = useReducedMotion()
-  const [phase, setPhase] = useState(reduceMotion ? 6 : 0)
+  const [phase, setPhase] = useState(reduceMotion ? 7 : 0)
+  const [compact, setCompact] = useState(false)
 
   useEffect(() => {
-    if (reduceMotion) { setPhase(6); return }
-    const durations = [650, 900, 900, 900, 1000, 1250, 2200, 400]
+    const media = window.matchMedia('(max-width: 620px)')
+    const update = () => setCompact(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    if (reduceMotion) { setPhase(7); return }
+    const durations = [1000, 650, 700, 700, 850, 950, 2200, 600]
     const timer = window.setTimeout(() => setPhase((current) => current >= 7 ? 0 : current + 1), durations[phase])
     return () => window.clearTimeout(timer)
   }, [phase, reduceMotion])
 
-  const messageMotion = (visibleAt: number, side: 'left' | 'right') => ({
-    opacity: phase >= visibleAt && phase < 7 ? phase === 6 ? .66 : 1 : 0,
-    x: phase === 4 ? (side === 'left' ? -14 : 14) : phase >= 5 ? (side === 'left' ? 3 : -3) : 0,
-    y: phase >= visibleAt ? 0 : 9,
-    scale: phase >= visibleAt && phase < 7 ? 1 : .98,
-  })
-
-  const stateKey = phase === 4 ? 'conflict' : phase === 5 ? 'fact' : phase === 6 ? 'agreement' : 'working'
-
-  return <div className="moa-phone-stage" aria-label="모아 대리인 회의 예시">
-    <motion.div className="moa-phone" initial={reduceMotion ? false : { opacity: 0, y: 24 }} animate={{ opacity: phase === 7 ? .94 : 1, y: phase === 0 ? 8 : 0 }} transition={{ duration: .45, ease: [0.22, 1, 0.36, 1] }}>
-      <div className="moa-phone-bezel">
-        <div className="moa-phone-island" />
-        <div className="moa-phone-screen">
-          <header className="moa-phone-header"><button aria-label="뒤로 가기"><ArrowLeft /></button><div><strong>오사카 3박 4일</strong><span>대리인 회의</span></div><button aria-label="회의 정보"><Info /></button></header>
-          <div className="moa-phone-round"><div><span>ROUND 02</span><strong>숙소 라운드</strong></div><span className="moa-phone-live"><i /> 진행 중</span></div>
-          <div className="moa-phone-members"><div><span>민</span><p><strong>민지</strong><small>맛집 우선</small></p></div><div><span>서</span><p><strong>서연</strong><small>위치 우선</small></p></div><div><span>지</span><p><strong>지훈</strong><small>위치 우선</small></p></div></div>
-          <div className="moa-phone-thread"><p><span>민지의 대리인</span>숙소보다 맛집에 더 쓰고 싶어요.</p><p><span>서연의 대리인</span>근데 숙소가 너무 멀잖아요.</p><p><span>지훈의 대리인</span>저도 위치는 포기 못 해요.</p></div>
-          <div className="moa-phone-state">
-            <AnimatePresence mode="wait" initial={false}>
-              {stateKey === 'working' && <motion.div key="working" className="moa-phone-working" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><SpinnerGap /><span>조건을 비교하고 있어요</span></motion.div>}
-              {stateKey === 'conflict' && <motion.div key="conflict" className="moa-phone-conflict" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: .35 }}><span>의견이 갈렸어요</span><strong>2 <i>:</i> 1</strong><small>위치 우선 · 맛집 우선</small></motion.div>}
-              {stateKey === 'fact' && <motion.div key="fact" className="moa-phone-fact" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: .45, ease: 'easeOut' }}><header><Gavel /><div><small>MOA</small><strong>잠깐, 조건을 확인할게요.</strong><span>실제 조건을 비교했어요.</span></div></header><dl><div><dt>H-03 선택 시</dt><dd>₩28,000 / 인</dd></div><div><dt>이동시간</dt><dd>64분</dd></div></dl></motion.div>}
-              {stateKey === 'agreement' && <motion.div key="agreement" className="moa-phone-agreement" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .45, ease: 'easeOut' }}><CheckCircle weight="fill" /><span><strong>합의 완료</strong><small>모두의 조건을 만족하는 안으로 정리했어요.</small></span></motion.div>}
-            </AnimatePresence>
-          </div>
+  const reveal = (at:number) => reduceMotion || phase >= at
+  const resetting = !reduceMotion && phase === 7
+  const redBubbleVisible = reveal(2) && !resetting && (!compact || phase < 3)
+  const blueBubbleVisible = reveal(3) && !resetting && (!compact || phase < 5)
+  const settled = reveal(5)
+  return <div className="moa-fight-stage" aria-label="대리인들이 숙소 조건을 조율하는 예시">
+    <img className="moa-fight-airplane" src={airplaneImage} alt="" aria-hidden="true" />
+    <img className="moa-fight-suitcase" src={suitcaseImage} alt="" aria-hidden="true" />
+    <img className="moa-fight-passport" src={passportTicketImage} alt="" aria-hidden="true" />
+    <motion.aside className="moa-pop-bubble red" initial={false} animate={{ opacity:redBubbleVisible ? 1 : 0, x:redBubbleVisible ? (settled ? 12 : 0) : 36, y:redBubbleVisible ? (settled ? 7 : 0) : 15, scale:redBubbleVisible ? 1 : .95 }} transition={{ duration:.48, ease:[.22,1,.36,1] }}><span>민지의 대리인</span><strong>맛집에 더 쓰고 싶어요.</strong></motion.aside>
+    <motion.aside className="moa-pop-bubble blue" initial={false} animate={{ opacity:blueBubbleVisible ? 1 : 0, x:blueBubbleVisible ? (settled ? -12 : 0) : -36, y:blueBubbleVisible ? (settled ? 7 : 0) : 15, scale:blueBubbleVisible ? 1 : .95 }} transition={{ duration:.48, ease:[.22,1,.36,1] }}><span>서연의 대리인</span><strong>이동시간은 줄이고 싶어요.</strong></motion.aside>
+    <motion.div className="moa-fight-phone" initial={reduceMotion ? false : { opacity:0, y:40, rotate:3, scale:.96 }} animate={{ opacity:1, y:0, rotate:2.25, scale:1 }} transition={{ duration:.82, delay:.5, ease:[.22,1,.36,1] }}>
+      <div className="moa-fight-bezel">
+        <span className="moa-fight-island" />
+        <div className="moa-fight-screen">
+          <motion.div className="moa-fight-content" initial={false} animate={{ opacity:resetting ? 0 : 1 }} transition={{ duration:.48 }}>
+          <header className="moa-fight-header"><motion.span initial={false} animate={{ opacity:reveal(1) && !resetting ? 1 : 0, y:reveal(1) && !resetting ? 0 : -8 }} transition={{ duration:.45 }}>ROUND 2 · 숙소</motion.span><strong>대리인 회의</strong></header>
+          <section className="moa-fight-scoreboard">
+            <div className="red"><small>맛집·경험</small><strong>민지의 대리인</strong></div>
+            <motion.b initial={false} animate={{ opacity:reveal(4) && !resetting ? (reveal(6) ? .42 : 1) : 0, scale:reveal(4) && !resetting ? 1 : .9 }} transition={{ duration:.38 }}>VS</motion.b>
+            <div className="blue"><small>위치·이동</small><strong>서연의 대리인</strong></div>
+          </section>
+          <motion.div className="moa-fight-vote" initial={false} animate={{ opacity:reveal(4) && !resetting ? (reveal(6) ? .48 : 1) : 0, y:reveal(4) && !resetting ? 0 : 6 }}><motion.span initial={false} animate={{opacity:reveal(4) ? 1 : 0,y:reveal(4) ? 0 : 4}} transition={{duration:.28}}>2</motion.span><motion.i initial={false} animate={{opacity:reveal(4) ? 1 : 0}} transition={{duration:.25,delay:.1}}>:</motion.i><motion.span initial={false} animate={{opacity:reveal(4) ? 1 : 0,y:reveal(4) ? 0 : 4}} transition={{duration:.28,delay:.2}}>3</motion.span></motion.div>
+          <section className="moa-fight-ring">
+            <i className="rope rope-one" /><i className="rope rope-two" /><i className="rope rope-three" />
+            <motion.div className="moa-fighter red" initial={false} animate={{ opacity:reveal(1) && !resetting ? 1 : 0, x:reveal(1) && !resetting ? (reveal(2) && !settled ? 3 : 0) : -18, y:reveal(1) && !resetting ? [0,-2,0] : 4, rotate:reveal(2) && !settled ? 1.5 : 0 }} transition={{ opacity:{duration:.48}, x:{duration:.5,ease:'easeOut'}, rotate:{duration:.45}, y:{duration:2.8,repeat:Infinity,ease:'easeInOut'} }}><img src="/assets/landing/agent-red.png" alt="빨간 여행 대리인" /></motion.div>
+            <motion.div className="moa-fighter referee" initial={false} animate={{ opacity:reveal(4) && !resetting ? 1 : 0, y:reveal(5) ? [-2,-5,-2] : 3, scale:reveal(5) ? 1.04 : 1 }} transition={{ opacity:{duration:.48}, scale:{duration:.5,ease:'easeOut'}, y:{duration:2.8,repeat:Infinity,ease:'easeInOut'} }}><img src="/assets/landing/referee.png" alt="팩트체크 심판" /></motion.div>
+            <motion.div className="moa-fighter blue" initial={false} animate={{ opacity:reveal(3) && !resetting ? 1 : 0, x:reveal(3) && !resetting ? (!settled ? -3 : 0) : 18, y:reveal(3) && !resetting ? [0,-2,0] : 4, rotate:reveal(3) && !settled ? -1.5 : 0 }} transition={{ opacity:{duration:.48}, x:{duration:.5,ease:'easeOut'}, rotate:{duration:.45}, y:{duration:3.1,repeat:Infinity,ease:'easeInOut'} }}><img src="/assets/landing/agent-blue.png" alt="파란 여행 대리인" /></motion.div>
+          </section>
+          <motion.section className="moa-fight-fact" initial={false} animate={{ opacity:reveal(5) && !resetting ? 1 : 0, y:reveal(5) && !resetting ? 0 : 16 }} transition={{ duration:.48, ease:'easeOut' }}><header><Gavel weight="fill" /><strong>심판 팩트체크</strong></header><div><b>숙소 A</b><span>+28,000원 / 인</span><span>이동시간 -64분</span></div></motion.section>
+          <motion.section className="moa-fight-result" initial={false} animate={{ opacity:reveal(6) && !resetting ? 1 : 0, y:reveal(6) && !resetting ? 0 : 14, scale:reveal(6) && !resetting ? 1 : .98 }} transition={{ duration:.52, ease:'easeOut' }}><CheckCircle weight="fill" /><div><small>합의 완료</small><strong>숙소 A 선택</strong><span>식사 예산은 유지하기로 했어요.</span></div></motion.section>
+          <motion.div className="moa-fight-rounds" initial={false} animate={{opacity:reveal(4) && !resetting ? 1 : 0,y:reveal(4) && !resetting ? 0 : 5}} transition={{duration:.42}}>{['R0','R1','R2','R3'].map((round)=><span key={round} className={round==='R2'&&reveal(4)?'active':''}>{round}</span>)}</motion.div>
+          </motion.div>
         </div>
       </div>
     </motion.div>
-    <motion.article className="moa-float-message minji" initial={false} animate={messageMotion(1, 'left')} transition={{ duration: .4, ease: 'easeOut' }}><header><span>민</span><strong>민지의 대리인</strong></header><p>“숙소보다 맛집에 더 쓰고 싶어요.”</p></motion.article>
-    <motion.article className="moa-float-message seoyeon" initial={false} animate={messageMotion(2, 'right')} transition={{ duration: .4, ease: 'easeOut' }}><header><span>서</span><strong>서연의 대리인</strong></header><p>“근데 숙소가 너무 멀잖아요.”</p></motion.article>
-    <motion.article className="moa-float-message jihoon" initial={false} animate={messageMotion(3, 'right')} transition={{ duration: .4, ease: 'easeOut' }}><header><span>지</span><strong>지훈의 대리인</strong></header><p>“저도 위치는 포기 못 해요.”</p></motion.article>
   </div>
 }
 
 function Landing({ create, join, intro, how, login }: { create:()=>void; join:()=>void; intro:()=>void; how:()=>void; login:()=>void }) {
-  const steps = ['취향 입력', '대리인 회의', '결정 근거 확인', '여행 일정 완성']
-  return <section className="moa-landing"><nav><Logo /><div className="moa-landing-menu"><button onClick={intro}>서비스 소개</button><button onClick={how}>사용 방법</button><button onClick={join}>여행 방 참여</button></div><div><button className="moa-link" onClick={login}>로그인</button><button className="moa-button mini" onClick={create}>여행 방 만들기 <ArrowRight /></button></div></nav><div className="moa-hero"><div className="moa-hero-copy"><span className="moa-hero-eyebrow">AI 여행 대리인과 함께</span><h1>싸울 건 싸우고,<br /><em>여행은 같이.</em></h1><p>서로 다른 취향은 그대로.<br />대리인들이 대신 조율해드려요.</p><div className="moa-actions"><button className="moa-button big" onClick={create}>여행 방 만들기 <ArrowRight /></button></div><div className="moa-social-proof"><div>{roomMembers.slice(0,5).map((m) => <i key={m.name} style={{ background: m.color }}>{m.initial}</i>)}</div><p><strong>먼저 여행을 만든 팀 2,400+</strong><span>취향은 달라도, 여행은 같이.</span></p></div></div><LandingMeetingDemo /></div><div className="moa-process" aria-label="모아 이용 과정">{steps.map((step, index) => <div key={step}><span>{String(index + 1).padStart(2, '0')}</span><strong>{step}</strong>{index < steps.length - 1 && <ArrowRight />}</div>)}</div></section>
+  const scrollToExample = () => document.getElementById('landing-example')?.scrollIntoView({ behavior:'smooth' })
+  const steps = [{title:'취향 남기기',copy:'각자 원하는 여행을 알려주세요.'},{title:'대리인 회의',copy:'서로 다른 조건을 대신 조율해요.'},{title:'여행 확정',copy:'모두가 납득할 결과만 남겨요.'}]
+  return <section className="moa-landing-v2">
+    <nav className="moa-landing-nav"><Logo /><div><button onClick={intro}>서비스 소개</button><button onClick={how}>이용 방법</button><button onClick={scrollToExample}>여행 예시</button></div><aside><button className="login" onClick={login}>로그인</button><button className="start" onClick={create}>여행 시작하기 <ArrowRight /></button></aside></nav>
+    <div className="moa-landing-hero"><motion.div className="moa-landing-copy" initial={false} animate={{ opacity:1 }}><motion.span initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{duration:.45}}>✈ 여행 취향 조율 서비스</motion.span><h1><motion.span initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.62,delay:.08,ease:'easeOut'}}>여행 가서 싸우지 마.</motion.span><motion.em initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.66,delay:.24,ease:'easeOut'}}>대신 싸워드림.</motion.em></h1><motion.p initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.38}}>각자 원하는 건 달라도 괜찮아요.<br />취향만 남기면 대리인들이 대신 붙고, 합의까지 해드려요.</motion.p><motion.div initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{duration:.5,delay:.55}}><button className="primary" onClick={create}>여행 방 만들기 <ArrowRight /></button><button className="secondary" onClick={how}>어떻게 싸우나요? <Play weight="fill" /></button></motion.div></motion.div><LandingMeetingDemo /></div>
+    <section className="moa-landing-steps" aria-label="모아 이용 과정">{steps.map((step,index)=><article key={step.title}><span>0{index+1}</span><div><strong>{step.title}</strong><p>{step.copy}</p></div>{index<steps.length-1&&<ArrowRight />}</article>)}</section>
+    <section className="moa-landing-editorial" id="landing-example"><div><span>ONE TRIP, ONE DECISION</span><h2>여섯 명이 가도,<br />결정은 하나면 되니까.</h2><p>누가 이겼는지만 보여주지 않아요.<br />어떤 조건을 비교했고, 어디서 양보했는지까지 남겨요.</p><button onClick={join}>여행 예시 열기 <ArrowRight /></button></div><div className="moa-editorial-demo"><img src={airplaneWindowImage} alt="비행기 창밖으로 보이는 여행 풍경" /><section><header><span>MEETING REPLAY · R2</span><strong>숙소는 왜 A가 됐을까?</strong></header><blockquote>“7분이면 괜찮아요.<br />대신 식사 예산은 지켜주세요.”</blockquote><div><span>심판 확인</span><b>18만원 절약 vs 이동시간 단축</b></div><footer><CheckCircle weight="fill" /> 숙소 A로 합의했어요.</footer></section></div></section>
+  </section>
 }
 
 function DestinationPicker({ selected, select, next, request }: { selected:DestinationPack; select:(d:DestinationPack)=>void; next:()=>void; request:()=>void }) {
@@ -390,41 +426,111 @@ function FairnessTab() { return <div className="moa-result-content"><div classNa
 function BackupTab() { return <div className="moa-result-content"><div className="moa-section-heading"><span className="moa-kicker">PLAN B</span><h2>계획대로 안 된다면?</h2><p>비가 오거나 예약에 실패해도 바로 바꿀 수 있게 준비했어요.</p></div><div className="moa-planb-grid"><PlanB icon={Warning} title="비 오는 날" from="오사카성 야외 일정" to="나카노시마 미술관" note="이동 시간 +8분 · 비용 +₩12,000" /><PlanB icon={ForkKnife} title="식당 예약 실패" from="이자카야 B" to="후보 2위 이자카야 C" note="도보 4분 거리 · 예산 동일" /></div><div className="moa-section-heading issue"><span className="moa-kicker">STILL TO CHECK</span><h2>아직 확인할 게 있어요</h2></div><div className="moa-issues"><article><Warning weight="fill" /><div><strong>이자카야 B</strong><p>6인 예약이 되는지 직접 확인해야 해요.</p></div><em>확인 필요</em></article><article><Info weight="fill" /><div><strong>가격이 달라질 수 있어요</strong><p>항공과 숙소는 예약할 때 가격이 바뀔 수 있어요.</p></div><em>참고</em></article></div></div> }
 
 function MeetingReplay({ back }: { back: () => void }) {
+  const reduceMotion = useReducedMotion()
   const [round,setRound]=useState(2)
-  const [filter,setFilter]=useState('전체')
-  const [expanded,setExpanded]=useState(false)
-  const [playing,setPlaying]=useState(true)
-  const [speed,setSpeed]=useState<1|1.5|2>(1)
-  const matches = (message: typeof replayMessages[number]) => filter==='전체'||filter==='내 대리인'&&(message.speaker.includes('민지')||['conflict','fact','verdict','chief'].includes(message.type))||filter==='다른 대리인'&&message.type==='agent'&&!message.speaker.includes('민지')||filter==='심판'&&['fact','verdict'].includes(message.type)||filter==='Chief'&&message.type==='chief'
-  const filtered = replayMessages.filter((message) => (expanded || message.round===round) && matches(message))
-  const [revealedCount,setRevealedCount]=useState(1)
-  useEffect(() => { setRevealedCount(filtered.length ? 1 : 0); setPlaying(true) }, [round,filter,expanded,filtered.length])
+  const [scene,setScene]=useState(0)
+  const [playing,setPlaying]=useState(!reduceMotion)
+  const [speed,setSpeed]=useState<1|2>(1)
+  const [direction,setDirection]=useState(1)
+
+  useEffect(() => { if (reduceMotion) setPlaying(false) }, [reduceMotion])
   useEffect(() => {
-    if (!playing || revealedCount >= filtered.length) return
-    const timer = window.setTimeout(() => setRevealedCount((count) => count + 1), 900 / speed)
+    if (!playing) return
+    const timer = window.setTimeout(() => {
+      setDirection(1)
+      if (scene === 6) {
+        setRound((current) => (current + 1) % meetingRounds.length)
+        setScene(0)
+      } else setScene((current) => current + 1)
+    }, replaySceneDurations[scene] / speed)
     return () => window.clearTimeout(timer)
-  }, [playing,revealedCount,filtered.length,speed])
-  const cycleSpeed = () => setSpeed((current) => current === 1 ? 1.5 : current === 1.5 ? 2 : 1)
-  const visible = filtered.slice(0,revealedCount)
-  return <Page><div className="moa-replay-page"><button className="moa-back" onClick={back}><ArrowLeft /> 우리 여행으로 돌아가기</button><div className="moa-replay-head"><div><span className="moa-kicker">MEETING REPLAY</span><h1>우리 대리인들은 어떻게 합의했을까?</h1><p>끝난 회의를 라운드별로 다시 볼 수 있어요.</p></div></div><p className="moa-replay-note"><Info weight="fill" /> 이미 끝난 대리인 중재를 다시 보고 있어요.</p><div className="moa-round-nav">{meetingRounds.map((item,index) => <button className={round===index&&!expanded?'active':''} onClick={() => {setRound(index);setExpanded(false)}} key={item.code}><span>{item.code}</span>{item.name}</button>)}</div><div className="moa-replay-controls"><div>{['전체','내 대리인','다른 대리인','심판','Chief'].map((item) => <button className={filter===item?'active':''} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div><div><button onClick={() => setExpanded(!expanded)}>{expanded?'현재 라운드':'전체 보기'}</button><button onClick={cycleSpeed} aria-label="재생 속도 변경">{speed}x</button><button onClick={() => revealedCount >= filtered.length ? setRevealedCount(1) : setPlaying(!playing)}>{revealedCount >= filtered.length ? <><Play weight="fill"/>다시 재생</> : playing ? <><Pause weight="fill"/>일시정지</> : <><Play weight="fill"/>재생</>}</button></div></div><div className="moa-replay-progress"><span style={{width:`${filtered.length ? revealedCount/filtered.length*100 : 0}%`}} /></div><div className="moa-replay-layout"><section className="moa-message-stream" aria-label="대리인 회의 기록"><AnimatePresence>{visible.length ? visible.map((message,index) => <AgentMessage key={`${message.round}-${message.speaker}-${index}`} message={message} delay={0} sequence={index} />) : <div className="moa-empty"><Info />이 필터에 맞는 기록은 없어요.</div>}</AnimatePresence></section></div></div></Page>
+  }, [playing,scene,speed])
+
+  const changeRound = (nextRound:number) => {
+    setRound(nextRound)
+    setScene(0)
+    setDirection(1)
+    setPlaying(!reduceMotion)
+  }
+  const nextScene = () => {
+    setDirection(1)
+    if (scene === 6) changeRound((round + 1) % meetingRounds.length)
+    else setScene((current) => current + 1)
+  }
+  const previousScene = () => {
+    setDirection(-1)
+    setScene((current) => Math.max(0,current - 1))
+  }
+  const episode = replayEpisodes[round]
+  const nextRound = meetingRounds[(round + 1) % meetingRounds.length]
+  const transitionDuration = reduceMotion ? .01 : .48
+
+  return <Page><main className="moa-scene-replay">
+    <header className="moa-scene-topbar">
+      <button className="moa-scene-back" onClick={back} aria-label="우리 여행으로 돌아가기"><ArrowLeft /></button>
+      <div><span>MEETING REPLAY</span><strong>{scene === 0 ? '회의를 다시 보는 중' : `${meetingRounds[round].code} · ${meetingRounds[round].name}`}</strong></div>
+      <label><span>라운드 선택</span><select value={round} onChange={(event)=>changeRound(Number(event.target.value))}>{meetingRounds.map((item,index)=><option value={index} key={item.code}>{item.code} · {item.name}</option>)}</select></label>
+    </header>
+
+    <section className={`moa-scene-stage scene-${scene}`} aria-live="polite" aria-label={`${meetingRounds[round].code} ${meetingRounds[round].name} 재생 장면 ${scene + 1}`}>
+      <motion.div className="moa-scene-round-marker" animate={scene===0?{top:'50%',left:'50%',x:'-50%',y:'-58%',scale:1,opacity:1}:{top:18,left:20,x:0,y:0,scale:.56,opacity:.86}} transition={{duration:reduceMotion?.01:.7,ease:[.22,1,.36,1]}}><span>ROUND {round}</span><strong>{meetingRounds[round].name}</strong></motion.div>
+      <button className="moa-scene-tap previous" onClick={previousScene} aria-label="이전 장면" />
+      <button className="moa-scene-tap next" onClick={nextScene} aria-label="다음 장면" />
+      <AnimatePresence mode="wait" custom={direction}>
+        <motion.div className="moa-scene-content" key={`${round}-${scene}`} custom={direction} variants={{enter:(value:number)=>({opacity:0,x:value*18}),center:{opacity:1,x:0},exit:(value:number)=>({opacity:0,x:value*-18})}} initial="enter" animate="center" exit="exit" transition={{duration:transitionDuration,ease:'easeOut'}}>
+          <ReplayScene scene={scene} episode={episode} nextRound={nextRound} reduceMotion={Boolean(reduceMotion)} speed={speed} />
+        </motion.div>
+      </AnimatePresence>
+    </section>
+
+    <footer className="moa-scene-controls">
+      <nav aria-label="장면 선택">{replaySceneDurations.map((_,index)=><button className={scene===index?'active':''} onClick={()=>{setDirection(index>scene?1:-1);setScene(index)}} aria-label={`${index + 1}번 장면`} key={index}><span /></button>)}</nav>
+      <div><button onClick={()=>setPlaying((current)=>!current)} aria-label={playing?'일시정지':'재생'}>{playing?<Pause weight="fill"/>:<Play weight="fill"/>}</button><button onClick={()=>setSpeed((current)=>current===1?2:1)} aria-label="재생 속도 변경">{speed}x</button><button onClick={nextScene} aria-label="다음 장면"><ArrowRight /></button></div>
+    </footer>
+  </main></Page>
 }
 
-function AgentMessage({ message, delay, sequence }: { message: typeof replayMessages[number]; delay: number; sequence: number }) {
-  const timestamp = `20:${String(12 + message.round * 5 + sequence).padStart(2,'0')}`
-  if (message.type === 'conflict') {
-    const positions = message.round === 2
-      ? [['맛집 · 경험 우선','민지 · 예린'],['숙소 위치 우선','서연 · 지훈 · 수아']]
-      : [['경험 예산 우선','민지 · 예린'],['숙소 품질 우선','서연 · 지훈']]
-    return <motion.section className="moa-chat-conflict" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay}}><div className="moa-chat-separator"><span /><strong>의견이 갈렸어요 · {message.round===2?'2 : 3':'2 : 2'}</strong><span /></div><div className="moa-chat-positions"><div><strong>{positions[0][0]}</strong><span>{positions[0][1]}</span></div><div><strong>{positions[1][0]}</strong><span>{positions[1][1]}</span></div></div></motion.section>
-  }
-  if (message.type === 'fact') return <motion.section className="moa-chat-fact" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay}}><header><h3>심판이 확인했어요</h3><time>{timestamp}</time></header>{message.round===2?<div className="moa-fact-lines"><p><strong>H-03</strong><span>난바역 7분 · 6인 가능 · ₩1,260,000</span></p><p><strong>H-07</strong><span>난바역 15분 · ₩1,080,000</span></p><p className="difference"><strong>핵심 차이</strong><span>18만원 절약 vs 이동시간 단축</span></p></div>:<p>{message.text}</p>}</motion.section>
-  if (message.type === 'verdict') return <motion.section className="moa-chat-decision" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay}}><small>합의됐어요.</small><h3>{message.round===2?'H-03 호텔':'이번 라운드 결론'}</h3><p>{message.round===2?<>숙소는 H-03으로 정하고,<br />식사 예산은 유지하기로 했어요.</>:message.text}</p>{message.round===2&&<footer>민지가 이번 라운드에서 한 번 양보했어요.</footer>}</motion.section>
-  if (message.type === 'chief') return <motion.footer className="moa-chat-chief" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay}}><header><strong>Chief 확인 <Check /></strong><time>{timestamp}</time></header><p>{message.round===2?'하드 조건 · 전체 예산 · 양보 균형 모두 통과':message.text}</p><b>재심 없이 통과</b></motion.footer>
+function RingConversation({ messages, reduceMotion, speed }: { messages:readonly { side:'red'|'blue'; speaker:string; text:string }[]; reduceMotion:boolean; speed:1|2 }) {
+  const [visibleCount,setVisibleCount] = useState(reduceMotion ? Math.min(3,messages.length) : 0)
 
-  const name = message.speaker.replace('의 대리인','')
-  const profile = roomMembers.find((member) => member.name === name) ?? roomMembers[0]
-  const right = ['서연','수아','예린'].includes(name)
-  return <motion.article className={`moa-chat-message ${right?'right':''}`} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay}}><header><span style={{background:profile.pale,color:profile.color}}>{profile.initial}</span><div><strong>{message.speaker}</strong><time>{timestamp}</time></div></header><p>{message.text}</p></motion.article>
+  useEffect(() => {
+    if (reduceMotion) {
+      setVisibleCount(Math.min(3,messages.length))
+      return
+    }
+    setVisibleCount(0)
+    const timers = messages.map((_,index) => window.setTimeout(
+      () => setVisibleCount(index + 1),
+      (1500 + index * 1700) / speed,
+    ))
+    return () => timers.forEach((timer) => window.clearTimeout(timer))
+  }, [messages,reduceMotion,speed])
+
+  const visibleMessages = messages.slice(Math.max(0,visibleCount - 3),visibleCount)
+  return <div className="moa-ring-message-stream" aria-live="polite">
+    <AnimatePresence initial={false} mode="popLayout">
+      {visibleMessages.map((message) => <motion.article
+        layout
+        className={`moa-ring-message ${message.side}`}
+        initial={{opacity:0,x:message.side==='red'?-18:18,y:22}}
+        animate={{opacity:1,x:0,y:0}}
+        exit={{opacity:0,y:-42,scale:.97}}
+        transition={{duration:reduceMotion?.01:.48,ease:[.22,1,.36,1],layout:{duration:.5,ease:[.22,1,.36,1]}}}
+        key={message.speaker}
+      ><span>{message.speaker}</span><p>{message.text}</p></motion.article>)}
+    </AnimatePresence>
+  </div>
+}
+
+function ReplayScene({ scene, episode, nextRound, reduceMotion, speed }: { scene:number; episode:typeof replayEpisodes[number]; nextRound:typeof meetingRounds[number]; reduceMotion:boolean; speed:1|2 }) {
+  const delay = (seconds:number) => reduceMotion ? 0 : seconds / speed
+  if (scene === 0) return <div className="moa-scene-intro" aria-hidden="true"><motion.img className="moa-intro-gloves" src={glovesImage} alt="" initial={{opacity:0,scale:1.08}} animate={{opacity:.32,scale:1}} transition={{duration:1.05,ease:[.22,1,.36,1]}} /><motion.i className="red" initial={{scaleX:0}} animate={{scaleX:1}} transition={{duration:.65,delay:delay(.22),ease:'easeOut'}} /><motion.i className="blue" initial={{scaleX:0}} animate={{scaleX:1}} transition={{duration:.65,delay:delay(.22),ease:'easeOut'}} /></div>
+  if (scene === 1) return <div className="moa-scene-arguments"><motion.article className="red" initial={{opacity:0,x:-28,scale:.96}} animate={{opacity:1,x:0,scale:1}} transition={{duration:.48,ease:'easeOut'}}><span>RED POSITION</span><strong>{episode.redCorner}</strong></motion.article><motion.article className="blue" initial={{opacity:0,x:28,scale:.96}} animate={{opacity:1,x:0,scale:1}} transition={{duration:.48,delay:delay(.48),ease:'easeOut'}}><span>BLUE POSITION</span><strong>{episode.blueCorner}</strong></motion.article><motion.div className="moa-scene-split" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{duration:.42,delay:delay(1.05)}}><span>의견이 갈렸어요</span><strong>{episode.score}</strong></motion.div></div>
+  if (scene === 2) return <div className="moa-scene-ring"><motion.div className="moa-ring-corner red" initial={{opacity:0,x:-15}} animate={{opacity:1,x:0}}><span>RED CORNER</span><strong>{episode.redCorner}</strong></motion.div><motion.div className="moa-ring-corner blue" initial={{opacity:0,x:15}} animate={{opacity:1,x:0}}><span>BLUE CORNER</span><strong>{episode.blueCorner}</strong></motion.div>{[0,1,2].map((line)=><motion.i className={`moa-ring-rope rope-${line}`} initial={{scaleX:0}} animate={{scaleX:1}} transition={{duration:.52,delay:delay(line*.12)}} key={line} />)}<motion.div className="moa-scene-fighter red" initial={{opacity:0,x:-42}} animate={{opacity:1,x:0}} transition={{duration:.58,delay:delay(.28),ease:'easeOut'}}><img src="/assets/landing/agent-red.png" alt="빨간 여행 대리인" /></motion.div><motion.div className="moa-scene-fighter blue" initial={{opacity:0,x:42}} animate={{opacity:1,x:0}} transition={{duration:.58,delay:delay(.48),ease:'easeOut'}}><img src="/assets/landing/agent-blue.png" alt="파란 여행 대리인" /></motion.div><motion.div className="moa-scene-fighter referee" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{duration:.5,delay:delay(.82)}}><img src="/assets/landing/referee.png" alt="팩트체크 심판" /></motion.div><motion.div className="moa-ring-versus" initial={{opacity:0,scale:.9}} animate={{opacity:1,scale:1}} transition={{duration:.38,delay:delay(1.05)}}><b>VS</b><strong>{episode.score}</strong></motion.div><RingConversation messages={episode.conversation} reduceMotion={reduceMotion} speed={speed} /></div>
+  if (scene === 3) return <div className="moa-scene-referee"><motion.img className="referee" src="/assets/landing/referee.png" alt="팩트체크 심판" initial={{opacity:.25,scale:.82,y:12}} animate={{opacity:[.25,1,.16],scale:[.82,1.02,.88],y:[12,0,-7]}} transition={{duration:1.15,times:[0,.55,1],ease:'easeOut'}} /><motion.div className="moa-referee-call" initial={{opacity:0,y:8}} animate={{opacity:[0,1,1,0],y:[8,0,0,-6]}} transition={{duration:1.15,times:[0,.18,.72,1]}}><strong>잠깐.</strong><span>팩트 체크 들어갑니다.</span></motion.div><motion.section className="moa-scene-fact" initial={{opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{duration:.52,delay:delay(.95),ease:'easeOut'}}><header><Gavel weight="fill" /><span>심판 팩트체크</span></header><h2>{episode.factTitle}</h2><ul>{episode.facts.map((fact,index)=><motion.li initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} transition={{duration:.36,delay:delay(1.2+index*.24)}} key={fact}><Check />{fact}</motion.li>)}</ul></motion.section></div>
+  if (scene === 4) return <div className="moa-scene-negotiation"><span className="moa-scene-section-label">조건을 다시 맞추는 중</span><motion.article className="red" initial={{opacity:0,x:-24}} animate={{opacity:1,x:0}} transition={{duration:.48,ease:'easeOut'}}><header><i>민</i><strong>민지의 대리인</strong></header><p>{episode.compromise[0]}</p></motion.article><motion.article className="blue" initial={{opacity:0,x:24}} animate={{opacity:1,x:0}} transition={{duration:.45,delay:delay(.68),ease:'easeOut'}}><header><i>서</i><strong>서연의 대리인</strong></header><p>{episode.compromise[1]}</p></motion.article></div>
+  if (scene === 5) return <motion.div className="moa-scene-agreement" initial={{opacity:0,y:14,scale:.98}} animate={{opacity:1,y:0,scale:1}} transition={{duration:.62,ease:'easeOut'}}><CheckCircle weight="fill" /><span>합의 완료</span><h2>{episode.resultTitle}</h2><p>{episode.resultCopy}</p><small>{episode.concession}</small></motion.div>
+  return <div className="moa-scene-next-round"><motion.span initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}>NEXT ROUND</motion.span><motion.h2 initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:delay(.18)}}>{nextRound.code} · {nextRound.name}</motion.h2><motion.i initial={{scaleX:0}} animate={{scaleX:1}} transition={{duration:.7,delay:delay(.35),ease:'easeOut'}} /></div>
 }
 
 function RerunSection({ open, remaining }: { open:(category:string)=>void; remaining:number }) { return <section className="moa-rerun"><div><span className="moa-kicker">ONE CATEGORY AT A TIME</span><h2>이건 다시 얘기해봐요.</h2><p>전체 여행은 건드리지 않고, 마음에 안 드는 부분만 다시 맞춰볼게요.</p><strong>{remaining > 0 ? `${remaining}번 더 얘기할 수 있어요` : '남은 다시 논의가 없어요'}</strong></div><div>{['교통','숙소','액티비티','식사','동선','예산'].map((category)=><button disabled={remaining===0} key={category} onClick={()=>open(category)}>{category} 다시 얘기하기 <ArrowRight /></button>)}</div></section> }

@@ -22,7 +22,11 @@ export function DestinationRequestModal({ close, submitted }: { close:()=>void; 
     event.preventDefault()
     const value = destination.trim()
     if (!value) return
-    const existing = JSON.parse(localStorage.getItem('moa-destination-requests') || '[]') as string[]
+    let existing:string[] = []
+    try {
+      const saved = JSON.parse(localStorage.getItem('moa-destination-requests') || '[]') as unknown
+      if (Array.isArray(saved)) existing = saved.filter((item):item is string => typeof item === 'string')
+    } catch { /* replace malformed prototype data with a valid list */ }
     localStorage.setItem('moa-destination-requests', JSON.stringify([...existing,value]))
     submitted(value)
   }
