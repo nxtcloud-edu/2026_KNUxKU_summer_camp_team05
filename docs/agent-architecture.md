@@ -2,14 +2,14 @@
 
 - 문서 유형: Architecture Decision Record
 - 상태: 채택
-- 버전: v0.4
+- 버전: v0.5
 - 최초 결정일: 2026-08-13
 - 최종 수정일: 2026-08-14
 - 범위: 에이전트 명칭, 책임, 호출 관계, 결정 권한, 핵심 입출력 계약
 
 ## 1. 결정 요약
 
-MOA의 사용자·팀 문서에서는 다섯 개의 에이전트 명칭만 사용한다.
+MOA의 **제품 공식 역할**로는 다음 다섯 개의 에이전트 명칭만 사용한다.
 
 1. **사용자 대리 에이전트** (`UserProxyAgent`)
 2. **후보·근거 수집 에이전트** (`CandidateEvidenceAgent`)
@@ -24,6 +24,8 @@ MOA의 사용자·팀 문서에서는 다섯 개의 에이전트 명칭만 사�
 3. **실행 제어기** (`RunController`)
 
 `ProviderAdapter`, `Normalizer`, 만족도 정규화기, leximin 선택기 같은 코드는 별도 제품 역할이나 에이전트가 아니다. 각각 후보·근거 파이프라인과 카테고리 선택 정책 안에 포함되는 **내부 결정론적 모듈**이다.
+
+효과 비교를 위한 평가 문서와 테스트 런타임에서는 별도 대조군인 `CentralPlannerBaselineAgent`를 사용할 수 있다. 이는 제품의 공식 역할·원장 작성 권한·사용자 노출 에이전트 수에 포함하지 않는다.
 
 `Supervisor`, `Chief Referee`, `Category Referee`, `Policy Gate`, 실행기를 뜻하는 `Orchestrator`는 제품 문서의 공식 명칭으로 더 이상 사용하지 않는다. 기존 저장소의 코드·문서에서만 마이그레이션 전 옛 이름으로 취급한다.
 
@@ -113,6 +115,26 @@ flowchart TB
 | 6단계 | 최종 정리·통합 검증 | 최종 계획 정리 에이전트, 검증기, 총괄 감독, 실행 제어기 | `ContinuityAuditReport`와 `FinalPlanRecord` 또는 `ReopenRequest` |
 
 따라서 0단계와 6단계는 카테고리 토론이 아니며 `CategoryDecisionContract`를 만들지 않는다. 카테고리 중재관은 1~5단계에만 존재한다.
+
+### 3.1 평가용 이중 결정 생성 경로
+
+제품의 기본 경로는 참여자별 `UserProxyAgent`를 사용하는 `MULTI_PROXY`다. 다만 이 구조의 효과를 검증하고 단순한 대안을 함께 제작할 수 있도록 `CENTRAL_BASELINE`을 같은 인터페이스의 평가 경로로 구현한다.
+
+```mermaid
+flowchart LR
+    SNAP["불변 EvaluationCaseSnapshot"] --> MP["MULTI_PROXY<br/>UserProxyAgent × N"]
+    SNAP --> CP["CENTRAL_BASELINE<br/>CentralPlannerBaselineAgent × 1"]
+    MP --> MB["ProxyBallot × N"]
+    CP --> CB["CentralPlannerBallot × N"]
+    MB --> VIEW["공통 ParticipantBallotView"]
+    CB --> VIEW
+    VIEW --> SELECT["공통 SatisfactionNormalizer<br/>+ LeximinSelector"]
+    SELECT --> EVAL["DecisionEvaluationRun"]
+```
+
+`CentralPlannerBaselineAgent`는 제품의 공식 여섯 번째 에이전트가 아니다. 평가 전용 런타임으로서 세 사용자의 최소 구조화 `EvaluationProfileView`를 함께 읽고 사용자별 투표 초안을 만든다. 실명, 원문 건강·종교 설명, 불필요한 자유서술은 보지 않는다. 입력 스냅샷이 고정된 뒤 두 경로 모두 후보 탐색·외부 도구 호출을 하지 않는다.
+
+두 경로는 같은 모델·버전·샘플링 설정, `TripCharter`, `proposalSetVersion`, 후보·근거·검증 영수증, 출력 필드를 사용한다. 중앙 기준선의 결과는 `DecisionLedger`나 제품 계약 상태를 변경할 수 없고 `DecisionEvaluationRun`에만 저장한다. Multi-Proxy 평가 결과도 비교 실행 중에는 제품 원장과 분리한다. 실제 제품 실행만 정상 계약·가드·원장 경로를 사용한다.
 
 ## 4. 역할별 계약
 
@@ -337,6 +359,7 @@ API 원본 응답
 | 가격 | 통화, 세금·수수료 포함 여부, 인당·객실당 단위, 조회 시각, 여행 날짜 |
 | 주소·위치 | 제공자 place ID, 정규화 주소, 위도·경도, 목적지 행정구역, 중복 장소 |
 | 예약 가능성 | 정확한 체크인·체크아웃, 인원, 객실 조합, 시간 슬롯, `observedAt` |
+| 인원·정원 | 참여자 전원 배정, 객실·침대·테이블·회차·좌석·차량별 최대 정원, 연령 구성, 함께 이용 조건, 분리 권한 |
 | 날짜 | 시간대, 요일, 휴관일, 날짜 역전, 여행 기간 포함 여부 |
 | 이동 | 출발지·도착지 일치, 경로 존재, 이동시간, 막차, 환승·버퍼 |
 | 페이스 | 하루 핵심 앵커 수, 총 예정 시간, 이동시간, 버퍼, 개인 보행·체력 상한 |
@@ -344,6 +367,16 @@ API 원본 응답
 | 근거 | 출처, 요청 인자, 원본 해시, 만료, 상충하는 제공자 응답 |
 
 검증 결과는 `PASS / FAIL / UNKNOWN / STALE / CONTRADICTED` 중 하나인 `VerificationReceipt`로 반환한다. `UNKNOWN`은 `PASS`가 아니다.
+
+인원·정원 규칙은 다음처럼 결정론적으로 처리한다.
+
+| 규칙 | 결과 |
+| --- | --- |
+| `confirmedCapacity < requestedPartySize` | `FAIL: CAPACITY_EXCEEDED` |
+| 참여자 한 명 이상 미배정 또는 중복 배정 | `FAIL: PARTICIPANT_ASSIGNMENT_INVALID` |
+| 정원·회차·객실 응답이 없거나 요청 날짜·시간·인원과 불일치 | `UNKNOWN: CAPACITY_UNVERIFIED` |
+| `PartyRequirement`가 금지한 객실·테이블·동선 분리 | `FAIL: UNAUTHORIZED_SPLIT` |
+| 전체 참여자 배정, 단위별 정원, 함께 이용 정책, 근거 신선도가 모두 충족 | 해당 정원 규칙 `PASS` |
 
 ### 5.3 실행 제어기
 
@@ -362,6 +395,7 @@ API 원본 응답
 - 정상 경로에서는 연속성 `PASS` + 통합 검사 `PASS` + 최종 가드 `CLEAR`를 확인한 뒤 사용자용 상태를 계산하고 `FinalPlanRecord` 저장·공개
 - 자동 복구 불가 경로에서는 연속성 `BLOCKED` 또는 최종 가드 `HOLD`, 구조화된 `blockReason`, 기존 사실의 검증·불확실성 표시를 확인한 뒤 `NEEDS_USER_CHOICE / BLOCKED` 부분 결과만 공개
 - 실패·중단·재개 기록
+- 평가 실행에서는 `CENTRAL_BASELINE / MULTI_PROXY`가 같은 `EvaluationCaseSnapshot`을 읽도록 고정하고 결과를 제품 원장과 분리
 
 카테고리 중재관이 `CONCLUDED`를 반환해도 검증 영수증이 통과하지 않았거나 총괄 감독 결과가 `CLEAR`가 아니면 `ACCEPTED`로 적용하지 않는다.
 
@@ -402,6 +436,12 @@ TripCharter
 │  ├─ startDate / endDate / nights / timezone
 │  ├─ participatingUsers
 │  └─ alternatives / evidenceRefs
+├─ partyRequirement
+│  ├─ totalParticipants / participatingUserIds[]
+│  ├─ partyComposition: adults / children / infants
+│  ├─ togethernessByUserAndCategory: userId / category -> SAME_RESOURCE_REQUIRED | MULTIPLE_UNITS_SAME_PROVIDER_ALLOWED | SUBGROUP_ALLOWED_WITH_CONSENT
+│  ├─ splitAuthorityByUserAndCategory: userId / category -> FORBIDDEN | ALLOWED_WITH_CONSENT | PRE_APPROVED
+│  └─ effectiveTogethernessByCategory
 ├─ budgetPolicy
 │  ├─ targetByUser / maxByUser
 │  ├─ categoryEnvelope
@@ -423,6 +463,8 @@ TripCharter
 그러나 이 숫자만으로 페이스를 판정하지 않는다. 하루 종일 걸리는 테마파크 하나와 30분짜리 장소 하나는 같지 않기 때문이다. 총 예정 시간, 이동시간, 버퍼, 보행·체력 상한도 함께 검사한다. 음식점·숙소 체크인·단순 환승은 핵심 앵커 수에 포함하지 않는다.
 
 개인 목표예산과 카테고리 배분은 조정 가능한 목표이고 `maxByUser`는 하드 상한이다. 불균등 분담은 `costSharingPolicy`와 사용자별 사전 위임 범위 안에서만 자동 적용하며, 이를 넘는 부담 이전은 `NEEDS_USER_CHOICE`다.
+
+`TripCharterAssembler`는 사용자별 인원·함께 이용 요구를 삭제하지 않고 `effectiveTogethernessByCategory`를 계산한다. MVP의 보수적 합성에서는 `SAME_RESOURCE_REQUIRED`와 `FORBIDDEN`이 더 느슨한 입력보다 우선한다. 이를 완화하려면 영향을 받는 사용자의 새 확인과 새 `TripCharter.version`이 필요하다. 정원 때문에 실제 동선을 분리하려면 `splitAuthorityByUserAndCategory`뿐 아니라 `valueAndFairnessPolicy.subgroupDelegationByUser`의 인원·시간·비용·안전 범위도 통과해야 한다.
 
 방장이 확정하는 것은 지원 범위 안의 **여행 목적지와 목표 페이스**다. 정확한 날짜, 장거리·현지 교통수단, 숙소·활동·식사 후보, 개인별 예산은 방장이 대신 결정하지 않는다. 목표 페이스도 참여자의 하드한 이동·건강 제약을 무효화하지 않으며, 충돌하면 실행 가능한 안을 찾거나 `BLOCKED`로 남긴다.
 
@@ -481,13 +523,22 @@ CategoryProposal
 ├─ participantAssignments[]
 ├─ timePlan / routeEdges[]
 ├─ costByUser / totalCost
+├─ capacityPlan
+│  ├─ requestedPartySize / confirmedCapacity
+│  ├─ allocationUnits[]
+│  │  └─ resourceUnitId / confirmedUnitCapacity / assignedUserIds[]
+│  ├─ unassignedUserIds[]
+│  ├─ togethernessStatus / splitAuthorityRef?
+│  └─ evidenceRefs[]
 ├─ assumptions[] / splitPlan?
 ├─ evidenceRefs[] / verificationReceiptRefs[]
 ├─ feasibilityStatus: PASS | FAIL | UNKNOWN | STALE | CONTRADICTED
 └─ generatedBy / createdAt
 ```
 
-`CandidateRecord`는 호텔 한 곳·식당 한 곳·교통편 한 개 같은 원자 후보다. 투표 단위는 원자 후보 하나가 아니라 해당 카테고리에서 함께 실행할 수 있는 계획안인 `CategoryProposal`이다. 예를 들어 활동 단계는 여러 장소 묶음, 식사 단계는 여러 식사 슬롯, 일정 단계는 방문 순서와 모든 이동 간선을 포함한다. 계획안 버전도 불변이며 계약은 정확한 `proposalId / version`을 참조한다. `feasibilityStatus`는 참조된 최신 검증 영수증에서 계산한 읽기 모델이며 원본 계획안을 덮어쓰지 않는다. 카테고리 중재관이 검증된 원자 후보로 소수의 계획안을 제안할 수 있지만, 시간·동선·비용·하드 제약의 `PASS`는 사실·제약 검증기만 부여한다.
+`CandidateRecord`는 호텔 한 곳·식당 한 곳·교통편 한 개 같은 원자 후보다. 투표 단위는 원자 후보 하나가 아니라 해당 카테고리에서 함께 실행할 수 있는 계획안인 `CategoryProposal`이다. 예를 들어 활동 단계는 여러 장소 묶음, 식사 단계는 여러 식사 슬롯, 일정 단계는 방문 순서와 모든 이동 간선을 포함한다. 계획안 버전도 불변이며 계약은 정확한 `proposalId / version`을 참조한다. `feasibilityStatus`는 참조된 최신 검증 영수증에서 계산한 읽기 모델이며 원본 계획안을 덮어쓰지 않는다. 카테고리 중재관이 검증된 원자 후보로 소수의 계획안을 제안할 수 있지만, 시간·동선·비용·인원 정원·하드 제약의 `PASS`는 사실·제약 검증기만 부여한다.
+
+`CapacityPlan`으로 표현하는 `capacityPlan`은 단순 `partySize` 숫자가 아니다. 모든 참여자가 어떤 객실·테이블·회차·좌석·차량에 배정됐는지와 해당 자원의 확인 정원을 기록한다. 일부 인원만 배정됐거나 제공자의 전체 좌석 수만 있고 요청 시간의 그룹 슬롯이 확인되지 않았다면 `UNKNOWN`이다. 같은 공급자의 여러 객실처럼 사전 허용된 자원 배치는 `capacityPlan`으로, 서로 다른 장소·시간·동선으로 나뉘는 경우는 동의가 필요한 `splitPlan`으로 기록한다.
 
 ### 7.3 EvidenceSnapshot
 
@@ -497,7 +548,8 @@ EvidenceSnapshot
 ├─ provider / endpointOrUrl
 ├─ normalizedRequest
 │  ├─ dates / timezone
-│  ├─ partySize / roomComposition
+│  ├─ partySize / partyComposition
+│  ├─ roomComposition / tableOrSlotRequest / vehicleRequest
 │  └─ locale / currency
 ├─ rawPayloadRef / rawPayloadHash
 ├─ normalizedValue / unit / currency
@@ -506,7 +558,7 @@ EvidenceSnapshot
 └─ termsRef
 ```
 
-예약 가능성은 영구적인 boolean이 아니다. 예를 들어 숙소는 `2026-10-15~18, 6명, 객실 2개`라는 정확한 요청에서 `AVAILABLE_AT`였다는 사실만 저장한다.
+예약 가능성은 영구적인 boolean이 아니다. 예를 들어 숙소는 `2026-10-15~18, 6명, 객실 2개`라는 정확한 요청에서 `AVAILABLE_AT`였다는 사실만 저장한다. 식당의 총 좌석 수나 호텔의 전체 객실 수는 해당 시간의 그룹 예약 정원이 아니며, 요청 인원·단위 배치와 응답이 일치할 때만 정원 근거가 된다.
 
 ### 7.4 VerificationReceipt
 
@@ -537,6 +589,47 @@ ProxyBallot
 ```
 
 투표 대상은 같은 버전의 검증 `CategoryProposal` 집합으로 고정한다. 자연어 발언 자체를 표로 추측하지 않고 각 대리인이 구조화 투표를 명시적으로 반환한다. 결정론적 선택 정책이 모든 `ProxyBallot`과 활성 프로필 신호로 만족도 벡터·leximin 순서·타이브레이크를 계산해 `SelectionRuleTrace`를 만든다.
+
+### 7.5.1 평가용 중앙 기준선과 공통 결과 계약
+
+```text
+EvaluationCaseSnapshot
+├─ evaluationCaseId / category / fixtureVersion
+├─ charterVersion / participantSetVersion
+├─ evaluationProfileViewRefs[] / participantConsentRefs[]
+├─ proposalSetVersion / candidateRefs[]
+├─ evidenceSnapshotRefs[] / verificationReceiptRefs[]
+├─ modelId / modelVersion / samplingConfig
+├─ postSnapshotToolBudget: 0
+└─ createdAt
+
+CentralPlannerBallot
+├─ ballotId / representedUserId / category
+├─ proposalSetVersion
+├─ rankedProposalIds[] / proposalStances[]
+├─ profileItemRefs[] / conditionalTerms[]
+└─ generatedBy: CENTRAL_BASELINE
+
+ParticipantBallotView
+├─ representedUserId / proposalSetVersion
+├─ rankedProposalIds[] / proposalStances[]
+├─ profileItemRefs[] / conditionalTerms[]
+└─ sourceMode: CENTRAL_BASELINE | MULTI_PROXY
+
+DecisionEvaluationRun
+├─ evaluationRunId / evaluationCaseId / mode
+├─ inputSnapshotRef / modelConfigRef
+├─ participantBallotViews[]
+├─ selectedProposalRef / selectionRuleTrace
+├─ hardConstraintViolationCount / capacityViolationCount
+├─ evidenceMismatchCount / noSafeDecisionExpected / noSafeDecisionObserved
+├─ preferenceAgreementByUser[] / minimumSatisfaction
+├─ rerunRequested
+├─ latencyMs / promptTokens / completionTokens / estimatedCost
+└─ createdAt
+```
+
+중앙 플래너는 한 사용자의 입장을 그룹 평균으로 뭉개지 않고 `representedUserId`별 투표를 각각 반환해야 한다. `ParticipantBallotView`는 비교·선택을 위한 공통 읽기 모델일 뿐 원래 `ProxyBallot`이나 `CentralPlannerBallot`을 덮어쓰지 않는다. 실행 모드마다 출력 누락·스키마 실패·시간 초과를 별도 실패로 기록하며 상대 모드의 결과로 대체하지 않는다.
 
 ### 7.6 CategoryDecisionContract
 
