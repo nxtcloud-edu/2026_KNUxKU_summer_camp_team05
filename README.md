@@ -44,6 +44,7 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | 문서 | 내용 |
 | --- | --- |
 | [travel-mediation-plan.md](docs/travel-mediation-plan.md) | 종합 기획서 — 문제 정의, 설문 설계, 에이전트 아키텍처, 합의 알고리즘, 시스템 구성, 로드맵 |
+| [agent-architecture.md](docs/agent-architecture.md) | 에이전트 아키텍처와 제어 계약 — 제어 평면 분리, 심판 호출 순서 디스패치 프로토콜, Data Agent 캐시 계약 |
 | [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
 | [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
 | [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
@@ -62,6 +63,7 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | 기능 | 설계 | 구현 | 검증 |
 | --- | --- | --- | --- |
 | DateResolver·전역 계획 그래프 | 완료 | 미착수 | 미착수 |
+| Orchestrator·Supervisor 제어 분리 · Data Agent 캐시 계약 | 완료 | 미착수 | 미착수 |
 | Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
 | Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |
 | 예약 상태·재계획·사용자 결과 UX | 완료 | 미착수 | 미착수 |
