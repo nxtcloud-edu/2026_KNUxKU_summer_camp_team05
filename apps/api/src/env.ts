@@ -13,6 +13,11 @@ const envSchema = z.object({
   WEB_ORIGIN: z.string().default('http://localhost:5173'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   DATABASE_URL: z.string().optional(),
+  /** Redis 없이 로컬 화면 연동만 확인할 때 false로 둔다 */
+  ENABLE_QUEUE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   /** 방 단위 이의 제기 상한 */
   OBJECTION_CAP_PER_ROOM: z.coerce.number().int().min(0).default(3),
   /** 1인 이의 제기 상한 */

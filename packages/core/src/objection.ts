@@ -62,7 +62,9 @@ export function assessObjection(
   context: ObjectionContext,
 ): ObjectionImpact {
   const caps = context.caps ?? objectionCaps;
-  const changedNode = categoryToNode[request.targetCategory];
+  // R0은 심판 카테고리가 아니라 일정 확정 라운드다. 변경 시작점은 date 노드다.
+  const changedNode: PlanningNodeId =
+    request.targetRoundId === 'r_0' ? 'date' : categoryToNode[request.targetCategory];
   const staleNodes = computeStaleNodes([changedNode]);
   const rerunRounds = roundsForNodes(staleNodes);
 
