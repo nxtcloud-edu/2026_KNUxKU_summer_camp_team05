@@ -295,8 +295,17 @@ export async function runPipeline(
           `[orchestrator] 그래프가 실행 가능한 라운드를 내지 못했습니다 — 기본 위상 순서로 ${fallbackRound}를 진행합니다`,
         );
       } else {
-        // 계획서 발행은 라운드가 아니라 종료 수다. 여기서 한 번만 부른다.
-        if (chosen.type === 'finalize_plan' && ports.finalize !== undefined) {
+        const noWorkLeft = pendingRounds.length === 0;
+
+        /**
+         * 계획서 발행은 라운드가 아니라 종료 수다. 여기서 한 번만 부른다.
+         *
+         * 그래프가 `finalize_plan`을 내지 못했더라도 **돌 라운드가 남지 않았다면
+         * 발행을 시도한다.** 조달이 비어 노드가 PROVISIONAL로 남았다는 이유로
+         * 사용자가 아무것도 받지 못하는 것이 최악이다. 검증은 Validation Pass가
+         * 하고, 통과하지 못하면 PARTIAL 배지로만 나간다 — 예약을 유도하지 않는다.
+         */
+        if ((chosen.type === 'finalize_plan' || noWorkLeft) && ports.finalize !== undefined) {
           await ports.finalize();
         }
         // 남은 라운드가 없으면 정상 종료다. 사유를 남기면 정상 완료가 이상 종료로 보인다.

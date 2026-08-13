@@ -46,3 +46,34 @@ export {
 } from './persona.js';
 
 export { createStubClient, type StubClient, type StubClientOptions } from './testing.js';
+
+export {
+  runRound,
+  toCandidateCard,
+  type RefereeDeps,
+  type RefereeStore,
+  type RoundInput,
+  type RoundOutcome,
+  type RoundParticipant,
+} from './referee.js';
+
+export {
+  proposeDispatch,
+  type SupervisorDeps,
+  type SupervisorState,
+} from './supervisor.js';
+
+export {
+  draftPlan,
+  type DocumentDeps,
+  type DocumentDraft,
+  type DocumentInput,
+  type DocumentStore,
+} from './document.js';
+
+export {
+  proposeSearches,
+  type ProposedSearch,
+  type SearchDeps,
+  type SearchInput,
+} from './search.js';

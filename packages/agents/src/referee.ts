@@ -92,6 +92,14 @@ export interface RoundOutcome {
   messages: number;
   /** 라운드를 진행하지 못한 이유. 성공이면 null */
   skipped: string | null;
+  /**
+   * 왜 못 했는가. 노드 상태가 여기서 갈린다.
+   *
+   * `no_candidates` 는 **미결정**이지 불가능이 아니다 — 조달이 비었을 뿐이라
+   * 뒤 라운드를 막으면 안 된다. `all_disqualified` 는 하드 제약이 모든 안을
+   * 지운 것이므로 진짜로 막힌 상태다.
+   */
+  skipReason: 'no_candidates' | 'all_malformed' | 'all_disqualified' | null;
 }
 
 /**
@@ -269,7 +277,14 @@ export async function runRound(deps: RefereeDeps, input: RoundInput): Promise<Ro
       content: reason,
       refs: {},
     });
-    return { verdict: null, selection: null, unverified: [], messages: 1, skipped: reason };
+    return {
+      verdict: null,
+      selection: null,
+      unverified: [],
+      messages: 1,
+      skipped: reason,
+      skipReason: 'no_candidates',
+    };
   }
 
   // 정규화 스키마를 통과하지 못한 후보는 근거로 쓸 수 없다. 조용히 버리지 않는다.
@@ -288,7 +303,14 @@ export async function runRound(deps: RefereeDeps, input: RoundInput): Promise<Ro
       content: reason,
       refs: { malformed },
     });
-    return { verdict: null, selection: null, unverified: [], messages: 1, skipped: reason };
+    return {
+      verdict: null,
+      selection: null,
+      unverified: [],
+      messages: 1,
+      skipped: reason,
+      skipReason: 'all_malformed',
+    };
   }
 
   // ── 코드 구간: 속성 → 만족도 → 승자 ─────────────────────────────────────
@@ -324,6 +346,7 @@ export async function runRound(deps: RefereeDeps, input: RoundInput): Promise<Ro
       unverified: assessments.flatMap((entry) => entry.unverified),
       messages: 1,
       skipped: reason,
+      skipReason: 'all_disqualified',
     };
   }
 
@@ -529,5 +552,5 @@ export async function runRound(deps: RefereeDeps, input: RoundInput): Promise<Ro
 
   await deps.store.saveVerdict(input.roundId, verdict);
 
-  return { verdict, selection, unverified, messages, skipped: null };
+  return { verdict, selection, unverified, messages, skipped: null, skipReason: null };
 }

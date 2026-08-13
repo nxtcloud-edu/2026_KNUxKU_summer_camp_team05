@@ -8,9 +8,11 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
+    "smoke": "tsx src/smoke.ts",
     "test": "node --import tsx --test src/orchestrator/finalize.test.ts"
   },
   "dependencies": {
+    "@tm/agents": "*",
     "@tm/contracts": "*",
     "@tm/core": "*",
     "@tm/data-agents": "*",

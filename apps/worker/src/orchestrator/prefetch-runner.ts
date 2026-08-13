@@ -7,6 +7,7 @@ import {
   type CandidateSink,
   type DataAgentGateway,
   type PrefetchReport,
+  type ProviderAdapter,
   type ProviderSetup,
   type QuotaCounter,
   type SearchRequest,
@@ -144,10 +145,13 @@ export function createWorkerGateway(
   repos: Repositories,
   quota?: QuotaCounter,
   packProviders: Record<string, Record<string, readonly string[]>> = {},
+  /** 추가 어댑터. 키가 없을 때 데모 제공자를 넣는 통로다 */
+  extraAdapters: readonly ProviderAdapter[] = [],
 ): DataAgentGateway {
+  const setup = extraAdapters.length === 0 ? providerSetup() : providersFromEnv(process.env, extraAdapters);
   return createDataAgent({
     cache: repos.cache,
-    providers: providerSetup().registry(packProviders),
+    providers: setup.registry(packProviders),
     ...(quota === undefined ? {} : { quota }),
   });
 }

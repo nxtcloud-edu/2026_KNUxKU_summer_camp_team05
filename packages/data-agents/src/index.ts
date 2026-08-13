@@ -23,6 +23,7 @@ export {
   type QuotaCounter,
 } from './gateway.js';
 export { createFixtureProvider, type FixtureConfig } from './providers/fixture.js';
+export { createDemoProvider, shouldUseDemoProvider } from './providers/demo.js';
 export {
   extractCandidates,
   planPrefetch,
