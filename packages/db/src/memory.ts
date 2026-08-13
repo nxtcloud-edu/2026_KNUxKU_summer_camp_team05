@@ -19,6 +19,8 @@ import type {
   LlmUsageTotals,
   MemberRepository,
   MemberRow,
+  PackRepository,
+  PackRow,
   MessageRepository,
   MessageRow,
   ObjectionRepository,
@@ -248,6 +250,31 @@ export function createMemoryRepositories(): Repositories {
     },
     async history(runId, nodeId) {
       return [...(nodeHistory.get(runId)?.get(nodeId) ?? [])];
+    },
+  };
+
+  const packRows = new Map<string, PackRow>();
+
+  const packRepo: PackRepository = {
+    async upsert(pack) {
+      const row: PackRow = {
+        packId: pack.packId,
+        coverage: pack.coverage,
+        active: pack.active,
+        pack,
+        syncedAt: new Date().toISOString(),
+      };
+      packRows.set(pack.packId, row);
+      return row;
+    },
+    async get(packId) {
+      return packRows.get(packId);
+    },
+    async listActive() {
+      return [...packRows.values()].filter((row) => row.active);
+    },
+    async providerPriority(packId) {
+      return packRows.get(packId)?.pack.providers ?? {};
     },
   };
 
@@ -555,6 +582,7 @@ export function createMemoryRepositories(): Repositories {
     runs: runRepo,
     cache: cacheRepo,
     planningNodes: planningNodeRepo,
+    packs: packRepo,
     members: memberRepo,
     candidates: candidateRepo,
     messages: messageRepo,
@@ -574,6 +602,7 @@ export function createMemoryRepositories(): Repositories {
       roundsByRun.clear();
       cacheRecords.clear();
       requestLog.length = 0;
+      packRows.clear();
       memberRows.clear();
       candidateRows.clear();
       messageRows.clear();

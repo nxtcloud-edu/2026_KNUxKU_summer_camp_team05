@@ -217,6 +217,61 @@ async function main(): Promise<void> {
     check('markCompleted → COMPLETED', completed?.status === 'COMPLETED', completed?.status);
     check('예산 기준선 갱신', completed?.budgetBaselinePerPersonKrw === 850000, completed?.budgetBaselinePerPersonKrw);
 
+    console.log('packs');
+    const packFixture = {
+      packId: 'kr-smoketown',
+      displayName: '스모크타운',
+      country: 'KR',
+      coverage: 'C' as const,
+      active: false,
+      center: { lat: 37.5, lng: 127.0 },
+      areas: ['중앙', '해변'],
+      airports: [],
+      requiresAirTravel: false,
+      cardDeck: 'deck_smoke_v1',
+      providers: {
+        hotel: ['provider_a', 'provider_b'],
+        dining: ['provider_a'],
+        poi: ['tourapi'],
+        transit: ['odsay'],
+        flight: [],
+      },
+      config: {
+        currency: 'KRW',
+        displayCurrency: 'KRW',
+        mealTimes: { lunch: '11:30-14:00', dinner: '17:30-21:00' },
+        tipping: false,
+        defaultTransit: 'bus',
+        commonClosedDay: null,
+        reservationCulture: null,
+        avgCosts: { mealMid: 12000, subwayRide: 1400, taxiBase: 4800 },
+        timezone: 'Asia/Seoul',
+      },
+      typicalDurations: [1, 2],
+      recommendedNights: 1,
+      peakSeasons: [],
+      avoidDates: [],
+      weatherProfile: { bestMonths: [5, 9], rainyMonths: [7] },
+      roundPreset: 'standard_domestic' as const,
+      transitPasses: [],
+      priceBands: [],
+      verification: [],
+    };
+
+    const savedPack = await repos.packs.upsert(packFixture);
+    check('Pack 저장', savedPack.packId === 'kr-smoketown', savedPack.packId);
+    check('비활성 Pack은 listActive에 안 나온다', (await repos.packs.listActive()).every((row) => row.packId !== 'kr-smoketown'));
+
+    await repos.packs.upsert({ ...packFixture, active: true, coverage: 'B' });
+    const reloaded = await repos.packs.get('kr-smoketown');
+    check('재동기화는 덮어쓴다 (행 추가 없음)', reloaded?.coverage === 'B', reloaded?.coverage);
+    check('활성화되면 목록에 나온다', (await repos.packs.listActive()).some((row) => row.packId === 'kr-smoketown'));
+    check('payload 왕복', reloaded?.pack.config.timezone === 'Asia/Seoul');
+
+    const priority = await repos.packs.providerPriority('kr-smoketown');
+    check('제공자 우선순위 조회', priority['hotel']?.[0] === 'provider_a', priority['hotel']);
+    check('없는 Pack → 빈 객체', Object.keys(await repos.packs.providerPriority('nope')).length === 0);
+
     console.log('members');
     const host = await repos.members.join(room.roomId, 'user_a', 'host');
     check('join → host', host.role === 'host', host.role);
@@ -478,6 +533,7 @@ async function main(): Promise<void> {
   } finally {
     if (roomId !== undefined) {
       // 외래키가 없는 테이블은 직접 지운다.
+      await query('DELETE FROM destination_packs WHERE pack_id = $1', ['kr-smoketown']);
       await query('DELETE FROM llm_usage WHERE room_id = $1 OR run_id = $2', [roomId, 'run_smoke']);
       await query('DELETE FROM data_requests WHERE run_id = $1', ['run_smoke']);
       await query('DELETE FROM rooms WHERE id = $1', [roomId]);

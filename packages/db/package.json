@@ -12,7 +12,8 @@
   "scripts": {
     "migrate": "tsx src/migrate.ts",
     "smoke": "tsx src/smoke.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "packs:sync": "tsx src/sync-packs.ts"
   },
   "dependencies": {
     "@tm/contracts": "*",

@@ -1,5 +1,6 @@
 import type {
   Confidence,
+  DestinationPack,
   NodeStatus,
   ObjectionRecord,
   ObjectionRequest,
@@ -41,6 +42,30 @@ export interface MemberRow {
    */
   personaConfirmedAt: string | null;
   joinedAt: string;
+}
+
+export interface PackRow {
+  packId: string;
+  coverage: 'A' | 'B' | 'C';
+  active: boolean;
+  pack: DestinationPack;
+  syncedAt: string;
+}
+
+/**
+ * Destination Pack 런타임 캐시. 원본은 `packs/*.json`이고 이 테이블은 사본이다.
+ * 코드 배포 없이 목적지를 여는 설계가 성립하려면 실행 중인 서비스가 여기서 읽어야 한다.
+ */
+export interface PackRepository {
+  upsert(pack: DestinationPack): Promise<PackRow>;
+  get(packId: string): Promise<PackRow | undefined>;
+  /** 방을 열 수 있는 Pack만 */
+  listActive(): Promise<PackRow[]>;
+  /**
+   * 카테고리별 제공자 우선순위. Data Agent 레지스트리에 그대로 넣는 형태다.
+   * 지역별 분기를 코드에 넣지 않기 위한 경로다 (기획서 4.1).
+   */
+  providerPriority(packId: string): Promise<Record<string, readonly string[]>>;
 }
 
 export interface MemberRepository {
@@ -452,6 +477,7 @@ export interface Repositories {
   runs: RunRepository;
   cache: CacheRepository;
   planningNodes: PlanningNodeRepository;
+  packs: PackRepository;
   members: MemberRepository;
   candidates: CandidateRepository;
   messages: MessageRepository;

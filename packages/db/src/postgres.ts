@@ -1,4 +1,5 @@
 import type {
+  DestinationPack,
   ObjectionRecord,
   ObjectionRequest,
   PlanningNodeId,
@@ -23,6 +24,8 @@ import type {
   LlmUsageTotals,
   MemberRepository,
   MemberRow,
+  PackRepository,
+  PackRow,
   MessageRepository,
   MessageRow,
   ObjectionRepository,
@@ -586,6 +589,65 @@ export function createPostgresRepositories(): Repositories {
         [runId, nodeId],
       );
       return rows.map(toPlanningNode);
+    },
+  };
+
+  interface PackDbRow {
+    pack_id: string;
+    coverage: string;
+    active: boolean;
+    payload: DestinationPack;
+    synced_at: Date;
+  }
+
+  const toPack = (row: PackDbRow): PackRow => ({
+    packId: row.pack_id,
+    coverage: row.coverage as PackRow['coverage'],
+    active: row.active,
+    pack: row.payload,
+    syncedAt: row.synced_at.toISOString(),
+  });
+
+  const packs: PackRepository = {
+    async upsert(pack) {
+      const row = await queryOne<PackDbRow>(
+        `INSERT INTO destination_packs (pack_id, coverage, active, payload)
+         VALUES ($1, $2, $3, $4::jsonb)
+         ON CONFLICT (pack_id) DO UPDATE
+           SET coverage = EXCLUDED.coverage,
+               active = EXCLUDED.active,
+               payload = EXCLUDED.payload,
+               synced_at = now()
+         RETURNING pack_id, coverage, active, payload, synced_at`,
+        [pack.packId, pack.coverage, pack.active, JSON.stringify(pack)],
+      );
+      if (row === undefined) throw new Error('Pack 저장 실패');
+      return toPack(row);
+    },
+
+    async get(packId) {
+      const row = await queryOne<PackDbRow>(
+        `SELECT pack_id, coverage, active, payload, synced_at
+           FROM destination_packs WHERE pack_id = $1`,
+        [packId],
+      );
+      return row === undefined ? undefined : toPack(row);
+    },
+
+    async listActive() {
+      const rows = await query<PackDbRow>(
+        `SELECT pack_id, coverage, active, payload, synced_at
+           FROM destination_packs WHERE active = true ORDER BY pack_id`,
+      );
+      return rows.map(toPack);
+    },
+
+    async providerPriority(packId) {
+      const row = await queryOne<{ providers: Record<string, string[]> }>(
+        `SELECT payload->'providers' AS providers FROM destination_packs WHERE pack_id = $1`,
+        [packId],
+      );
+      return row?.providers ?? {};
     },
   };
 
@@ -1229,6 +1291,7 @@ export function createPostgresRepositories(): Repositories {
     runs,
     cache,
     planningNodes,
+    packs,
     members,
     candidates,
     messages,
