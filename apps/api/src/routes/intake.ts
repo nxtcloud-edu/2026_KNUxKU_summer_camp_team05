@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { roomSubmissionSchema, surveySubmissionSchema } from '@tm/contracts';
 import type { Repositories } from '@tm/db';
+import { currentUserId } from './session.js';
 
 /**
  * 프론트엔드(`apps/web/src/formApi.ts`)가 이미 호출하는 두 엔드포인트.
@@ -25,9 +26,8 @@ export async function registerIntakeRoutes(
       return reply.status(400).send({ error: 'invalid_payload', issues: parsed.error.issues });
     }
 
-    // TODO(auth): 카카오 OAuth 세션이 붙으면 userId를 세션에서 가져온다.
-    // 그때까지는 헤더로 받되, 인증 없이 외부에 노출하지 않는다 (development-and-deployment.md 7.6).
-    const userId = String(request.headers['x-user-id'] ?? 'anonymous');
+    // 사용자 식별은 session.ts가 한다 (쿠키 > x-user-id 헤더). 인증은 아니다.
+    const userId = currentUserId(request);
     const roomId = String(request.headers['x-room-id'] ?? '');
     if (roomId.length === 0) {
       return reply.status(400).send({ error: 'missing_room_id' });

@@ -156,6 +156,12 @@ export interface RunRepository {
     failureReason?: string | null,
   ): Promise<void>;
   get(runId: string): Promise<RunRow | undefined>;
+  /** 방의 가장 최근 run. 결과 조회는 여기서 시작한다 */
+  latestByRoom(roomId: string): Promise<RunRow | undefined>;
+  /** run의 라운드 진행 상태 (seq 순). 진행률 화면의 원본이다 */
+  listRounds(runId: string): Promise<RoundRecord[]>;
+  /** 실행이 멈춘 사유. 정상 완료면 null — 부분 결과를 완주로 보이게 하지 않는다 */
+  failureReason(runId: string): Promise<string | null>;
 }
 
 /**

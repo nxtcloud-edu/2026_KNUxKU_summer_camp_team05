@@ -8,6 +8,7 @@ import {
 } from '@tm/core';
 import type { MemberRow, Repositories } from '@tm/db';
 import type { QueuePort } from '../queue.js';
+import { currentUserId } from './session.js';
 
 /**
  * 방 조회·멤버·페르소나 확인 게이트·실행 트리거·승인 요청.
@@ -16,12 +17,9 @@ import type { QueuePort } from '../queue.js';
  * 페르소나를 확인하고, 결과를 본다. 그 사이는 전부 백그라운드다.
  * 그래서 **각 지점의 상태를 정확히 돌려주는 것**이 이 라우트의 전부다.
  *
- * TODO(auth): 카카오 OAuth 세션이 붙으면 userId를 세션에서 읽는다.
- * 그때까지 헤더로 받되 인증 없이 외부에 노출하지 않는다.
+ * 사용자 식별은 `session.ts`가 담당한다 (쿠키 > `x-user-id` 헤더).
+ * 그것은 인증이 아니므로 인증이 붙기 전까지 외부에 노출하지 않는다.
  */
-
-const userIdOf = (headers: Record<string, unknown>): string =>
-  String(headers['x-user-id'] ?? 'anonymous');
 
 const toTriggerMember = (row: MemberRow): TriggerMember => ({
   userId: row.userId,
@@ -42,7 +40,7 @@ export async function registerRoomRoutes(
     if (room === undefined) return reply.status(404).send({ error: 'room_not_found' });
 
     const members = await repos.members.list(roomId);
-    const userId = userIdOf(request.headers as Record<string, unknown>);
+    const userId = currentUserId(request);
     const me = members.find((member) => member.userId === userId);
 
     return reply.send({
@@ -87,7 +85,7 @@ export async function registerRoomRoutes(
       return reply.status(409).send({ error: 'room_closed', status: room.status });
     }
 
-    const userId = userIdOf(request.headers as Record<string, unknown>);
+    const userId = currentUserId(request);
     const body = (request.body ?? {}) as { role?: string };
     const role = body.role === 'host' ? 'host' : 'member';
 
@@ -106,7 +104,7 @@ export async function registerRoomRoutes(
       return reply.status(404).send({ error: 'room_not_found' });
     }
 
-    const userId = userIdOf(request.headers as Record<string, unknown>);
+    const userId = currentUserId(request);
     const member = await repos.members.get(roomId, userId);
     if (member === undefined) return reply.status(404).send({ error: 'not_a_member' });
     if (!member.surveySubmitted) {
@@ -125,7 +123,7 @@ export async function registerRoomRoutes(
     if (room === undefined) return reply.status(404).send({ error: 'room_not_found' });
 
     const members = (await repos.members.list(roomId)).map(toTriggerMember);
-    const userId = userIdOf(request.headers as Record<string, unknown>);
+    const userId = currentUserId(request);
     const now = new Date().toISOString();
 
     return reply.send({
@@ -162,7 +160,7 @@ export async function registerRoomRoutes(
         .send({ error: 'invalid_trigger', allowed: startTriggers });
     }
 
-    const userId = userIdOf(request.headers as Record<string, unknown>);
+    const userId = currentUserId(request);
     const decision = evaluateStartTrigger(trigger, {
       roomStatus: room.status,
       members: (await repos.members.list(roomId)).map(toTriggerMember),
@@ -210,7 +208,7 @@ export async function registerRoomRoutes(
 
   app.post('/api/rooms/:roomId/approvals/:approvalId', async (request, reply) => {
     const { roomId, approvalId } = request.params as { roomId: string; approvalId: string };
-    const userId = userIdOf(request.headers as Record<string, unknown>);
+    const userId = currentUserId(request);
 
     const member = await repos.members.get(roomId, userId);
     if (member === undefined || member.role !== 'host') {

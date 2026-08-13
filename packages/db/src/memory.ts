@@ -29,6 +29,7 @@ import type {
   Repositories,
   RoomRepository,
   RoomRow,
+  RoundRecord,
   RunRepository,
   RunRow,
   ScoreRepository,
@@ -144,8 +145,10 @@ export function createMemoryRepositories(): Repositories {
   };
 
   const runs = new Map<string, RunRow>();
-  /** runId → roundId → 상태. rooms.get의 completedRounds를 여기서 유도한다 */
-  const roundsByRun = new Map<string, Map<RoundId, string>>();
+  /** runId → 실패 사유. 정상 완료면 기록하지 않는다 */
+  const runFailures = new Map<string, string>();
+  /** runId → roundId → 진행 기록 전체. 진행률 화면이 category·seq까지 읽는다 */
+  const roundsByRun = new Map<string, Map<RoundId, RoundRecord>>();
 
   const syncCompletedRounds = (roomId: string): void => {
     const room = rooms.get(roomId);
@@ -153,8 +156,8 @@ export function createMemoryRepositories(): Repositories {
     const settled = new Set<RoundId>();
     for (const run of runs.values()) {
       if (run.roomId !== roomId) continue;
-      for (const [roundId, phase] of roundsByRun.get(run.runId) ?? []) {
-        if (phase === 'SETTLED') settled.add(roundId);
+      for (const [roundId, record] of roundsByRun.get(run.runId) ?? []) {
+        if (record.phase === 'SETTLED') settled.add(roundId);
       }
     }
     rooms.set(roomId, { ...room, completedRounds: [...settled] });
@@ -177,20 +180,33 @@ export function createMemoryRepositories(): Repositories {
       await roomRepo.updateStatus(roomId, 'RUNNING');
       return runs.get(runId) as RunRow;
     },
-    async recordRound({ runId, roundId, phase }) {
-      const bucket = roundsByRun.get(runId) ?? new Map<RoundId, string>();
-      bucket.set(roundId, phase);
-      roundsByRun.set(runId, bucket);
-      const run = runs.get(runId);
+    async recordRound(record) {
+      const bucket = roundsByRun.get(record.runId) ?? new Map<RoundId, RoundRecord>();
+      bucket.set(record.roundId, { ...record, rerunCount: record.rerunCount ?? 0 });
+      roundsByRun.set(record.runId, bucket);
+      const run = runs.get(record.runId);
       if (run !== undefined) syncCompletedRounds(run.roomId);
     },
-    async finish(runId, status) {
+    async finish(runId, status, failureReason = null) {
       const run = runs.get(runId);
       if (run === undefined) return;
       runs.set(runId, { ...run, status, finishedAt: new Date().toISOString() });
+      if (failureReason !== null) runFailures.set(runId, failureReason);
     },
     async get(runId) {
       return runs.get(runId);
+    },
+    async latestByRoom(roomId) {
+      // seq는 방 안에서 단조 증가한다. 시각이 아니라 seq가 기준이다.
+      return [...runs.values()]
+        .filter((run) => run.roomId === roomId)
+        .sort((a, b) => b.seq - a.seq)[0];
+    },
+    async listRounds(runId) {
+      return [...(roundsByRun.get(runId) ?? new Map()).values()].sort((a, b) => a.seq - b.seq);
+    },
+    async failureReason(runId) {
+      return runFailures.get(runId) ?? null;
     },
   };
 

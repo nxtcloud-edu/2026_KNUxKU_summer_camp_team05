@@ -14,3 +14,4 @@ export * from './survey.js';
 export * from './objection.js';
 export * from './pack.js';
 export * from './preference-v3.js';
+export * from './result.js';

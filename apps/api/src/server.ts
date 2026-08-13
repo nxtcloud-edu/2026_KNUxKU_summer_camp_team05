@@ -4,7 +4,9 @@ import { createRepositories, isDatabaseConfigured, type Repositories } from '@tm
 import { loadEnv, type Env } from './env.js';
 import { registerIntakeRoutes } from './routes/intake.js';
 import { registerObjectionRoutes } from './routes/objections.js';
+import { registerResultRoutes } from './routes/results.js';
 import { registerRoomRoutes } from './routes/rooms.js';
+import { registerSession } from './routes/session.js';
 import { createNoopQueue, createQueue, type QueuePort } from './queue.js';
 
 export interface ServerDeps {
@@ -43,9 +45,13 @@ export async function buildServer(
     queue: env.ENABLE_QUEUE,
   }));
 
+  // 세션이 먼저다. onRequest 훅이 모든 라우트보다 앞서 userId를 채운다.
+  await registerSession(app);
+
   await registerIntakeRoutes(app, repos);
   await registerRoomRoutes(app, repos, queue);
   await registerObjectionRoutes(app, env, repos, queue);
+  await registerResultRoutes(app, repos);
 
   app.addHook('onClose', async () => {
     await queue.close();

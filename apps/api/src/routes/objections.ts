@@ -8,6 +8,7 @@ import { assessObjection, requiresFailClosedRecheck, screenObjection } from '@tm
 import type { Repositories } from '@tm/db';
 import type { Env } from '../env.js';
 import type { QueuePort } from '../queue.js';
+import { currentUserId } from './session.js';
 
 /**
  * 이의 제기 — 사용자가 회의록과 결과물을 보고 재토론을 요구하는 경로.
@@ -50,7 +51,7 @@ export async function registerObjectionRoutes(
   /** 남은 이의 횟수와 접수 이력 */
   app.get('/api/rooms/:roomId/objections', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
-    const userId = String(request.headers['x-user-id'] ?? 'anonymous');
+    const userId = currentUserId(request);
     if ((await repos.rooms.get(roomId)) === undefined) {
       return reply.status(404).send({ error: 'room_not_found' });
     }

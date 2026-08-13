@@ -34,6 +34,7 @@ import type {
   Repositories,
   RoomRepository,
   RoomRow,
+  RoundRecord,
   RunRepository,
   RunRow,
   ScoreRepository,
@@ -405,6 +406,47 @@ export function createPostgresRepositories(): Repositories {
         [runId],
       );
       return row === undefined ? undefined : toRun(row);
+    },
+
+    async latestByRoom(roomId) {
+      // seq가 방 안에서 단조 증가한다 (UNIQUE (room_id, seq)). 시각이 아니라 seq가 기준이다.
+      const row = await queryOne<RunDbRow>(
+        `SELECT id, room_id, seq, trigger, status, objection_id, started_at, finished_at
+           FROM runs WHERE room_id = $1 ORDER BY seq DESC LIMIT 1`,
+        [roomId],
+      );
+      return row === undefined ? undefined : toRun(row);
+    },
+
+    async listRounds(runId) {
+      const rows = await query<{
+        run_id: string;
+        round_id: string;
+        category: string;
+        seq: number;
+        phase: string;
+        rerun_count: number;
+      }>(
+        `SELECT run_id, round_id, category, seq, phase, rerun_count
+           FROM rounds WHERE run_id = $1 ORDER BY seq`,
+        [runId],
+      );
+      return rows.map((row) => ({
+        runId: row.run_id,
+        roundId: row.round_id as RoundId,
+        category: row.category as RoundRecord['category'],
+        seq: row.seq,
+        phase: row.phase as RoundRecord['phase'],
+        rerunCount: row.rerun_count,
+      }));
+    },
+
+    async failureReason(runId) {
+      const row = await queryOne<{ failure_reason: string | null }>(
+        `SELECT failure_reason FROM runs WHERE id = $1`,
+        [runId],
+      );
+      return row?.failure_reason ?? null;
     },
   };
 
