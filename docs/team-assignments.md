@@ -103,7 +103,7 @@ packages/db/              마이그레이션·리포지토리                  �
 첫 과제 (의존 순서대로)
 
 1. ~~**`packages/db`** — 인메모리 저장소를 PostgreSQL로 교체~~ **완료·실행 검증됨.** 마이그레이션 1건과 리포지토리 3종(rooms·surveys·objections)이 로컬 PostgreSQL 16에서 통과한다. 회귀 확인은 `npm run smoke --workspace @tm/db`. 다음은 나머지 테이블(runs·rounds·planning_nodes·verdicts·pack_cache)의 리포지토리다.
-2. ~~**이의 → 큐 → 재실행 경로**~~ **API 쪽 완료.** `ENABLE_QUEUE=true`에서 이의가 `queued`로 바뀌고 `rerun:{objectionId}` 잡이 Redis에 등록되는 것까지 확인했다. **남은 것은 워커 소비부** — `apps/worker/src/orchestrator/loop.ts`가 아직 잡을 처리하지 않는다.
+2. ~~**이의 → 큐 → 재실행 경로**~~ **완료·실행 검증됨.** 접수 → `queued` → 워커 소비 → 대상 라운드 재실행 기록 → `applied` + `outcome`까지 한 바퀴 돈다. 워커는 `DATABASE_URL` 없이 기동하지 않고(인메모리로는 API가 만든 이의가 보이지 않는다), 같은 이의가 다시 들어오면 건너뛴다. 최종 실패는 run `FAILED` + `unresolvedReason`으로 남기고 이의를 `applied`로 올리지 않는다. **남은 것은 심판 알맹이** — 지금은 라운드가 돌기만 하고 후보를 조달하지 않아 `outcome.changed`가 항상 false다.
 3. **`packages/data-agents`** — read-through 게이트웨이. 캐시 정책 카탈로그(32개 `queryClass`)를 코드로 옮긴다. `purpose`가 `verification`인 fail-closed 클래스는 캐시로 통과할 수 없다.
    - **웹검색·RAG도 여기로 들어온다.** `web.search`·`web.page`·`kb.retrieve`는 심판만 호출하고(`callerId` 화이트리스트), RAG는 별도 저장소 없이 `pack_cache` 위에서 돈다. 세 클래스 모두 **advisory** — 후보를 만들거나 `VERIFIED`/`BOOKABLE`로 승격시키지 못한다. 계약은 [agent-architecture.md](agent-architecture.md) 6.9.
 4. **`packages/agents`** — Supervisor부터. 심판은 Flight → Transport → Accommodation 순서로 붙인다(문서가 이미 있는 순서).

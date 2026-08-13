@@ -47,7 +47,7 @@
 | 경로 | 역할 | 비고 |
 | --- | --- | --- |
 | `apps/api` | API Gateway — 방·설문·이의 접수, 잡 디스패치 | 골격 완료 (Fastify). PostgreSQL·큐 연동 검증 완료, **인증 미착수** |
-| `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 골격 완료 (BullMQ). **잡 소비부·에이전트 미착수** |
+| `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 잡 소비·실행 기록 완료 (BullMQ + PostgreSQL). **심판·페르소나 에이전트 미착수** |
 | `packages/core` | 결정론 엔진 — Planning Graph STALE 전파, 이의 영향 산출, 디스패치 검증 | 부분 구현 (V1·V2·V5·V7) |
 | `packages/agents` | LLM 에이전트 — Supervisor, 심판 7종, 페르소나, 문서 생성 | 미착수 |
 | `packages/data-agents` | Data Agent read-through + 제공자 어댑터 (웹·RAG 포함) | 미착수. 계약만 `@tm/contracts`에 있음 |
@@ -122,6 +122,20 @@ curl localhost:3001/health          # → {"storage":"postgres","database":true,
 ```
 
 방 생성 → 설문 제출 → 이의 preview/접수까지 태우면, 이의가 `queued`로 바뀌고 `rerun:{objectionId}` 잡이 Redis에 남는다. `ENABLE_QUEUE=false`면 접수는 되지만 `accepted`에 머문다 — 실행되지 않은 이의를 `queued`로 표시하지 않기 위한 의도된 동작이다.
+
+워커까지 띄우면 이의 한 바퀴가 닫힌다.
+
+```bash
+DATABASE_URL=$DATABASE_URL npm run dev --workspace @tm/worker
+```
+
+`queued` → 대상 라운드 재실행 → `runs`·`rounds` 기록 → 이의 `applied` + `outcome`. 워커는 `DATABASE_URL`이 없으면 기동을 거부한다 — 인메모리 저장소는 프로세스가 달라 API가 만든 이의가 보이지 않고, 조용히 아무것도 하지 않는 워커가 된다.
+
+| 상황 | 동작 |
+| --- | --- |
+| 같은 이의가 다시 큐에 들어옴 | 잡 ID 고정으로 1차 차단, 워커에서 `applied` 확인 후 건너뜀 (O12) |
+| 마지막 시도까지 실패 | run `FAILED` + 이의 `outcome.unresolvedReason`. **이의를 `applied`로 올리지 않는다** — 반영되지 않은 이의를 처리 완료로 표시하면 사용자는 바뀐 게 없는 결과를 "반영됨"으로 읽는다 |
+| 심판 미구현 상태 | 라운드는 돌지만 후보를 조달하지 않으므로 `outcome.changed: false` + 사유를 남긴다 (O11) |
 
 `VITE_API_BASE_URL`을 비워두면 프론트는 폼 제출을 `sessionStorage`에 적재한다(`apps/web/src/formApi.ts`). 따라서 **백엔드 없이도 전체 화면 흐름을 확인할 수 있다.** 백엔드가 붙으면 `apps/web/.env`에 값을 넣는다.
 

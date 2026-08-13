@@ -2,7 +2,9 @@ import type {
   ObjectionRecord,
   ObjectionRequest,
   PlanningNodeId,
+  RefereeCategory,
   RoundId,
+  RoundPhase,
   SurveySubmission,
 } from '@tm/contracts';
 
@@ -59,10 +61,55 @@ export interface ObjectionRepository {
   used(roomId: string, userId: string): Promise<{ room: number; user: number }>;
 }
 
+export type RunStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+export interface RunRow {
+  runId: string;
+  roomId: string;
+  seq: number;
+  trigger: string;
+  status: RunStatus;
+  objectionId: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface RoundRecord {
+  runId: string;
+  roundId: RoundId;
+  category: RefereeCategory | 'supervisor';
+  seq: number;
+  /** SETTLED만 완료로 집계된다. 판결 전 단계는 이의 심사 대상이 아니다 */
+  phase: RoundPhase | 'FAILED';
+  rerunCount?: number;
+}
+
+/**
+ * 실행 기록. 워커가 쓰고 이의 심사가 읽는다.
+ * runId는 호출자가 정한다 — 잡이 재시도되어도 run 행은 하나여야 한다 (멱등).
+ */
+export interface RunRepository {
+  start(input: {
+    runId: string;
+    roomId: string;
+    trigger: string;
+    objectionId?: string | null;
+  }): Promise<RunRow>;
+  /** 라운드 진행 상태를 기록한다. 같은 run·라운드면 덮어쓴다 */
+  recordRound(record: RoundRecord): Promise<void>;
+  finish(
+    runId: string,
+    status: Extract<RunStatus, 'COMPLETED' | 'FAILED'>,
+    failureReason?: string | null,
+  ): Promise<void>;
+  get(runId: string): Promise<RunRow | undefined>;
+}
+
 export interface Repositories {
   kind: 'postgres' | 'memory';
   rooms: RoomRepository;
   surveys: SurveyRepository;
   objections: ObjectionRepository;
+  runs: RunRepository;
   close(): Promise<void>;
 }

@@ -100,7 +100,7 @@ docs/              설계 문서
 | API·Worker 골격 (방·설문·이의 접수, 잡 큐) | 완료 | 진행 | API 경로 실행 검증 |
 | PostgreSQL 스키마·리포지토리 | 완료 | 진행 | 로컬 실행 검증 통과 |
 | Data Agent·심판·Supervisor 구현 | 완료 | 미착수 | 미착수 |
-| 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 접수·큐 등록까지 검증 |
+| 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 접수→큐→워커→기록 한 바퀴 검증 |
 | Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
 | Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |
 | 예약 상태·재계획·사용자 결과 UX | 완료 | 미착수 | 미착수 |

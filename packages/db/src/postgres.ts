@@ -5,6 +5,8 @@ import type {
   Repositories,
   RoomRepository,
   RoomRow,
+  RunRepository,
+  RunRow,
   SurveyRepository,
   SurveyRow,
 } from './ports.js';
@@ -295,5 +297,81 @@ export function createPostgresRepositories(): Repositories {
     },
   };
 
-  return { kind: 'postgres', rooms, surveys, objections, close: closePool };
+  interface RunDbRow {
+    id: string;
+    room_id: string;
+    seq: number;
+    trigger: string;
+    status: string;
+    objection_id: string | null;
+    started_at: Date | null;
+    finished_at: Date | null;
+  }
+
+  const toRun = (row: RunDbRow): RunRow => ({
+    runId: row.id,
+    roomId: row.room_id,
+    seq: row.seq,
+    trigger: row.trigger,
+    status: row.status as RunRow['status'],
+    objectionId: row.objection_id,
+    startedAt: row.started_at?.toISOString() ?? null,
+    finishedAt: row.finished_at?.toISOString() ?? null,
+  });
+
+  const runs: RunRepository = {
+    async start({ runId, roomId, trigger, objectionId = null }) {
+      // 잡이 재시도되면 같은 runId로 다시 들어온다. seq를 새로 발급하지 않고 상태만 올린다.
+      const row = await queryOne<RunDbRow & { inserted: boolean }>(
+        `INSERT INTO runs (id, room_id, seq, trigger, status, objection_id, started_at)
+         SELECT $1, $2, COALESCE(MAX(seq), 0) + 1, $3, 'RUNNING', $4, now()
+           FROM runs WHERE room_id = $2
+         ON CONFLICT (id) DO UPDATE
+           SET status = 'RUNNING',
+               started_at = COALESCE(runs.started_at, now()),
+               finished_at = NULL,
+               failure_reason = NULL
+         RETURNING id, room_id, seq, trigger, status, objection_id, started_at, finished_at,
+                   (xmax = 0) AS inserted`,
+        [runId, roomId, trigger, objectionId],
+      );
+      if (row === undefined) throw new Error('run 생성 실패');
+      // 재시도로 같은 run이 다시 들어온 경우 run_count를 올리지 않는다.
+      await query(
+        `UPDATE rooms SET status = 'RUNNING', run_count = run_count + $2 WHERE id = $1`,
+        [roomId, row.inserted ? 1 : 0],
+      );
+      return toRun(row);
+    },
+
+    async recordRound({ runId, roundId, category, seq, phase, rerunCount = 0 }) {
+      await query(
+        `INSERT INTO rounds (id, run_id, round_id, category, seq, phase, rerun_count, started_at, ended_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now(), CASE WHEN $6 IN ('SETTLED','FAILED') THEN now() END)
+         ON CONFLICT (id) DO UPDATE
+           SET phase = EXCLUDED.phase,
+               rerun_count = EXCLUDED.rerun_count,
+               ended_at = CASE WHEN EXCLUDED.phase IN ('SETTLED','FAILED') THEN now() ELSE NULL END`,
+        [`${runId}:${roundId}`, runId, roundId, category, seq, phase, rerunCount],
+      );
+    },
+
+    async finish(runId, status, failureReason = null) {
+      await query(
+        `UPDATE runs SET status = $2, failure_reason = $3, finished_at = now() WHERE id = $1`,
+        [runId, status, failureReason],
+      );
+    },
+
+    async get(runId) {
+      const row = await queryOne<RunDbRow>(
+        `SELECT id, room_id, seq, trigger, status, objection_id, started_at, finished_at
+           FROM runs WHERE id = $1`,
+        [runId],
+      );
+      return row === undefined ? undefined : toRun(row);
+    },
+  };
+
+  return { kind: 'postgres', rooms, surveys, objections, runs, close: closePool };
 }

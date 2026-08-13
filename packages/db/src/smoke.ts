@@ -101,16 +101,28 @@ async function main(): Promise<void> {
     check('isMember(응답자)', await repos.surveys.isMember(room.roomId, 'user_a'));
     check('isMember(비참여자) → false', !(await repos.surveys.isMember(room.roomId, 'user_zzz')));
 
-    console.log('runs → rooms.get 파생 조회');
-    await query(
-      `INSERT INTO runs (id, room_id, seq, trigger, status) VALUES ($1, $2, 1, 'all_completed', 'COMPLETED')`,
-      ['run_smoke', room.roomId],
+    console.log('runs');
+    const run = await repos.runs.start({ runId: 'run_smoke', roomId: room.roomId, trigger: 'all_completed' });
+    check('start → RUNNING', run.status === 'RUNNING', run.status);
+    check('seq 발급', run.seq === 1, run.seq);
+    check('start 중 방 상태 RUNNING', (await repos.rooms.get(room.roomId))?.status === 'RUNNING');
+
+    const restarted = await repos.runs.start({ runId: 'run_smoke', roomId: room.roomId, trigger: 'all_completed' });
+    check('같은 runId 재시작 → seq 유지 (멱등)', restarted.seq === run.seq, restarted.seq);
+
+    await repos.runs.recordRound({ runId: 'run_smoke', roundId: 'r_2', category: 'accommodation', seq: 2, phase: 'SETTLED' });
+    await repos.runs.recordRound({ runId: 'run_smoke', roundId: 'r_3', category: 'activity', seq: 3, phase: 'VERDICT' });
+    await repos.runs.recordRound({ runId: 'run_smoke', roundId: 'r_2', category: 'accommodation', seq: 2, phase: 'SETTLED' });
+    const roundCount = await query<{ count: string }>(
+      `SELECT count(*) FROM rounds WHERE run_id = 'run_smoke'`,
     );
-    await query(
-      `INSERT INTO rounds (id, run_id, round_id, category, seq, phase)
-       VALUES ('rd_smoke_2', 'run_smoke', 'r_2', 'accommodation', 2, 'SETTLED'),
-              ('rd_smoke_3', 'run_smoke', 'r_3', 'activity', 3, 'VERDICT')`,
-    );
+    check('같은 라운드 재기록 → 행 추가 없음', roundCount[0]?.count === '2', roundCount[0]?.count);
+
+    await repos.runs.finish('run_smoke', 'COMPLETED');
+    check('finish → COMPLETED', (await repos.runs.get('run_smoke'))?.status === 'COMPLETED');
+    check('finish → finishedAt 기록', (await repos.runs.get('run_smoke'))?.finishedAt !== null);
+
+    console.log('rooms.get 파생 조회');
     await query(
       `INSERT INTO planning_nodes (run_id, node_id, input_hash, status, locked)
        VALUES ('run_smoke', 'accommodation', 'h1', 'BOOKED', false),

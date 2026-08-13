@@ -4,6 +4,8 @@ import type {
   Repositories,
   RoomRepository,
   RoomRow,
+  RunRepository,
+  RunRow,
   SurveyRepository,
   SurveyRow,
 } from './ports.js';
@@ -111,15 +113,69 @@ export function createMemoryRepositories(): Repositories {
     },
   };
 
+  const runs = new Map<string, RunRow>();
+  /** runId → roundId → 상태. rooms.get의 completedRounds를 여기서 유도한다 */
+  const roundsByRun = new Map<string, Map<RoundId, string>>();
+
+  const syncCompletedRounds = (roomId: string): void => {
+    const room = rooms.get(roomId);
+    if (room === undefined) return;
+    const settled = new Set<RoundId>();
+    for (const run of runs.values()) {
+      if (run.roomId !== roomId) continue;
+      for (const [roundId, phase] of roundsByRun.get(run.runId) ?? []) {
+        if (phase === 'SETTLED') settled.add(roundId);
+      }
+    }
+    rooms.set(roomId, { ...room, completedRounds: [...settled] });
+  };
+
+  const runRepo: RunRepository = {
+    async start({ runId, roomId, trigger, objectionId = null }) {
+      const existing = runs.get(runId);
+      const run: RunRow = existing ?? {
+        runId,
+        roomId,
+        seq: [...runs.values()].filter((row) => row.roomId === roomId).length + 1,
+        trigger,
+        status: 'RUNNING',
+        objectionId,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+      };
+      runs.set(runId, { ...run, status: 'RUNNING', finishedAt: null });
+      await roomRepo.updateStatus(roomId, 'RUNNING');
+      return runs.get(runId) as RunRow;
+    },
+    async recordRound({ runId, roundId, phase }) {
+      const bucket = roundsByRun.get(runId) ?? new Map<RoundId, string>();
+      bucket.set(roundId, phase);
+      roundsByRun.set(runId, bucket);
+      const run = runs.get(runId);
+      if (run !== undefined) syncCompletedRounds(run.roomId);
+    },
+    async finish(runId, status) {
+      const run = runs.get(runId);
+      if (run === undefined) return;
+      runs.set(runId, { ...run, status, finishedAt: new Date().toISOString() });
+    },
+    async get(runId) {
+      return runs.get(runId);
+    },
+  };
+
   return {
     kind: 'memory',
     rooms: roomRepo,
     surveys: surveyRepo,
     objections: objectionRepo,
+    runs: runRepo,
     async close() {
       rooms.clear();
       surveys.clear();
       objections.clear();
+      runs.clear();
+      roundsByRun.clear();
     },
   };
 }
