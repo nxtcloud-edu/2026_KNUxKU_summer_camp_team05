@@ -121,6 +121,11 @@ packages/db/              마이그레이션·리포지토리
 | 프리페치 (조달 → 캐시 → `candidates`) | `packages/data-agents/src/prefetch.ts` | 테스트 14개 |
 | 제공자 어댑터 3종 (Amadeus·ODsay·TourAPI) | `packages/data-agents/src/providers` | 계약 테스트 17개 (키 없이, 정규화만 검증) |
 | 방 API (조회·멤버·페르소나 게이트·트리거·승인) | `apps/api/src/routes/rooms.ts` | API·워커·PG·Redis 기동 후 전 구간 확인 |
+| **DateResolver** — 가능일 교집합·완화 3단계·스코어링 | `packages/core/src/date-resolver.ts` | 테스트 21개 |
+| **설문 → `ParticipantWeights`** — 슬라이더 12문항 + 예산·이동제약 | `packages/core/src/weights.ts` | 테스트 18개 |
+| **GroundedIndex 빌더** — 후보 → 팩트체크 근거 | `packages/core/src/grounded.ts` | 테스트 8개 |
+| **Pack 로더** — `packs/*.json` → `destination_packs` → 제공자 우선순위 | `packages/db/src/sync-packs.ts` | `npm run packs:sync --workspace @tm/db` |
+| **계획서 발행 경로** — Validation Pass → 배지 → 저장·발행 | `apps/worker/src/orchestrator/finalize.ts` | 테스트 7개 |
 
 핵심 계약 셋은 테스트로 고정되어 있다. 깨면 `npm run test`가 실패한다.
 
@@ -134,25 +139,42 @@ packages/db/              마이그레이션·리포지토리
 
 | # | 항목 | 막는 것 |
 | --- | --- | --- |
-| 1 | **제공자 어댑터 확대** — Rakuten(숙소)·Kakao/Naver(지도)·기상 등 | 없음. T2의 커버리지 조사가 우선순위를 정한다. 추가 방법은 `packages/data-agents/README.md` |
-| 2 | **실제 API 키로 어댑터 실호출 검증** — Amadeus·ODsay·TourAPI는 정규화 계약만 테스트되어 있다 | 키 발급 |
-| 3 | **DateResolver** — 비트맵 교집합 → 슬라이딩 윈도우 → 완화 → 스코어링 | 설문 스키마 v2/v3 결정 (T4 미결정 4번) |
-| 4 | **설문 → `ParticipantWeights` 변환기** | 같음 |
-| 5 | **프리페치 파라미터 채우기** — 날짜·지역이 정해져야 실제 조달이 돈다 | 3번 · T2 Pack 데이터 |
-| 6 | **카카오 OAuth·세션** | 없음. API 외부 노출의 전제 |
-| 7 | **Constraint Optimizer · Booking Coordinator · 알림** | R5·예약 설계 확정 |
-| 8 | 큐 계약 중복 제거, 민감정보 파기 잡, 백업·복구 리허설, `infra/ec2/` | 배포 준비 시 |
+| 1 | **제공자 어댑터 확대** — 숙소·지도·날씨 등 | 없음. T2의 커버리지 조사가 우선순위를 정한다 |
+| 2 | **실제 키로 어댑터 실호출 검증** — Amadeus·ODsay·TourAPI는 정규화 계약만 테스트되어 있다 | 키 발급 |
+| 3 | **DateResolver ↔ R0 배선** — 확정 날짜를 조달 파라미터로 주입 | 후보탐색 에이전트 |
+| 4 | **카드덱 축 매핑** — `activityScores`를 가중치에 반영하려면 카드 id → 축 표가 필요하다 | T4 카드덱 |
+| 5 | **설문 스키마 정리** — 가능일만 받기로 했으므로 `unavailableDates` 제거 | T4·T1 (파일 소유가 그쪽) |
+| 6 | **Constraint Optimizer · Booking Coordinator** | R5·예약 설계 확정 |
+| 7 | 큐 계약 중복 제거, 민감정보 파기 잡, 백업·복구 리허설, `infra/ec2/` | 배포 준비 시 |
+
+> **범위에서 뺀 것**: 알림(알림톡·푸시)은 구현하지 않는다. 소셜 로그인(카카오 OAuth)은 나중으로 미룬다.
+> 그래서 결과 도달 경로는 `GET /api/rooms/:roomId` 하나뿐이고, 인증이 붙기 전까지 API를 외부에 노출하지 않는다.
 
 **심판 담당자가 바로 쓸 수 있는 것** (전부 `@tm/core` · `@tm/db` export):
 
+**김동균 — 페르소나 ① · 오케스트레이터 ② · 감시자 ③**
+
 | 필요한 것 | 쓰는 것 |
 | --- | --- |
-| 조달한 후보 적재·조회 | `repos.candidates.saveMany / listByRound / sourcedExternalIds` |
-| 발화를 회의록에 남기기 | `repos.messages.append` (seq는 저장소가 채번) |
-| 판결·점수 저장 | `repos.verdicts.save` · `repos.scores.replaceRound` |
-| 발화 환각 검사 | `buildGroundedIndex` → `checkUtterance` → `factcheckGate` |
-| LLM 호출 원가 집계 | `createRunMeter().charge(...)` → `repos.llmUsage.record(...)` |
-| 라운드 시작 전 조달 | `planPrefetch` → `runPrefetch` (워커가 이미 호출한다) |
+| 개인 가중치 (①) | `weightsForRoom(설문들)` → `ParticipantWeights[]`. 축 이름은 `preferenceAxes`가 유일한 출처다 |
+| 만족도·승자 선택 (①③) | `scoreCandidates` → `selectWinner` (Maximin 3단 타이브레이크) |
+| 진행 순서 (②) | `computeLegalMoves` → `validateProposal` (V1~V10). 워커에 `SupervisorPort` 자리 있음 |
+| 토큰·예산 감시 (②) | `createRunMeter().charge(...)` → `repos.llmUsage.record(...)` |
+| 할루시네이션 감시 (②③) | `buildGroundedIndexFromRows(후보들)` → `checkUtterance` → `factcheckGate` |
+| 발화·판결 저장 (③) | `repos.messages.append` (seq 자동) · `repos.verdicts.save` · `repos.scores.replaceRound` |
+
+**김동욱 — 후보탐색 · 마무리**
+
+| 필요한 것 | 쓰는 것 |
+| --- | --- |
+| 조달 실행 | `CandidateSearchPort.propose()`를 구현해 `{queryClass, params}[]`를 돌려주면 끝. 캐시·쿼터·정규화·적재는 코드가 한다 |
+| 무엇을 요청할 수 있나 | `prefetchableClasses()` — 정책이 막는 클래스는 `plan.skipped`에 사유가 남는다 |
+| 계획서 발행 | `DocumentPort.draft()`로 초안을 주면 코드가 Validation Pass → 배지 판정 → 저장·발행 |
+
+경계는 하나로 정리된다: **무엇을 찾고 무엇을 쓸지는 에이전트가, 정책·상한·검증·저장은 코드가.**
+
+> 모델이 `claude-*`가 아니면(외부 Auth 계정 경유 등) `registerModelPricing()`으로 단가를 먼저 등록해야 한다.
+> 모르는 모델은 0원이 아니라 예외다 — 조용히 0으로 세면 원가 상한이 무력화된다.
 
 노드를 `VERIFIED`로 올리는 것은 심판이다. 지금은 플레이스홀더가 `PROVISIONAL`에 두기 때문에 그래프가 다음 라운드를 열지 못하고, 워커가 기본 위상 순서로 폴백하며 그 사실을 로그에 남긴다. 심판이 붙으면 이 폴백 로그가 사라진다.
 
