@@ -1,5 +1,8 @@
 import type { ObjectionRecord, ObjectionRequest, RoundId, SurveySubmission } from '@tm/contracts';
 import type {
+  CacheRecord,
+  CacheRepository,
+  DataRequestLog,
   ObjectionRepository,
   Repositories,
   RoomRepository,
@@ -164,18 +167,51 @@ export function createMemoryRepositories(): Repositories {
     },
   };
 
+  const cacheRecords = new Map<string, CacheRecord>();
+  /** 테스트와 로컬 확인에서 호출 이력을 들여다볼 수 있게 남긴다 */
+  const requestLog: DataRequestLog[] = [];
+
+  const cacheRepo: CacheRepository & { entries(): DataRequestLog[] } = {
+    async get(key) {
+      return cacheRecords.get(key);
+    },
+    async put(record) {
+      cacheRecords.set(record.key, record);
+    },
+    async purgeExpired() {
+      const now = Date.now();
+      let removed = 0;
+      for (const [key, record] of cacheRecords) {
+        if (record.validUntil !== null && Date.parse(record.validUntil) <= now) {
+          cacheRecords.delete(key);
+          removed += 1;
+        }
+      }
+      return removed;
+    },
+    async logRequest(entry) {
+      requestLog.push(entry);
+    },
+    entries() {
+      return requestLog;
+    },
+  };
+
   return {
     kind: 'memory',
     rooms: roomRepo,
     surveys: surveyRepo,
     objections: objectionRepo,
     runs: runRepo,
+    cache: cacheRepo,
     async close() {
       rooms.clear();
       surveys.clear();
       objections.clear();
       runs.clear();
       roundsByRun.clear();
+      cacheRecords.clear();
+      requestLog.length = 0;
     },
   };
 }

@@ -50,7 +50,7 @@
 | `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 잡 소비·실행 기록 완료 (BullMQ + PostgreSQL). **심판·페르소나 에이전트 미착수** |
 | `packages/core` | 결정론 엔진 — Planning Graph STALE 전파, 이의 영향 산출, 디스패치 검증 | 부분 구현 (V1·V2·V5·V7) |
 | `packages/agents` | LLM 에이전트 — Supervisor, 심판 7종, 페르소나, 문서 생성 | 미착수 |
-| `packages/data-agents` | Data Agent read-through + 제공자 어댑터 (웹·RAG 포함) | 미착수. 계약만 `@tm/contracts`에 있음 |
+| `packages/data-agents` | Data Agent read-through + 제공자 어댑터 (웹·RAG 포함) | 게이트웨이·정책 카탈로그·인스턴스 8종 완료 (테스트 26개). **실제 제공자 어댑터 미착수** |
 | `packages/db` | 마이그레이션·리포지토리 | 착수 — 초기 스키마 + 리포지토리 3종, 실행 검증 통과 (4.2.1) |
 | `packs/` | Destination Pack 데이터 (JSON) | 착수 (`jp-osaka` 초안) |
 

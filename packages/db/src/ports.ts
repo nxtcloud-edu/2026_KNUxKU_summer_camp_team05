@@ -1,4 +1,5 @@
 import type {
+  Confidence,
   ObjectionRecord,
   ObjectionRequest,
   PlanningNodeId,
@@ -105,11 +106,56 @@ export interface RunRepository {
   get(runId: string): Promise<RunRow | undefined>;
 }
 
+/**
+ * 방 간 공유 캐시. 같은 Pack·같은 시기 조회를 재사용한다 (agent-architecture 6.4).
+ * Data Agent만 이 저장소에 접근한다 — 심판은 캐시 DB를 직접 읽지 않는다.
+ */
+export interface CacheRecord {
+  key: string;
+  packId: string;
+  queryClass: string;
+  payload: unknown;
+  source: string;
+  confidence: Confidence;
+  termsRef: string | null;
+  /** 감사·재현용 원본 참조. LLM 컨텍스트에 절대 들어가지 않는다 */
+  rawRef: string | null;
+  retrievedAt: string;
+  validUntil: string | null;
+}
+
+export interface DataRequestLog {
+  runId: string | null;
+  roundId: string | null;
+  callerId: string;
+  queryClass: string;
+  purpose: string;
+  canonicalHash: string;
+  cacheHit: boolean;
+  confidence: Confidence | null;
+  degraded: boolean;
+  fallbackReason?: string | null;
+  provider?: string | null;
+  latencyMs?: number | null;
+  costUsd?: number | null;
+  responseHash?: string | null;
+}
+
+export interface CacheRepository {
+  get(key: string): Promise<CacheRecord | undefined>;
+  put(record: CacheRecord): Promise<void>;
+  /** 만료 레코드 정리. RAG 코퍼스에 만료 데이터가 남지 않게 한다 */
+  purgeExpired(): Promise<number>;
+  /** 캐시 적중률·폴백률·fail-closed 차단 추적 (agent-architecture 12.2) */
+  logRequest(entry: DataRequestLog): Promise<void>;
+}
+
 export interface Repositories {
   kind: 'postgres' | 'memory';
   rooms: RoomRepository;
   surveys: SurveyRepository;
   objections: ObjectionRepository;
   runs: RunRepository;
+  cache: CacheRepository;
   close(): Promise<void>;
 }

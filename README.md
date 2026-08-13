@@ -50,6 +50,7 @@ MVP 대상은 한국 5곳 + 일본 6곳, 총 11개 Destination Pack입니다.
 | [objection-and-rerun.md](docs/objection-and-rerun.md) | 이의 제기와 재토론 — 횟수 상한, 심사·승인 규칙, 재실행 범위 산출, 늦은 하드 제약 등록 |
 | [team-assignments.md](docs/team-assignments.md) | 팀 역할과 작업 폴더 — 4개 트랙의 소유 범위, 첫 과제, 트랙 간 접점 |
 | [survey-v3-proposal.md](docs/survey-v3-proposal.md) | 설문 v3 제안 검토 — 4단계 중요도 척도, 기존 설계와의 충돌과 결정 |
+| [llm-runtime-config.md](docs/llm-runtime-config.md) | LLM 런타임 설정 — 모델 티어, 프롬프트 캐싱 제약, 원가 상한과 실측 항목 |
 | [flight-referee-implementation.md](docs/flight-referee-implementation.md) | 항공권 심판 — Amadeus API 활용, 항공료 지수, 시간대 제약 처리 |
 | [transport-referee-implementation.md](docs/transport-referee-implementation.md) | 교통편 심판 — 국내/일본 대중교통, 교통패스 손익분기 엔진 |
 | [accommodation-referee-implementation.md](docs/accommodation-referee-implementation.md) | 숙소 심판 — 숙소 후보 조달, 방 배정 서브문제, 한국 숙박 데이터 공백 대응 |
@@ -99,7 +100,9 @@ docs/              설계 문서
 | 프론트엔드 화면 흐름 (MOA MVP) | 완료 | 진행 | 미착수 |
 | API·Worker 골격 (방·설문·이의 접수, 잡 큐) | 완료 | 진행 | API 경로 실행 검증 |
 | PostgreSQL 스키마·리포지토리 | 완료 | 진행 | 로컬 실행 검증 통과 |
-| Data Agent·심판·Supervisor 구현 | 완료 | 미착수 | 미착수 |
+| Data Agent 게이트웨이·캐시 정책 | 완료 | 진행 | 테스트 26개 통과 |
+| 제공자 어댑터 (Amadeus·Rakuten·ODsay 등) | 완료 | 미착수 | 미착수 |
+| 심판·Supervisor·페르소나 구현 | 완료 | 미착수 | 미착수 |
 | 이의 제기·재토론 (상한·영향 산출·재실행) | 완료 | 진행 | 접수→큐→워커→기록 한 바퀴 검증 |
 | Flight / Transport / Accommodation 심판 | 완료 | 미착수 | 미착수 |
 | Activity / Dining / Scheduler / Budget / Chief 상세 구현 | 담당 팀 진행 | 미착수 | 미착수 |

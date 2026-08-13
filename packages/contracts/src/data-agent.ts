@@ -104,6 +104,8 @@ export const evidenceSchema = z.object({
   termsRef: z.string(),
   cacheHit: z.boolean(),
   degraded: z.boolean(),
+  /** 웹·RAG 결과. 판정 근거가 될 수 없고 VERIFIED/BOOKABLE 승격에 쓸 수 없다 */
+  advisory: z.boolean().default(false),
   fallbackReason: z.string().optional(),
 });
 

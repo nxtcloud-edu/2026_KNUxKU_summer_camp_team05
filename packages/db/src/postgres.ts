@@ -1,6 +1,8 @@
 import type { ObjectionRecord, ObjectionRequest, PlanningNodeId, RoundId } from '@tm/contracts';
 import { closePool, query, queryOne } from './client.js';
 import type {
+  CacheRecord,
+  CacheRepository,
   ObjectionRepository,
   Repositories,
   RoomRepository,
@@ -373,5 +375,101 @@ export function createPostgresRepositories(): Repositories {
     },
   };
 
-  return { kind: 'postgres', rooms, surveys, objections, runs, close: closePool };
+  const cache: CacheRepository = {
+    async get(key) {
+      const row = await queryOne<{
+        cache_key: string;
+        pack_id: string;
+        query_class: string;
+        payload: unknown;
+        source: string;
+        confidence: string;
+        terms_ref: string | null;
+        raw_ref: string | null;
+        retrieved_at: Date;
+        valid_until: Date | null;
+      }>(
+        `SELECT cache_key, pack_id, query_class, payload, source, confidence,
+                terms_ref, raw_ref, retrieved_at, valid_until
+           FROM pack_cache WHERE cache_key = $1`,
+        [key],
+      );
+      if (row === undefined) return undefined;
+      return {
+        key: row.cache_key,
+        packId: row.pack_id,
+        queryClass: row.query_class,
+        payload: row.payload,
+        source: row.source,
+        confidence: row.confidence as CacheRecord['confidence'],
+        termsRef: row.terms_ref,
+        rawRef: row.raw_ref,
+        retrievedAt: row.retrieved_at.toISOString(),
+        validUntil: row.valid_until?.toISOString() ?? null,
+      };
+    },
+
+    async put(record) {
+      await query(
+        `INSERT INTO pack_cache
+           (cache_key, pack_id, query_class, payload, source, confidence, terms_ref, raw_ref, retrieved_at, valid_until)
+         VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (cache_key) DO UPDATE
+           SET payload = EXCLUDED.payload,
+               source = EXCLUDED.source,
+               confidence = EXCLUDED.confidence,
+               terms_ref = EXCLUDED.terms_ref,
+               raw_ref = EXCLUDED.raw_ref,
+               retrieved_at = EXCLUDED.retrieved_at,
+               valid_until = EXCLUDED.valid_until`,
+        [
+          record.key,
+          record.packId,
+          record.queryClass,
+          JSON.stringify(record.payload),
+          record.source,
+          record.confidence,
+          record.termsRef,
+          record.rawRef,
+          record.retrievedAt,
+          record.validUntil,
+        ],
+      );
+    },
+
+    async purgeExpired() {
+      const rows = await query<{ cache_key: string }>(
+        `DELETE FROM pack_cache WHERE valid_until IS NOT NULL AND valid_until <= now()
+         RETURNING cache_key`,
+      );
+      return rows.length;
+    },
+
+    async logRequest(entry) {
+      await query(
+        `INSERT INTO data_requests
+           (run_id, round_id, caller_id, query_class, purpose, canonical_hash,
+            cache_hit, confidence, degraded, fallback_reason, provider, latency_ms, cost_usd, response_hash)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          entry.runId,
+          entry.roundId,
+          entry.callerId,
+          entry.queryClass,
+          entry.purpose,
+          entry.canonicalHash,
+          entry.cacheHit,
+          entry.confidence,
+          entry.degraded,
+          entry.fallbackReason ?? null,
+          entry.provider ?? null,
+          entry.latencyMs ?? null,
+          entry.costUsd ?? null,
+          entry.responseHash ?? null,
+        ],
+      );
+    },
+  };
+
+  return { kind: 'postgres', rooms, surveys, objections, runs, cache, close: closePool };
 }

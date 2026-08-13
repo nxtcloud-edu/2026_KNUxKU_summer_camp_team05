@@ -1,0 +1,25 @@
+{
+  "name": "@tm/data-agents",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Data Agent — 캐시 read-through 게이트웨이와 제공자 어댑터. 심판이 외부 데이터에 닿는 유일한 경로다.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --import tsx --test src/policy.test.ts src/canonical.test.ts src/gateway.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@tm/contracts": "*",
+    "@tm/db": "*"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "tsx": "4.19.1",
+    "typescript": "~5.8.3"
+  }
+}
