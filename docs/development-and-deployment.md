@@ -1,26 +1,29 @@
 # 개발 환경과 배포 계획
 
-- **문서 버전**: v1.0 / 2026-08-13
+> 팀 개발의 시작점과 작업 패키지는 [docs/README.md](README.md)와 [MVP 구현 가이드](mvp-implementation-guide.md)를 따른다.
+> 이 문서의 로컬 개발·저장소 구조는 유효하다. Agent 운영 런타임과 배포는 사용자가 확정한 [ECS 기반 Codex Auth 설계](ecs-codex-auth-agent-architecture.md)가 EC2·일반 LLM API Key 예시보다 우선한다.
+
+- **문서 버전**: v1.1 / 2026-08-14
 - **상위 문서**: [travel-mediation-plan.md](travel-mediation-plan.md) · [agent-architecture.md](agent-architecture.md)
-- **다루는 범위**: 저장소 구조, 스택 결정, 로컬 개발 절차, 프론트–백엔드 계약 현황, MVP 범위 변경, AWS EC2 배포 계획
-- **권위**: 스택·환경·배포·범위 변경은 이 문서가 최신이다. 기획서 10.1의 구성도와 다르면 이 문서를 따른다.
+- **다루는 범위**: 저장소 구조, 스택 결정, 로컬 개발 절차, 프론트–백엔드 계약 현황, MVP 범위 변경, 과거 EC2 배포안 기록
+- **권위**: 로컬 개발과 저장소 구조는 이 문서를 따른다. Agent 운영 런타임·인증·운영 배포는 ECS Codex Auth 설계를 따른다.
 
 ---
 
-## 1. 개발 원칙 — 로컬 우선, 배포는 나중에 EC2
+## 1. 개발 원칙 — 로컬 세로 기능 검증 후 ECS
 
 ```
 [1] 로컬에서 전 기능 개발·검증          ← 현재 단계
     docker compose(PostgreSQL·Redis) + npm workspaces
-[2] 단일 AWS EC2 인스턴스에 배포
-    nginx(정적 + 리버스 프록시) + API + Worker + 데이터스토어
-[3] 부하·데이터 중요도가 올라가면 분리
-    RDS / ElastiCache / S3 / CloudFront
+[2] 로컬 Codex Runtime Gateway 연결
+    Fixture Agent 회귀 테스트 통과 후 Codex Auth·thread 검증
+[3] ECS에 Worker + Codex Runtime Gateway 배포
+    Auth는 Gateway만 소유하고 EFS에 암호화 저장
 ```
 
-로컬에서 끝까지 돌려본 뒤 EC2로 올린다. 초기부터 ECS·EKS·오토스케일링·IaC를 도입하지 않는다. 캠프 기간(8주) 안에 검증해야 하는 것은 인프라 탄력성이 아니라 **에이전트 파이프라인의 결과 품질**이다.
+로컬에서 fixture 후보와 Fixture Agent만으로 전체 세로 기능을 통과시킨 뒤 Codex Runtime Gateway를 연결하고, 마지막에 ECS로 배포한다. 로컬 단계부터 ECS 리소스를 만들지는 않는다. 캠프 기간 안에 먼저 검증할 것은 인프라 탄력성이 아니라 **에이전트 파이프라인의 결과 품질**이다.
 
-배포 시점에 특히 주의할 점은 워커가 LLM·외부 여행 API를 호출한다는 사실이다. API 키가 인스턴스에 상주하고, 방 1개 실행마다 실비가 발생한다. 비용 상한과 시크릿 관리를 배포 전에 확정한다(8.5·8.6절).
+배포 시점에는 워커가 외부 여행 API와 Codex Runtime Gateway를 호출한다. 여행 API 키는 Connector에만, Codex Auth는 Runtime Gateway에만 존재해야 한다. 방 1개 실행마다 실비가 발생하므로 비용·동시성 상한을 배포 전에 검증한다.
 
 ---
 
@@ -34,7 +37,8 @@
 │     ├─ public/              정적 자산, PWA manifest
 │     └─ .env.example         VITE_API_BASE_URL
 ├─ packages/
-│  └─ contracts/              공용 타입·zod 스키마 (planning · rounds · dispatch · data-agent · candidates · verdict)
+│  ├─ contracts/              공용 TypeScript 타입·Zod 스키마
+│  └─ agents/                 Python 3.12·Pydantic Agent 런타임과 테스트
 ├─ docs/                      설계 문서 (권위 순서: 기획서 19장 > agent-architecture > 개별 심판 문서)
 ├─ docker-compose.yml         로컬 PostgreSQL 16 · Redis 7
 ├─ package.json               npm workspaces 루트
@@ -49,12 +53,12 @@
 | `apps/api` | API Gateway — 인증, 방·설문 CRUD, Pack 레지스트리, 잡 디스패치 | 미착수 |
 | `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 미착수 |
 | `packages/core` | 결정론 엔진 — LegalMove, 디스패치 검증, Maximin, DateResolver, Validation Pass | 미착수 |
-| `packages/agents` | LLM 에이전트 — Supervisor, 심판 7종, 페르소나, 문서 생성 | 미착수 |
-| `packages/data-agents` | Data Agent read-through + 제공자 어댑터 | 미착수 |
+| `packages/agents` | Python Agent — Proxy, Supervisor, Watcher, Search, Auditor, Finalizer | 로컬 구현 완료 |
+| `packages/data-gateway` | 결정론적 read-through Gateway + 제공자 Connector | 미착수 |
 | `packages/db` | 마이그레이션·리포지토리 | 미착수 |
 | `packs/` | Destination Pack 데이터 (JSON) | 미착수 |
 
-`apps/api`·`apps/worker`의 프레임워크는 기획서 10.1의 "NestJS 또는 FastAPI" 중 **NestJS(TypeScript)** 를 기본안으로 둔다. 문서의 모든 코드 예시가 TypeScript이고 프론트도 TypeScript이므로 언어를 하나로 유지한다.
+`apps/api`는 **NestJS(TypeScript)** 를 기본안으로 유지한다. Agent 런타임은 Python 3.12와 Pydantic으로 분리했으므로 `apps/worker`는 Python으로 구현하거나, TypeScript Worker가 내부 HTTP/RPC로 Python Agent Runner를 호출해야 한다. MVP에서는 프로세스 경계를 늘리지 않기 위해 Python Worker를 우선한다.
 
 ---
 
@@ -65,10 +69,10 @@
 | 프론트엔드 | **React 19 SPA + Vite 7** | 프론트 담당이 React로 MVP를 이미 구현. 기획서 10.1의 Next.js에서 변경 | SEO·SSR·공유 링크 OG 프리뷰가 요구사항이 되면 Next.js 재검토 |
 | PWA | `public/manifest.webmanifest` + 필요 시 `vite-plugin-pwa` | 기획서 14.2 "네이티브 앱 대신 PWA" | — |
 | 패키지 매니저 | **npm workspaces** | 로컬에 pnpm 미설치. Node 20 기본 도구로 충분 | 워크스페이스가 10개를 넘고 설치 시간이 문제되면 pnpm |
-| 언어 | TypeScript 전면 | 문서 예시·프론트와 일치, 계약 타입 공유 | — |
+| 언어 | 웹·API·공통 계약 TypeScript / Agent·Worker Python 3.12 | Agent 구현 요청과 Pydantic 기반 strict 검증을 반영 | 서비스 간 JSON Schema 생성이 자동화되지 않으면 경계 재검토 |
 | 로컬 데이터스토어 | Docker Compose (PostgreSQL 16, Redis 7) | 기획서 10.1 Storage 구성 | — |
 | 잡 큐 | BullMQ (Redis) | 기획서 10.1, 비동기 배치 실행 모델 | — |
-| 배포 | 단일 EC2 + Docker Compose | 캠프 규모, 운영 인력 없음 | 동시 실행 방이 늘어 워커 격리가 필요해지면 분리 |
+| 배포 | 로컬 Docker Compose → ECS | 로컬 세로 기능을 먼저 검증하고 Auth 소유권을 Gateway로 격리 | ECS 세부 계약은 전용 문서 적용 |
 
 ### 3.1 프론트엔드를 `apps/web`으로 이동한 이유
 
@@ -120,7 +124,8 @@ npm run lint
 | 런타임 | `NODE_ENV`, `LOG_LEVEL`, `API_PORT`, `WEB_ORIGIN` |
 | 데이터스토어 | `DATABASE_URL`, `REDIS_URL` |
 | 실행 상한 | `RUN_WALLCLOCK_LIMIT_SEC`(1800), `RUN_COST_CAP_USD`(0.6), `ROUND_TURN_CAP`(32), `ROUND_RERUN_CAP`(2), `GLOBAL_RECALC_CAP`(3), `WORKER_CONCURRENCY` |
-| LLM | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL_PERSONA`, `LLM_MODEL_REFEREE`, `LLM_MODEL_SUPERVISOR` |
+| Agent Runtime | `CODEX_GATEWAY_URL`, `AGENT_SPEC_REGISTRY_PATH`, `AGENT_RUN_TIMEOUT_MS` |
+| Codex Runtime Gateway 전용 | `CODEX_HOME`, `CODEX_GATEWAY_PORT`, `CODEX_MAX_CONCURRENCY` |
 | 여행 API | `AMADEUS_CLIENT_ID`, `AMADEUS_CLIENT_SECRET`, `AMADEUS_ENV`, `RAKUTEN_APPLICATION_ID`, `GOOGLE_MAPS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `ODSAY_API_KEY`, `NAVITIME_API_KEY`, `TOURAPI_SERVICE_KEY`, `HOTPEPPER_API_KEY`, `KAKAO_REST_API_KEY`, `KOREAEXIM_FX_API_KEY` |
 | 인증 | `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `SESSION_SECRET` |
 
@@ -135,7 +140,7 @@ npm run lint
 | 메서드 | 경로 | 페이로드 | 비고 |
 | --- | --- | --- | --- |
 | POST | `/api/trip-rooms` | `RoomSubmissionPayload` `{ schemaVersion: 1, destinationId }` | 방장은 목적지만 선택 (기획서 v1.2) |
-| POST | `/api/survey-responses` | `SurveySubmissionPayload` `{ schemaVersion: 2, destinationId, availability, hardConstraints, travelStyles, activityScores, mustDo, avoid }` | `credentials: 'include'` |
+| POST | `/api/survey-responses` | `SurveySubmissionPayload` `{ schemaVersion: 3, destinationId, availability, hardConstraints, travelStyles, activityScores, purposeItems, avoid }` | `credentials: 'include'` |
 
 ### 5.1 설문 스키마 v2 — 알레르기를 식이 제약에서 분리
 
@@ -158,6 +163,40 @@ v2: dietary:   string[]   비건·베지테리언·페스코·할랄·코셔·�
 
 페르소나 확인 화면은 알레르기를 제약 목록 **맨 앞**에 표시한다. 이 화면이 사용자의 마지막 통제 지점이므로 안전 항목이 먼저 보여야 한다.
 
+### 5.2 설문 스키마 v3 — 목적급 콘텐츠 배열
+
+v2의 `mustDo: string`을 v3에서 `purposeItems: string[]`로 바꾼다. MVP는 빈 배열부터 최대 2개까지 허용하며 배열 순서가 1·2순위다. 제출 시 공백 항목을 제거하고 2개를 초과하면 거부한다. 기존 브라우저 로컬 초안의 `mustDo` 값은 첫 번째 배열 요소로 이관한다.
+
+```text
+v2: mustDo: string
+v3: purposeItems: string[]  // 0~2개, 순서 보존
+```
+
+상한은 공통 계약의 `protectedObjectivePolicyV1.maxPerParticipant`에서 관리한다. 후속 버전에서 상한을 늘릴 때 저장 구조를 다시 바꾸지 않는다.
+
+### 5.3 MVP 보류 — 참가자 간 알레르기 상세 공개
+
+알레르기 수집과 안전 제외는 MVP에 유지하지만, **정확한 알레르기 항목·당사자를 다른 참가자나 ParticipantProxyAgent에 공개하는 기능은 MVP에서 구현하지 않는다.** 공개 동의와 공개 범위 선택 UI도 후속 단계로 미룬다.
+
+MVP 처리:
+
+```text
+알레르기 원문
+→ ConstraintValidator·Dining 안전 검증 코드만 사용
+→ 해당 음식·식당을 협상 전에 제외
+→ 다른 참가자와 Proxy에는 “그룹 안전 제약으로 선택 불가”만 공개
+```
+
+후속 구현 시에는 다음 정책을 적용한다.
+
+- 일반 개인정보 동의와 구분된 민감정보 처리 동의
+- 여행방 참가자에게 정확한 알레르기 항목·당사자를 공개할지 별도 선택
+- 비공개를 선택해도 안전 제외 기능은 동일하게 동작
+- 공개 대상·목적·항목·보유 기간·거부 권리 안내
+- 공개 동의 철회와 여행 종료 후 파기
+
+법적 근거는 개인정보 보호법 제17조(공유를 포함한 제3자 제공)와 제23조(건강정보 등 민감정보 처리 제한)를 기준으로 하며, 실제 출시 전 개인정보 처리방침과 동의 문구를 별도로 검토한다.
+
 ---
 
 ## 6. MVP 범위 변경 — 방 배정 선호 미수집
@@ -177,7 +216,9 @@ v2: dietary:   string[]   비건·베지테리언·페스코·할랄·코셔·�
 
 ---
 
-## 7. AWS EC2 배포 계획
+## 7. 과거 AWS EC2 배포안 — 구현 기준 아님
+
+> 아래 내용은 초기 배포 검토 기록이다. 새 구현·작업 배정·운영 체크리스트의 기준으로 사용하지 않는다. 현재 구현 기준은 [ECS 기반 Codex Auth 에이전트 런타임 설계](ecs-codex-auth-agent-architecture.md) 14~16장이다.
 
 ### 7.1 목표 토폴로지 (초기)
 
@@ -237,6 +278,8 @@ sudo nginx -s reload
 - 키를 이미지·리포지토리에 넣지 않는다. `/etc/moa/env`(권한 600) 또는 SSM Parameter Store에서 주입한다.
 - IMDSv2를 강제하고 인스턴스 IAM 역할은 최소 권한(S3 백업 버킷, SSM 읽기)만 부여한다.
 - 로컬 값은 `.env`, CI 값은 GitHub Actions Secrets. 저장소의 시크릿 스캔(`docs-quality.yml`)을 우회하지 않는다.
+- ECS 배포에서는 외부 여행 API 키를 Secrets Manager에서 Provider Connector Task에만 주입한다. CandidateSearchAgent·CategoryWatcher·Codex Runtime에는 키를 주입하지 않는다.
+- Authorization 헤더, query-string 키, 원본 제공자 응답은 Agent tool 결과와 애플리케이션 로그에서 마스킹한다.
 
 ### 7.6 보안 그룹·접근
 
@@ -262,11 +305,13 @@ ECS·EKS, 오토스케일링, Terraform·CDK, 멀티 AZ, 블루/그린 배포. �
 
 ## 8. 배포 전 체크리스트
 
+Agent 런타임의 필수 체크리스트는 ECS Codex Auth 설계 15·16장을 우선한다. 아래는 서비스 공통 항목이다.
+
 - [ ] 카카오 OAuth·세션 구현 완료 (API 퍼블릭 노출의 전제)
 - [ ] `RUN_COST_CAP_USD`·`WORKER_CONCURRENCY` 실측 기반 설정
 - [ ] 외부 API 키를 운영 키로 교체 (Amadeus 테스트 키 금지)
-- [ ] 민감정보 파기 잡·EBS 암호화 적용
-- [ ] `pg_dump` 백업 자동화 및 복구 1회 리허설
+- [ ] 민감정보 파기 잡과 저장소 암호화 적용
+- [ ] DB 백업 자동화 및 복구 1회 리허설
 - [ ] 실패 알림 경로(DLQ → 운영자) 검증
 - [ ] HTTPS 인증서 자동 갱신 확인
 
@@ -278,7 +323,6 @@ ECS·EKS, 오토스케일링, Terraform·CDK, 멀티 AZ, 블루/그린 배포. �
 | --- | --- | --- |
 | 1 | `apps/api` 프레임워크 최종 확정 (NestJS 기본안) | 백엔드 착수 시 |
 | 2 | DB 접근 계층 (Prisma / Kysely / raw SQL) | `packages/db` 착수 시 |
-| 3 | `infra/ec2/` 구성 파일 (compose.prod, nginx.conf, 배포 스크립트) | 첫 배포 준비 시 |
-| 4 | EC2 인스턴스 타입·리전 | 첫 배포 준비 시 |
-| 5 | `packages/contracts`를 프론트가 import하는 시점 (설문 payload 단일화) | 백엔드 설문 엔드포인트 구현 시 |
-| 6 | 루트 `.env.example` 추가 | 백엔드 착수 시 (현재 `apps/web/.env.example`만 존재) |
+| 3 | `packages/contracts`를 프론트가 import하는 시점 (설문 payload 단일화) | W0·W8 |
+| 4 | 루트 `.env.example` 추가 | W1 착수 시 |
+| 5 | ECS 리전·Task 크기·EFS Access Point | W10 부하·비용 실측 후 |

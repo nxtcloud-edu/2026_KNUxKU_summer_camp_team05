@@ -6,7 +6,12 @@
  */
 export * from './planning.js';
 export * from './rounds.js';
-export * from './data-agent.js';
+export * from './data-gateway.js';
 export * from './dispatch.js';
 export * from './candidates.js';
 export * from './verdict.js';
+export * from './agent-spec.js';
+export * from './style-policy.js';
+export * from './objective-policy.js';
+export * from './reliability-policy.js';
+export * from './change-authority.js';

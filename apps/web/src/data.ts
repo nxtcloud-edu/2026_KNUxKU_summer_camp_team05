@@ -49,7 +49,6 @@ export const roomMembers: RoomMember[] = [
 export const preferenceSliders = [
   { id: 'pace', title: '여행 페이스', left: '느긋하게', right: '빡빡하게' },
   { id: 'planning', title: '계획 스타일', left: '즉흥적으로', right: '미리 꼼꼼하게' },
-  { id: 'accommodation-spend', title: '돈을 쓴다면', left: '숙소는 아끼기', right: '숙소에 투자하기' },
   { id: 'atmosphere', title: '여행 분위기', left: '자연 · 풍경', right: '도심 · 쇼핑' },
   { id: 'place-style', title: '장소 취향', left: '역사 · 박물관', right: '트렌디 · 핫플' },
   { id: 'food-style', title: '맛집 선택', left: '로컬 음식 도전', right: '검증된 맛집' },

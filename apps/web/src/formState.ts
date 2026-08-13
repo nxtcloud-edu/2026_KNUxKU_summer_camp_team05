@@ -48,7 +48,7 @@ export type SurveyDraft = {
   hardConstraints: HardConstraintDraft
   travelStyles: Record<string, number | null>
   activityScores: Record<string, number | null>
-  mustDo: string
+  purposeItems: string[]
   avoid: string
 }
 
@@ -73,16 +73,16 @@ export const createEmptySurveyDraft = (styleIds: string[], activityIds: string[]
   },
   travelStyles: Object.fromEntries(styleIds.map((id) => [id, null])),
   activityScores: Object.fromEntries(activityIds.map((id) => [id, null])),
-  mustDo: '',
+  purposeItems: ['', ''],
   avoid: '',
 })
 
 /**
- * v2: hardConstraints.diet(단일값)을 dietary[] + allergies[] 로 분리.
+ * v3: 목적급 자유 입력을 mustDo 단일 문자열에서 purposeItems 최대 2개로 분리.
  * 백엔드는 schemaVersion 으로 분기한다.
  */
 export type SurveySubmissionPayload = SurveyDraft & {
-  schemaVersion: 2
+  schemaVersion: 3
   destinationId: string
 }
 
@@ -99,8 +99,15 @@ export const createRoomSubmissionPayload = (destinationId: string): RoomSubmissi
 export const createSurveySubmissionPayload = (
   destinationId: string,
   draft: SurveyDraft,
-): SurveySubmissionPayload => ({
-  schemaVersion: 2,
-  destinationId,
-  ...draft,
-})
+): SurveySubmissionPayload => {
+  const purposeItems = draft.purposeItems.map((item) => item.trim()).filter(Boolean)
+  if (purposeItems.length > 2) {
+    throw new Error('목적급 콘텐츠는 MVP에서 최대 2개까지 제출할 수 있습니다.')
+  }
+  return {
+    schemaVersion: 3,
+    destinationId,
+    ...draft,
+    purposeItems,
+  }
+}

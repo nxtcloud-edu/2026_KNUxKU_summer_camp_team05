@@ -109,7 +109,7 @@ interface AccommodationRefereeInput {
   };
   hardConstraints: HardConstraint[];
   roomingPreferences: RoomingPreference[];    // 8장
-  sliders: Record<string, Record<string, number>>;  // spendOnStay, social 등
+  styleProfiles: Record<string, Record<string, number | null>>; // 1~7, 미응답 null
   concessionCredits: Record<string, number>;
 }
 ```
@@ -560,30 +560,22 @@ if effectiveCost > min(personalBudgetForStay):
 ### 11.1 개인 만족도
 
 ```
-Sat(i, c) = w_price     × priceFit(i, c)
-          + w_location  × locationFit(i, c)
-          + w_comfort   × comfortFit(i, c)
-          + w_quality   × qualityFit(c)
-          + w_amenity   × amenityFit(i, c)
-          + w_policy    × cancelPolicyFit(c)
+AccommodationCategorySat(i, c)
+= Σ(detailImportance × fulfillment) / Σ(detailImportance)
 ```
 
-**가중치는 개인의 `spendOnStay` 슬라이더로 동적 결정된다.** 이것이 숙소 라운드의 핵심이다.
-
-| 성향 | `w_price` | `w_location` | `w_comfort` | `w_quality` | `w_amenity` | `w_policy` |
-| --- | --- | --- | --- | --- | --- | --- |
-| 숙소 절약형 (`spendOnStay < 0.35`) | 0.45 | 0.22 | 0.13 | 0.08 | 0.07 | 0.05 |
-| 균형형 (0.35~0.65) | 0.32 | 0.24 | 0.18 | 0.12 | 0.09 | 0.05 |
-| 숙소 투자형 (`> 0.65`) | 0.18 | 0.20 | 0.26 | 0.20 | 0.11 | 0.05 |
+숙소 중요도와 가격·위치·쾌적성·편의시설·취소 정책 같은 세부 중요도는 설문의 `5·3·1`을 사용한다. 기존 소비 성향 슬라이더 기반 동적 가중치는 분야 중요도와 중복되므로 제거한다.
 
 | 항목 | 계산 |
 | --- | --- |
-| `priceFit` | `effectiveLodgingCost` 기준. 개인 예산 여유도로 정규화 |
+| 가격 | 개인 예산 상한을 먼저 하드 게이트로 검사하고, 동급 후보는 `CostTravelComparator`에서 비교 |
 | `locationFit` | `measure_location` 결과 × `mobilityPolicy.stationProximityWeight`. 택시 정책이면 역 거리 비중 하락, 활동 중심점 거리 비중 상승 |
-| `comfortFit` | 방 배정 결과(8.3) + 침실 분리 + 욕실 형태. `social`·수면 예민도로 개인화 |
+| `comfortFit` | 방 배정 결과(8.3) + 침실 분리 + 욕실 형태. 세부 취향과 수면·접근성 제약으로 판정 |
 | `qualityFit` | 평점 × log(리뷰 수) 정규화 + sentiment 점수 |
 | `amenityFit` | 개인 카드 점수와 매칭 (온천 선호 9점인 사람에게 온천 보유는 큰 가점) |
-| `cancelPolicyFit` | 무료 취소 가능 기간. `planning` 슬라이더 낮은(즉흥형) 사람에게 가중 |
+| `cancelPolicyFit` | 무료 취소 가능 기간과 명시적 세부 취향으로 판정 |
+
+모든 숙소 세부 취향의 반영도까지 동급일 때만 1~7 계획성·사교 등 관련 스타일 축의 `StyleFitBp`를 비교한다. 스타일은 숙소 만족도에 더하거나 `5·3·1`과 곱하지 않는다.
 
 ### 11.2 추가 규칙
 
@@ -629,12 +621,12 @@ Sat(i, c) = w_price     × priceFit(i, c)
 
 **함정 1 — "잠만 자면 된다"의 비대칭**
 
-`spendOnStay`가 낮은 사람의 "숙소는 잠만 자면 된다"는 주장은 강하게 표현되지만, 실제로는 **가격 선호**일 뿐이다. 반면 수면 예민도가 높은 사람의 "조용한 곳이 좋겠어요"는 약하게 표현되지만 **실질적 제약**이다.
+숙소 분야 중요도가 낮고 가격 절약 세부 취향이 높은 사람의 "숙소는 잠만 자면 된다"는 주장은 강하게 표현되지만, 실제로는 **가격 선호**일 뿐이다. 반면 수면 예민도가 높은 사람의 "조용한 곳이 좋겠어요"는 약하게 표현되지만 **실질적 제약**이다.
 
 ```
 → 심판은 표현 강도가 아니라 설문 데이터로 검증한다.
   수면 예민도 6+ 인 사람의 소음 우려는 personaSupport 1.0
-  spendOnStay 0.2 인 사람의 가격 주장도 personaSupport 1.0
+  숙소 분야 1점·가격 절약 세부 5점인 사람의 가격 주장도 personaSupport 1.0
   두 주장 모두 인정하되, 절충(조용한 지역의 저렴한 숙소)을 탐색한다.
 ```
 
@@ -667,8 +659,8 @@ Sat(i, c) = w_price     × priceFit(i, c)
 | --- | --- | --- |
 | "온천 있는 데로 가요" | 온천 카드 9점 | 100% 인정 |
 | "온천 있는 데로 가요" | 온천 카드 3점 | 25% 할인 + 지적 |
-| "숙소에 돈 쓰기 아까워요" | `spendOnStay = 0.2` | 100% 인정 |
-| "숙소에 돈 쓰기 아까워요" | `spendOnStay = 0.8` | 25% 할인 + 지적 |
+| "숙소에 돈 쓰기 아까워요" | 숙소 분야 1점·가격 절약 세부 5점 | 100% 인정 |
+| "숙소에 돈 쓰기 아까워요" | 숙소 분야 5점·고급 숙소 세부 5점 | 모순으로 표시하고 확인된 프로필 기준으로 제한 |
 | "조용한 곳이 좋아요" | 수면 예민도 7 | 100% 인정 (약하게 말해도 강도 상향) |
 | "도미토리 안 돼요" | 하드 제약 등록됨 | 실격 사유로 승격 |
 | "역에서 5분이래요" | 실측 14분 | 사실 오류 — 정정 |
@@ -850,7 +842,7 @@ evaluate_split_stay 도구가 이 조건을 자동 검증한다. 조건 미충�
 ★ 반드시 설문과 대조해 보정하세요 ★
   · 주장이 하드 제약과 일치 → 100% 인정 (그리고 실격 사유입니다)
   · 주장이 슬라이더·카드 점수와 일치 → 100% 인정
-      예: spendOnStay 0.2 인 사람의 "숙소에 돈 쓰기 아까워요" → 100%
+      예: 숙소 분야 1점·가격 절약 세부 5점인 사람의 "숙소에 돈 쓰기 아까워요" → 100%
       예: 온천 카드 9점인 사람의 "료칸 가고 싶어요" → 100%
   · 설문에 근거 없음 → 50% 할인
   · 설문과 모순 → 25% 할인 + 회의록에 정중히 지적
@@ -986,11 +978,11 @@ VERDICT
   },
   "intensityProfile": [
     { "userId": "u_882", "stance": "support", "target": "료칸 포함",
-      "rawIntensity": 0.85, "personaSupport": 1.0, "ccFactor": 1.1,
-      "adjusted": 0.94,
+      "rawIntensity": 0.85, "personaSupport": 1.0,
+      "adjusted": 0.85,
       "signals": ["S1","S2","S6"],
-      "basis": "온천 카드 9점 + 양보지수 1.4 — 100% 인정",
-      "evidence": "온천 하나는 꼭 하고 싶었고, 지난 라운드에서 양보했습니다." },
+      "basis": "온천 카드 9점 — 설문 선호와 일치",
+      "evidence": "온천 하나는 꼭 하고 싶었습니다." },
     { "userId": "u_265", "stance": "oppose", "target": "분할 숙박",
       "rawIntensity": 0.40, "personaSupport": 1.0, "adjusted": 0.40,
       "signals": ["S4"],
@@ -1046,7 +1038,7 @@ VERDICT
 | --- | --- | --- | --- |
 | 지역 프로파일 | Pack 갱신 시 | `pack:area` | 전역 |
 | 호텔 목록(시설 기본정보) | 7d | `pack:area:type` | 전역 |
-| 빈방·가격 | **2h** | `hotelId:checkIn:checkOut:guests` | 조건 동일 시 |
+| 빈방·가격 | 탐색 2h / 확정 15분 | `hotelId:checkIn:checkOut:guests` | 조건 동일 시 |
 | 숙소 상세 | 30d | `hotelId` | 전역 |
 | 위치 실측 | 30d | `hotelId:target` | 전역 (프리컴퓨트 대상) |
 | Google Places 상세 | 30d | `placeId` | 전역 |
@@ -1065,10 +1057,10 @@ VERDICT
 | Rakuten Travel 실패 | Amadeus Hotel → Google Places 순 폴백. 료칸 후보가 사라지므로 회의록에 명시 |
 | Amadeus 인증 실패 | 토큰 재발급 1회 → 실패 시 Rakuten/TourAPI 단독 진행 |
 | TourAPI 실패 (한국) | Google Places 단독 + 시세 밴드로 진행, 신뢰도 하향 표기 |
-| 빈방 0건 | 지역 확대 → 예산 +10% → 그래도 0건이면 Chief에 보고하고 날짜 재검토 요청 |
+| 빈방 0건 | 지역 확대 → 개인 예산 상한 안에서 탐색 가격대 확대 → 그래도 0건이면 Chief에 보고. 날짜 변경은 새 SurveySnapshot 요청 |
 | 상세 조회 실패 | 객실 구성 불명 → "확인 필요"로 표기하고 방 배정 계산 생략 |
 | 위치 실측 실패 | 직선거리 기반 추정 + 근사치 명시 |
-| 가격 급변 (재조회 시 15%↑) | 판결 보류 → 재조달 1회 → 이후 변동가 채택 + 명시 |
+| 가격 변동 (재조회 시 5% 초과) | 최신 가격으로 예산 재계산 → 검증된 대체 후보와 재비교. 개인 상한 초과 시 `BUDGET_BLOCKED` |
 
 **폴백 시 공통 원칙**: 데이터 품질이 낮아진 사실을 회의록과 계획서에 그대로 노출한다. 사용자가 검증할 수 없는 구조이므로 침묵이 가장 큰 위험이다.
 

@@ -38,6 +38,29 @@ export type NodeStatus = (typeof nodeStatuses)[number];
 export const confidenceLevels = ['unknown', 'estimated', 'live'] as const;
 export type Confidence = (typeof confidenceLevels)[number];
 
+export const schedulePaces = ['REST', 'BALANCED', 'ACTIVE'] as const;
+export type SchedulePace = (typeof schedulePaces)[number];
+
+/** MVP ScheduleOptimizer의 결정론적 Beam Search 정책. */
+export const scheduleOptimizationPolicyV1 = {
+  algorithm: 'CONSTRAINT_FIRST_BEAM_SEARCH',
+  timeSlotMinutes: 15,
+  beamWidth: 30,
+  outputPlanCount: 3,
+  candidateLimitPerCategoryPerDay: 10,
+  transitBufferMinimumMinutes: 10,
+  transitBufferRatioBp: 2000,
+  mainContentLimitByPace: {
+    REST: 1,
+    BALANCED: 2,
+    ACTIVE: 3,
+  },
+} as const;
+
+/** 식사·숙소 체크인·단순 이동은 하루 주요 콘텐츠 개수에서 제외한다. */
+export const nonMainContentKinds = ['MEAL', 'ACCOMMODATION_CHECK', 'TRANSIT'] as const;
+export type NonMainContentKind = (typeof nonMainContentKinds)[number];
+
 export const planningNodeSchema = z.object({
   nodeId: z.enum(planningNodeIds),
   version: z.number().int().nonnegative(),

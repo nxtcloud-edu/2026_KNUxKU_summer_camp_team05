@@ -71,7 +71,6 @@ export const mechanicalCheckSchema = z.object({
   minSatisfaction: z.number().nullable(),
   satisfactionGap: z.number().nullable(),
   budgetDelta: z.number().nullable(),
-  consecutiveLastPlace: z.record(z.string(), z.number().int()),
   staleNodes: z.array(z.enum(planningNodeIds)),
 });
 

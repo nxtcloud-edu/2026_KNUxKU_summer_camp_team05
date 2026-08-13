@@ -192,7 +192,7 @@ Content-Type: application/json
 ```
 Pass 1: 직항 · 배정 예산 이내 · 시간대 제약 적용 → 후보 확보
         결과 ≥ 5개 → 종료
-Pass 2: 조건 완화 (경유 1회 허용 or 시간창 확대 or 예산 +10%)
+Pass 2: 조건 완화 (경유 1회 허용 or 시간창 확대 or 개인 예산 상한 안에서 탐색 한도 확대)
         완화한 조건을 반드시 회의록에 명시
         예: "직항으로 예산 내 후보가 3개뿐이라 경유 1회를 포함했습니다"
 ```
@@ -513,7 +513,7 @@ Sat(i, c) = 0.35 × priceFit(i, c)
 | `priceFit` | `1 − (effectiveTotal − minTotal) / (personalBudget − minTotal)`, 0 하한. 개인 예산이 빠듯할수록 가격 민감도가 자동으로 커진다 |
 | `timeFit` | 출발·도착 시각을 개인의 `earlyRiser` 슬라이더와 매칭. 새벽 출발은 `earlyRiser < 0.4` 인 사람에게 큰 감점 |
 | `durationFit` | 총 여정 시간(비행+환승+공항이동)의 정규화 역수 |
-| `carrierFit` | FSC 선호/LCC 기피 성향(`spendOnStay`, `adventure` 슬라이더에서 유도) |
+| `carrierFit` | 명시적인 항공사·좌석 등급 세부 취향으로 판정. 숙소 소비 성향에서 유도하지 않음 |
 | `baggageFit` | 쇼핑 선호도(카드 점수)가 높으면 위탁수하물 포함에 가산 — **오사카·도쿄 Pack에서 실제로 유의미** |
 | `riskFit` | 지연 확률의 역수. 겨울 CTS Pack에서 가중치 0.05 → 0.12 로 상향 |
 
@@ -574,7 +574,7 @@ personaSupport    = 해당 주장이 설문 데이터로 뒷받침되는가?
   · 설문에 근거 없음           → ×0.50
   · 설문과 모순                → ×0.25  + 심판이 회의록에서 지적
 
-adjustedIntensity = rawIntensity × personaSupport × min(CC_i, 1.3)
+adjustedIntensity = rawIntensity × personaSupport
 ```
 
 *예시*: 설문에서 `earlyRiser = 0.8`(새벽형)로 답한 사람이 "새벽 비행은 너무 힘들어요"라고 강하게 주장하면 `×0.25` 로 할인되고, 심판은 다음과 같이 지적한다.
@@ -606,13 +606,13 @@ adjustedIntensity = rawIntensity × personaSupport × min(CC_i, 1.3)
   "roundId": "r_1",
   "intensityProfile": [
     { "userId": "u_882", "candidateId": "F-01", "stance": "oppose",
-      "rawIntensity": 0.92, "personaSupport": 1.0, "ccFactor": 1.1,
-      "adjusted": 1.0, "clipped": 1.0,
+      "rawIntensity": 0.92, "personaSupport": 1.0,
+      "adjusted": 0.92, "clipped": 0.92,
       "signals": ["S1","S5","S6"],
       "basis": "하드 제약 red_eye_flight 등록됨 — 실격 사유로 승격",
       "evidence": "새벽 4시 기상은 무리입니다. 설문에도 적었어요." },
     { "userId": "u_913", "candidateId": "F-03", "stance": "support",
-      "rawIntensity": 0.35, "personaSupport": 1.0, "ccFactor": 1.0,
+      "rawIntensity": 0.35, "personaSupport": 1.0,
       "adjusted": 0.35,
       "signals": [],
       "basis": "약한 선호 — 절충 여지 큼" }
@@ -647,7 +647,7 @@ adjustedIntensity = rawIntensity × personaSupport × min(CC_i, 1.3)
 | 가격 vs 공항 | 공항 이동비를 포함한 실효 총액으로 재프레이밍 | "NRT가 3만원 싸지만 이동비가 4만원 더 듭니다" |
 | 직항 vs 경유 | 경유 대기시간이 3시간 미만이면 실질 손실 계산해 제시 | |
 | 수하물 포함 여부 | 쇼핑 예정자만 추가 구매하는 안 | "4명은 기본, 2명은 위탁 추가 — 1인 평균 +8천원" |
-| 시간대 교착 | **인접 날짜 검토** — R0 후보 2위 날짜에 원하는 시간대가 있는지 재조회 | 단, 날짜 변경은 Chief 승인 필요 |
+| 시간대 교착 | **인접 날짜 검토** — R0 후보 2위 날짜에 원하는 시간대가 있는지 재조회 | 단, 날짜 변경은 새 SurveySnapshot 생성 필요 |
 | 예산 교착 | Chief에 타 라운드 예산 이관 요청 | "숙소에서 2만원 줄이면 직항 가능합니다" |
 
 **날짜 변경 절충의 제약**: R0에서 확정한 날짜를 R1에서 되돌리면 전체 일정이 흔들린다. 다음 조건을 모두 만족할 때만 Chief에 제안한다.
@@ -876,7 +876,7 @@ VERDICT
 | 데이터 | TTL | 키 | 공유 범위 |
 | --- | --- | --- | --- |
 | Flight Cheapest Date | 24h | `pack:origin:month` | 같은 Pack 전체 방 |
-| Flight Offers Search | 2h | `origin:dest:dates:pax:filters` 해시 | 같은 조건 전체 방 |
+| Flight Offers Search | 탐색 2h / 확정 10분 | `origin:dest:dates:pax:filters` 해시 | 같은 조건 전체 방 |
 | Airport Transfer | 30d | `airport:area` | 전역 |
 | 공항·항공사 코드 | 영구 | — | 전역 (Pack 부트스트랩 시 적재) |
 | On-time / Delay | 7d | `carrier:route:month` | 전역 |
@@ -1012,7 +1012,7 @@ priceAsOf, priceExpiresAt, bookingStatus
 }
 ```
 
-예약·재가격 실패 시 후보를 조용히 교체하지 않는다. Flight node를 `FAILED`로, 숙소·교통·일정 노드를 `STALE`로 표시하고, 동일 Mandate 범위에서 대체 후보를 재검증한다. 날짜 변경은 `approval_required`다.
+예약·재가격 실패 시 후보를 조용히 교체하지 않는다. Flight node를 `FAILED`로, 숙소·교통·일정 노드를 `STALE`로 표시하고, 동일 Mandate 범위에서 대체 후보를 재검증한다. 날짜 변경은 기존 설문을 덮어쓰지 않고 새 `SurveySnapshot`을 생성해야 한다.
 
 ## 19.4 fail-closed와 폴백
 

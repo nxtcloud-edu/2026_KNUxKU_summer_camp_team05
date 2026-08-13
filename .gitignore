@@ -11,6 +11,11 @@ coverage/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Logs, editors, and local tools
 *.log
