@@ -7,6 +7,8 @@ import {
   cacheWillEngage,
   costOfUsage,
   createRunMeter,
+  knownModels,
+  registerModelPricing,
 } from './budget.js';
 
 /**
@@ -151,4 +153,18 @@ test('원장에 넣을 형태를 그대로 돌려준다', () => {
   assert.equal(charge.cacheTokens, 2500);
   assert.equal(charge.promptVersion, 'persona.v1');
   assert.ok(charge.costUsd > 0);
+});
+
+test('다른 게이트웨이의 모델은 등록 후에 쓸 수 있다', () => {
+  // ECS + 외부 Auth 계정으로 태우면 모델 이름이 claude-*가 아닐 수 있다.
+  assert.throws(() => costOfUsage({ model: 'house-model-1', inputTokens: 1000, outputTokens: 100 }));
+
+  registerModelPricing('house-model-1', {
+    inputPerMTok: 2,
+    outputPerMTok: 8,
+    minCachePrefixTokens: 1024,
+  });
+
+  assert.equal(costOfUsage({ model: 'house-model-1', inputTokens: 1_000_000, outputTokens: 0 }), 2);
+  assert.ok(knownModels().includes('house-model-1'));
 });

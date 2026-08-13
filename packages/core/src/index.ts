@@ -10,3 +10,6 @@ export * from './moves.js';
 export * from './budget.js';
 export * from './factcheck.js';
 export * from './triggers.js';
+export * from './date-resolver.js';
+export * from './weights.js';
+export * from './grounded.js';

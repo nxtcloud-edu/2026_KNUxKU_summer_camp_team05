@@ -27,6 +27,24 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-haiku-4-5': { inputPerMTok: 1, outputPerMTok: 5, minCachePrefixTokens: 4096 },
 };
 
+/**
+ * 단가표에 모델을 추가한다.
+ *
+ * 에이전트를 다른 게이트웨이(사내 ECS + 외부 Auth 계정 등)로 태우면 모델 이름이
+ * `claude-*`가 아닐 수 있다. `costOfUsage`는 모르는 모델에 대해 **예외를 던지므로**
+ * (조용히 0원으로 세면 상한이 무력화된다) 호출 전에 여기 등록해야 한다.
+ *
+ * 단가를 모르면 등록하지 않는 편이 낫다 — 실행이 실패하는 쪽이 원가가 소리 없이
+ * 새는 쪽보다 낫다.
+ */
+export function registerModelPricing(model: string, pricing: ModelPricing): void {
+  MODEL_PRICING[model] = pricing;
+}
+
+export function knownModels(): string[] {
+  return Object.keys(MODEL_PRICING);
+}
+
 /** 캐시 읽기 0.1배 · 쓰기 1.25배(5분 TTL) · 배치 0.5배 (llm-runtime-config 3.1·3.2) */
 export const CACHE_READ_MULTIPLIER = 0.1;
 export const CACHE_WRITE_MULTIPLIER = 1.25;
