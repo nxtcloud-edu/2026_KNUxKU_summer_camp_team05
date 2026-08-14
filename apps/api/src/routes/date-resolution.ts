@@ -131,6 +131,7 @@ export async function registerDateResolutionRoutes(
     }
 
     choices.set(roomId, choice);
+    await repos.rooms.updateSetting(roomId, { canonicalDateChoice: choice });
     return reply.send({
       status: 'VERIFIED',
       reason: null,

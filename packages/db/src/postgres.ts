@@ -151,6 +151,13 @@ export function createPostgresRepositories(): Repositories {
       await query('UPDATE rooms SET status = $2 WHERE id = $1', [roomId, status]);
     },
 
+    async updateSetting(roomId, patch) {
+      await query(
+        'UPDATE rooms SET setting = setting || $2::jsonb WHERE id = $1',
+        [roomId, JSON.stringify(patch)],
+      );
+    },
+
     async markCompleted(roomId, _completedRounds, budgetBaselinePerPersonKrw) {
       // 완료 라운드는 rounds 테이블이 원본이므로 여기서 덮어쓰지 않는다.
       await query(

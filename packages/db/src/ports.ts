@@ -119,6 +119,7 @@ export interface RoomRepository {
   create(packId: string, setting?: Record<string, unknown>): Promise<RoomRow>;
   get(roomId: string): Promise<RoomRow | undefined>;
   updateStatus(roomId: string, status: RoomRow['status']): Promise<void>;
+  updateSetting(roomId: string, patch: Record<string, unknown>): Promise<void>;
   /** 회의가 끝난 방의 실행 결과를 기록한다. 이의 심사에 필요한 최소 정보 */
   markCompleted(
     roomId: string,

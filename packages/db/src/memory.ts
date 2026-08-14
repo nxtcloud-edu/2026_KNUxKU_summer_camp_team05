@@ -79,6 +79,10 @@ export function createMemoryRepositories(): Repositories {
       const room = rooms.get(roomId);
       if (room !== undefined) rooms.set(roomId, { ...room, status });
     },
+    async updateSetting(roomId, patch) {
+      const room = rooms.get(roomId);
+      if (room !== undefined) rooms.set(roomId, { ...room, setting: { ...room.setting, ...patch } });
+    },
     async markCompleted(roomId, completedRounds, budgetBaselinePerPersonKrw) {
       const room = rooms.get(roomId);
       if (room === undefined) return;

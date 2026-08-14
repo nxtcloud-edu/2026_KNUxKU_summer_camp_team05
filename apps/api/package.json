@@ -8,7 +8,7 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "smoke": "tsx src/smoke.ts",
-    "test": "node --import tsx --test src/routes/compatibility.test.ts",
+    "test": "node --import tsx --test src/routes/compatibility.test.ts src/routes/canonical-e2e.test.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

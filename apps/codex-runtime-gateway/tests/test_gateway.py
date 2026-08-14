@@ -34,12 +34,14 @@ class FakeBackend:
         invalid_first: bool = False,
         auth_ready: bool = True,
         auth_mode: str = "chatgpt",
+        unique_threads: bool = False,
     ) -> None:
         self.calls = 0
         self.extra_evidence = extra_evidence
         self.invalid_first = invalid_first
         self.auth_ready = auth_ready
         self.auth_mode = auth_mode
+        self.unique_threads = unique_threads
 
     async def catalog(self) -> list[CatalogEntry]:
         return [CatalogEntry("fake-balanced", True, False, ("medium",))]
@@ -62,7 +64,9 @@ class FakeBackend:
         if self.extra_evidence:
             output["vote"]["evidenceIds"].append("ev.not-allowed")
         return BackendResult(
-            kwargs["thread_id"] or "thread.proxy.alice",
+            kwargs["thread_id"] or (
+                f"thread.proxy.alice.{self.calls}" if self.unique_threads else "thread.proxy.alice"
+            ),
             json.dumps(output, ensure_ascii=False),
             100,
             10,
@@ -137,6 +141,26 @@ def test_agent_run_is_validated_and_idempotent(tmp_path: Path) -> None:
     assert "workspace-secret-id" not in first.text
     assert second.json() == first.json()
     assert backend.calls == 1
+
+
+def test_distinct_agents_in_one_canonical_run_do_not_share_an_idempotency_key(
+    tmp_path: Path,
+) -> None:
+    backend = FakeBackend(unique_threads=True)
+    config = settings(tmp_path)
+    service = GatewayService(config, backend, GatewayStore(config.database_path))
+    first_request = payload()
+    second_request = payload()
+    second_request["agent"]["instanceId"] = "agent.v2"
+    second_request["agent"]["participantId"] = "u2"
+    with TestClient(create_app(service=service)) as client:
+        first = client.post("/internal/v1/agent-runs", json=first_request)
+        second = client.post("/internal/v1/agent-runs", json=second_request)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["status"] == "SUCCEEDED"
+    assert second.json()["status"] == "SUCCEEDED"
+    assert backend.calls == 2
 
 
 def test_readiness_requires_auth_and_allowlisted_catalog_match(tmp_path: Path) -> None:

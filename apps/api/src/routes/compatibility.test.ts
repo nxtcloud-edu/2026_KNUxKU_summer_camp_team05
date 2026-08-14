@@ -64,6 +64,25 @@ const canonicalSurvey = (): SurveySubmission => ({
   travelStyles: {}, activityScores: {}, mustDo: '', avoid: '',
 });
 
+test('Felicia Osaka destination id creates a room on the canonical jp-osaka Pack', async () => {
+  const repos = createMemoryRepositories();
+  const app = await buildServer(env, { repos });
+  try {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/trip-rooms',
+      headers: { 'x-user-id': 'anonymous' },
+      payload: { schemaVersion: 1, destinationId: 'osaka' },
+    });
+    assert.equal(response.statusCode, 201);
+    const roomId = response.json<{ roomId: string }>().roomId;
+    assert.equal((await repos.rooms.get(roomId))?.packId, 'jp-osaka');
+    assert.equal((await repos.members.get(roomId, 'anonymous'))?.role, 'host');
+  } finally {
+    await app.close();
+  }
+});
+
 test('Survey v4 routes reuse canonical final submission storage', async () => {
   const repos = createMemoryRepositories();
   const app = await buildServer(env, { repos });
@@ -200,6 +219,7 @@ test('Date Resolution reports missing evidence, offered choices, and a verified 
 
     const persistedView = await app.inject({ method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution` });
     assert.equal(persistedView.json<{ data: { chosen: { start: string } } }>().data.chosen.start, selected.start);
+    assert.deepEqual((await repos.rooms.get(room.roomId))?.setting['canonicalDateChoice'], selected);
   } finally {
     await app.close();
   }

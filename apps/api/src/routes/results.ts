@@ -135,6 +135,7 @@ export async function registerResultRoutes(
       : defaultRoundOrder.length;
     const settled = rounds.filter((round) => round.settled).length;
 
+    const completedRun = run?.status === 'COMPLETED';
     const progress: RoomProgress = {
       roomId: room.roomId,
       packId: room.packId,
@@ -144,7 +145,9 @@ export async function registerResultRoutes(
       rounds,
       completedRounds: room.completedRounds,
       totalRounds,
-      percent: totalRounds === 0 ? 0 : Math.round((settled / totalRounds) * 100),
+      percent: completedRun
+        ? 100
+        : totalRounds === 0 ? 0 : Math.round((settled / totalRounds) * 100),
       startedAt: run?.startedAt ?? null,
       finishedAt: run?.finishedAt ?? null,
       failureReason,

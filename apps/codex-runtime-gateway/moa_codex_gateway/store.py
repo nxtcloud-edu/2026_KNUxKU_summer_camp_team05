@@ -42,21 +42,34 @@ class GatewayStore:
         canonical = request.model_dump_json(by_alias=True, exclude_none=True)
         return hashlib.sha256(canonical.encode()).hexdigest()
 
+    @staticmethod
+    def invocation_key(request: AgentRunRequest) -> str:
+        context = request.input.context
+        dimensions: dict[str, Any] = {
+            "runId": request.runId,
+            "role": request.agent.role,
+            "instanceId": request.agent.instanceId,
+            "task": context.get("task"),
+            "searchAttempt": context.get("searchAttempt"),
+        }
+        return hashlib.sha256(json.dumps(dimensions, sort_keys=True).encode()).hexdigest()
+
     def get_cached(self, request: AgentRunRequest) -> AgentRunResult | None:
         row = self._connection.execute(
-            "SELECT request_hash, response_json FROM agent_runs WHERE run_id = ?", (request.runId,)
+            "SELECT request_hash, response_json FROM agent_runs WHERE run_id = ?",
+            (self.invocation_key(request),),
         ).fetchone()
         if row is None:
             return None
         if row["request_hash"] != self.request_hash(request):
-            raise RequestConflictError("같은 runId에 다른 요청 payload가 전달되었습니다.")
+            raise RequestConflictError("같은 Agent invocation에 다른 요청 payload가 전달되었습니다.")
         return AgentRunResult.model_validate_json(row["response_json"])
 
     def save_result(self, request: AgentRunRequest, result: AgentRunResult) -> None:
         self._connection.execute(
             "INSERT OR IGNORE INTO agent_runs(run_id, request_hash, response_json) VALUES (?, ?, ?)",
             (
-                request.runId,
+                self.invocation_key(request),
                 self.request_hash(request),
                 result.model_dump_json(by_alias=True, exclude_none=True),
             ),

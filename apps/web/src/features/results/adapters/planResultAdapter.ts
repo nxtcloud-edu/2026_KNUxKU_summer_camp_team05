@@ -29,20 +29,21 @@ import type {
 
 /** Whole-plan readiness. `BOOKABLE`/`BOOKED` never reach the UI. */
 export function planStatusFromBadge(badge: ResultBadge, blockerCount: number): PlanStatus {
-  if (badge === 'VERIFIED' || badge === 'BOOKABLE' || badge === 'BOOKED') return 'VERIFIED'
-  if (badge === 'PROVISIONAL') return 'PROVISIONAL'
   if (blockerCount > 0) return 'BLOCKED'
+  if (badge === 'VERIFIED') return 'VERIFIED'
+  if (badge === 'BOOKABLE' || badge === 'BOOKED') return 'BLOCKED'
+  if (badge === 'PROVISIONAL') return 'PROVISIONAL'
   return 'NEEDS_USER_CHOICE'
 }
 
 const decisionStatusFromBadge = (badge: ResultBadge): DecisionSummary['status'] => {
-  if (badge === 'VERIFIED' || badge === 'BOOKABLE' || badge === 'BOOKED') return 'verified'
+  if (badge === 'VERIFIED') return 'verified'
   if (badge === 'PROVISIONAL' || badge === 'PARTIAL') return 'needs-check'
   return 'choice-required'
 }
 
 const evidenceStateFromBadge = (badge: ResultBadge): EvidenceSummary['state'] => {
-  if (badge === 'VERIFIED' || badge === 'BOOKABLE' || badge === 'BOOKED') return 'verified'
+  if (badge === 'VERIFIED') return 'verified'
   if (badge === 'PROVISIONAL') return 'estimated'
   return 'unknown'
 }
@@ -53,8 +54,8 @@ const badgeStateLabels: Record<ResultBadge, string> = {
   PARTIAL: '부분 확인',
   PROVISIONAL: '잠정 확인',
   VERIFIED: '확인됨',
-  BOOKABLE: '확인됨',
-  BOOKED: '확인됨',
+  BOOKABLE: '지원하지 않는 상태',
+  BOOKED: '지원하지 않는 상태',
 }
 
 const nodeCategories: Record<string, { category: DecisionCategory; label: string }> = {
@@ -150,7 +151,7 @@ function toBooking(
   const { label } = categoryOf(item.nodeId)
   const state: BookingReadiness['state'] = blockedItemIds.has(item.itemId)
     ? 'blocked'
-    : item.badge === 'VERIFIED' || item.badge === 'BOOKABLE' || item.badge === 'BOOKED'
+    : item.badge === 'VERIFIED'
       ? 'ready'
       : 'needs-check'
   return {

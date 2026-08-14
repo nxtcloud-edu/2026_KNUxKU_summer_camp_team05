@@ -67,6 +67,7 @@ export interface CanonicalLiveRunInput {
   room: CanonicalRoomContext;
   profiles: readonly UserProxyProfileView[];
   dateResolverInput: DateResolverInput;
+  dateChoice?: { start: string; end: string };
   priorContractRefs?: readonly string[];
   priorObligations?: readonly string[];
 }
@@ -351,9 +352,17 @@ export async function runCanonicalLive(
 
     activeStage = 'DATE_RESOLVER';
     trace.push(activeStage);
-    const dateResolution = await (deps.dateResolver ?? coreDateResolverPort).resolve(
+    const rawDateResolution = await (deps.dateResolver ?? coreDateResolverPort).resolve(
       input.dateResolverInput,
     );
+    const chosenByUser = input.dateChoice === undefined
+      ? undefined
+      : rawDateResolution.windows.find(
+          (window) => window.start === input.dateChoice?.start && window.end === input.dateChoice.end,
+        );
+    const dateResolution: DateResolution = chosenByUser === undefined
+      ? rawDateResolution
+      : { ...rawDateResolution, status: 'confirmed', chosen: chosenByUser };
     if (dateResolution.chosen === null) {
       const result = handledResult(
         input.runId,

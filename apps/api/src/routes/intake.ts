@@ -17,6 +17,11 @@ export interface IntakeRouteDeps {
   surveyProgress?: SurveyProgressStore;
 }
 
+const canonicalPackIds: Readonly<Record<string, string>> = {
+  osaka: 'jp-osaka',
+  'JP-OSA': 'jp-osaka',
+};
+
 async function persistSurvey(
   app: FastifyInstance,
   repos: Repositories,
@@ -56,7 +61,9 @@ export async function registerIntakeRoutes(
     if (!parsed.success) {
       return reply.status(400).send({ error: 'invalid_payload', issues: parsed.error.issues });
     }
-    const room = await repos.rooms.create(parsed.data.destinationId);
+    const packId = canonicalPackIds[parsed.data.destinationId] ?? parsed.data.destinationId;
+    const room = await repos.rooms.create(packId);
+    await repos.members.join(room.roomId, currentUserId(request), 'host');
     return reply.status(201).send({ roomId: room.roomId, status: room.status });
   });
 

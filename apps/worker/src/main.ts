@@ -3,6 +3,7 @@ import { executionCaps } from '@tm/contracts';
 import { createRepositories, isDatabaseConfigured } from '@tm/db';
 import { jobPayloadSchema, QUEUE_NAME } from './queue.js';
 import { executeRun, sharedLegacyGeminiRuntime } from './run-once.js';
+import { executeCanonicalProductionRun } from './canonical-production-run.js';
 import { alreadyApplied, recordFailure } from './run-recorder.js';
 
 /**
@@ -26,9 +27,6 @@ if (!isDatabaseConfigured()) {
 
 const repos = createRepositories();
 
-// 기동 시점에 LLM 준비 상태를 로그로 남긴다. 첫 잡이 올 때까지 모르면 늦다.
-sharedLegacyGeminiRuntime();
-
 const worker = new Worker(
   QUEUE_NAME,
   async (job) => {
@@ -41,6 +39,17 @@ const worker = new Worker(
       return { skipped: true, completedRounds: [], fallbackCount: 0 };
     }
 
+    if (payload.kind === 'full_run') {
+      const result = await executeCanonicalProductionRun(repos, payload);
+      return {
+        skipped: false,
+        canonical: true,
+        executionStatus: result.executionStatus,
+        resultStatus: result.resultStatus,
+      };
+    }
+
+    sharedLegacyGeminiRuntime();
     const result = await executeRun(repos, payload);
     return {
       skipped: false,

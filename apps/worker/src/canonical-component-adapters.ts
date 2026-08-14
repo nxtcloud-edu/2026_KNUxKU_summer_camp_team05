@@ -36,6 +36,7 @@ function uniqueSorted(values: readonly string[]): string[] {
 
 export function createB1StructuredSearchPort(
   packSource: PackKnowledgeSource,
+  executableProviderIds?: readonly string[],
 ): StructuredSearchPort {
   return {
     async build({ room, charter, briefs, profiles }) {
@@ -61,6 +62,12 @@ export function createB1StructuredSearchPort(
         knowledge,
       });
       const execution = toCandidateEvidenceExecutionContext(context);
+      const availableProviderIds = executableProviderIds === undefined
+        ? context.allowedProviderIds
+        : context.allowedProviderIds.filter((providerId) => executableProviderIds.includes(providerId));
+      if (availableProviderIds.length === 0) {
+        throw new Error(`실행 가능한 ${room.category} Provider가 없습니다.`);
+      }
       const hardConstraints = [
         ...context.intent.hard.requiredAmenities.map((constraint) => ({
           constraintId: `constraint:required:${constraint.token}`,
@@ -75,7 +82,7 @@ export function createB1StructuredSearchPort(
       ];
       return {
         neutralBrief,
-        availableProviderIds: [...context.allowedProviderIds],
+        availableProviderIds: [...availableProviderIds],
         providerExecution: {
           packId: execution.packId,
           area: execution.area,
@@ -99,6 +106,7 @@ export interface StayCapacityProjectionInput {
   candidate: CandidateRecord;
   evidence: readonly EvidenceSnapshot[];
   charter: TripCharter;
+  roomCount: number;
 }
 
 export interface B4CandidateValidationOptions {
@@ -124,6 +132,7 @@ export function createB4CandidateValidationPort(
             candidate,
             evidence: candidateEvidence,
             charter,
+            roomCount: searchContext.providerExecution.roomCount,
           });
           return validateStayCandidate({
             proposalId: stayProposalId(candidate.candidateId, 1),

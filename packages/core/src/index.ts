@@ -19,3 +19,4 @@ export * from './agent-policy.js';
 export * from './fact-constraint-validator.js';
 export * from './candidate-pool.js';
 export * from './category-proposal-builder.js';
+export * from './proposal-evaluation.js';
