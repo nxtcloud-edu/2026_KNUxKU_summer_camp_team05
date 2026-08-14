@@ -30,3 +30,5 @@
 Provider Data Gateway, 범용 SymbolicReasoner, 운영 DB/Queue adapter는 아직 미구현입니다. 현재 Worker는 `PRELOADED_NORMALIZED_OPTIONS` 모드만 지원하며 이를 실시간 Provider 검색 결과로 해석하면 안 됩니다.
 
 상세 감사·반영 기록: [docs/algorithm-flowchart-audit-2026-08-14.md](https://github.com/nxtcloud-edu/2026_KNUxKU_summer_camp_team05/blob/dawnkim/docs/algorithm-flowchart-audit-2026-08-14.md)
+
+문제별 근거·의도·대안·해결 논리: [docs/problem-discussions-and-rationale-2026-08-14.md](https://github.com/nxtcloud-edu/2026_KNUxKU_summer_camp_team05/blob/dawnkim/docs/problem-discussions-and-rationale-2026-08-14.md)

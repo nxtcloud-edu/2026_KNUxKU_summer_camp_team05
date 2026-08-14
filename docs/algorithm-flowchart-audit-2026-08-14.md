@@ -3,6 +3,7 @@
 - 감사일: 2026-08-14
 - 범위: 설문 UI, 공통 TypeScript 계약, Python Agent 계약, Worker 상태 머신, 최종 결과 무결성, 설계 문서 Mermaid 검토
 - 결론: 확인된 고위험 우회 경로와 계약 불일치를 구현·테스트·문서에 반영했다. Provider Data Gateway와 범용 SymbolicReasoner는 아직 미구현이므로 현재 결과는 preloaded fixture/정규화 후보 범위에서만 유효하다.
+- 문제별 판단 근거와 대안 비교: [문제별 논의·근거·의도·해결책](problem-discussions-and-rationale-2026-08-14.md)
 
 ## 1. 반영한 핵심 수정
 
