@@ -82,36 +82,44 @@ test('ISO duration을 분으로 바꾼다', () => {
 
 // ── 라쿠텐 트래블 ────────────────────────────────────────────────────────────
 
-/** 라쿠텐은 한 숙소를 [{hotelBasicInfo}, {roomInfo}] 배열로 쪼개 보낸다 */
+/**
+ * 실호출로 확인한 응답 형태 (2026-08-14, VacantHotelSearch).
+ *
+ * 두 가지가 직관과 다르다.
+ *   1. 좌표가 **십진 도**다. 초(秒)가 아니다.
+ *   2. `roomInfo`는 한 칸에 플랜과 요금이 같이 있지 않고
+ *      `[{roomBasicInfo}, {dailyCharge}]`처럼 번갈아 온다.
+ */
 const rakutenHotel = {
   hotel: [
     {
       hotelBasicInfo: {
-        hotelNo: 12345,
-        hotelName: '난바 스테이 호텔',
-        // 라쿠텐 좌표는 초(秒) 단위다. 34.6641도 = 124790.76초
-        latitude: 124790.76,
-        longitude: 487810.8,
-        address1: '大阪府大阪市',
-        address2: '中央区難波',
-        nearestStation: '難波',
-        reviewAverage: 4.2,
-        reviewCount: 310,
+        hotelNo: 191842,
+        hotelName: 'アパホテル＆リゾート〈大阪なんば駅前タワー〉',
+        latitude: 34.66605673472163,
+        longitude: 135.49597188561378,
+        address1: '大阪府',
+        address2: '大阪市浪速区湊町1-2-13',
+        nearestStation: 'ＪＲ難波',
+        reviewAverage: 4.34,
+        reviewCount: 2048,
       },
     },
     {
       roomInfo: [
         {
           roomBasicInfo: {
-            roomClass: 'twin',
-            roomName: 'ツイン（禁煙）',
-            planId: 'p1',
-            planName: '3名1室プラン',
-            withBreakfastFlag: 1,
+            roomClass: 'tr',
+            roomName: 'スタンダードトリプルルーム 全室禁煙',
+            planId: 5940730,
+            planName: '【素泊まり・事前決済限定】非接触1秒チェックイン体験',
+            withBreakfastFlag: 0,
             withDinnerFlag: 0,
-            reserveUrl: 'https://travel.rakuten.co.jp/HOTEL/12345/rsv.html',
+            reserveUrl: 'https://img.travel.rakuten.co.jp/image/tr/api/re/IdsCY/?f_no=191842',
           },
-          dailyCharge: { stayDate: '2026-10-16', rakutenCharge: 8000, total: 24000, chargeFlag: 0 },
+        },
+        {
+          dailyCharge: { stayDate: '2026-10-13', rakutenCharge: 7650, total: 22950, chargeFlag: 0 },
         },
       ],
     },
@@ -140,18 +148,40 @@ test('라쿠텐 공실 응답이 정규화 Candidate 스키마를 통과한다',
   assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues?.slice(0, 3)));
 });
 
-test('라쿠텐: 초 단위 좌표를 도로 바꾼다', async () => {
+test('라쿠텐: 좌표는 십진 도 그대로다', async () => {
+  const stub = stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
+
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
+  const result = await provider.fetch(
+    request({
+      queryClass: 'hotel.vacancy_price',
+      roundId: 'r_2',
+      params: { ...rakutenParams, latitude: 34.6659, longitude: 135.5017, searchRadius: 2 },
+    }),
+  );
+
+  // 요청에 3600을 곱하면 wrong_parameter로 거절당한다.
+  assert.match(stub.calls[0] ?? '', /latitude=34\.6659/);
+  const location = payloadOf<Record<string, unknown>[]>(result, 'candidates')[0]?.['location'] as Record<string, number>;
+  // 응답도 도 단위다. 3600으로 나누면 적도 근처로 무너진다.
+  assert.ok(Math.abs(location['lat']! - 34.666) < 0.01, `lat=${location['lat']}`);
+  assert.ok(Math.abs(location['lng']! - 135.496) < 0.01, `lng=${location['lng']}`);
+});
+
+test('라쿠텐: roomBasicInfo와 dailyCharge가 따로 오는 배열을 짝지운다', async () => {
   stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
 
   const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   const result = await provider.fetch(
     request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
   );
-  const location = payloadOf<Record<string, unknown>[]>(result, 'candidates')[0]?.['location'] as Record<string, number>;
+  const candidate = payloadOf<Record<string, unknown>[]>(result, 'candidates')[0];
 
-  // 3600으로 나누지 않으면 좌표가 지구 밖으로 나간다.
-  assert.ok(Math.abs(location['lat']! - 34.664) < 0.01, `lat=${location['lat']}`);
-  assert.ok(Math.abs(location['lng']! - 135.503) < 0.01, `lng=${location['lng']}`);
+  // 한 칸에 둘 다 있다고 가정하면 후보가 0건이 된다.
+  assert.notEqual(candidate, undefined, '짝짓기에 실패하면 후보가 사라진다');
+  const rooms = (candidate?.['capacity'] as Record<string, unknown>)['roomOptions'] as { config: string }[];
+  assert.equal(rooms.length, 1);
+  assert.match(rooms[0]?.config ?? '', /トリプル/);
 });
 
 test('라쿠텐: chargeFlag=0은 1실당 요금이라 인원수로 곱하지 않는다', async () => {
@@ -163,9 +193,11 @@ test('라쿠텐: chargeFlag=0은 1실당 요금이라 인원수로 곱하지 않
   );
   const price = payloadOf<Record<string, unknown>[]>(result, 'candidates')[0]?.['price'] as Record<string, number>;
 
-  // 1실 24,000엔 × 1실 = 24,000엔. 3명이라고 72,000엔이 되면 안 된다.
-  assert.equal(price['groupTotal'], 24_000);
-  assert.equal(price['totalPerPerson'], 8_000);
+  // 1실 22,950엔 × 1실 = 22,950엔. 3명이라고 68,850엔이 되면 안 된다.
+  assert.equal(price['groupTotal'], 22_950);
+  assert.equal(price['totalPerPerson'], 7_650);
+  // 3박이므로 1인 1박 2,550엔.
+  assert.equal(price['perNightPerPerson'], 2_550);
 });
 
 test('라쿠텐: 정확한 인원·객실로 물었을 때만 객실 조합을 확인했다고 한다', async () => {

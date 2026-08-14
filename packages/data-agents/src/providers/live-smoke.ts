@@ -111,11 +111,11 @@ const PROBES: Probe[] = [
       const first = candidates[0];
       if (first === undefined) return;
 
-      // 좌표를 3600으로 나누는 가정이 맞는지. 틀리면 오사카가 아닌 곳이 나온다.
+      // 좌표 단위(십진 도) 가정이 맞는지. 틀리면 오사카가 아닌 곳이 나온다.
       const location = first['location'] as Record<string, number>;
       const nearOsaka =
         Math.abs(location['lat']! - NAMBA.lat) < 0.5 && Math.abs(location['lng']! - NAMBA.lng) < 0.5;
-      check('rakuten: 좌표가 오사카 범위 안이다 (초→도 변환 가정 확인)', nearOsaka, location);
+      check('rakuten: 좌표가 검색 반경 안이다 (십진 도 가정 확인)', nearOsaka, location);
 
       // chargeFlag 해석이 맞는지. 1인당/1실당을 뒤집으면 3인 총액이 3배 틀린다.
       const price = first['price'] as Record<string, number>;

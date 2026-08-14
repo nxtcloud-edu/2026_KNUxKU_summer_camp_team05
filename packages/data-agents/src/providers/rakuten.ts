@@ -87,7 +87,8 @@ interface HotelBasicInfo {
 interface RoomBasicInfo {
   roomClass?: string;
   roomName?: string;
-  planId?: string;
+  /** 실응답은 숫자로 준다 (예: 5940730) */
+  planId?: number | string;
   planName?: string;
   withDinnerFlag?: number;
   withBreakfastFlag?: number;
@@ -102,9 +103,37 @@ interface DailyCharge {
   chargeFlag?: number;
 }
 
+/**
+ * `roomInfo`의 한 칸. **한 칸에 둘 다 들어 있지 않다.**
+ * 실응답은 `[{roomBasicInfo}, {dailyCharge}]`처럼 번갈아 오는 배열이다.
+ */
 interface RoomEntry {
   roomBasicInfo?: RoomBasicInfo;
   dailyCharge?: DailyCharge;
+}
+
+/**
+ * 번갈아 오는 배열을 (플랜, 요금) 쌍으로 묶는다.
+ *
+ * 각 `roomBasicInfo`는 **바로 뒤에 오는 첫 `dailyCharge`**와 짝이다. 한 플랜에
+ * 여러 날짜의 `dailyCharge`가 붙을 수 있으므로 첫 번째만 쓴다 — 관측된 응답에서
+ * `total`은 날짜별 금액이 아니라 숙박 전체 합계였다.
+ */
+function pairRooms(entries: readonly RoomEntry[]): { info: RoomBasicInfo; charge: DailyCharge }[] {
+  const pairs: { info: RoomBasicInfo; charge: DailyCharge }[] = [];
+  let pending: RoomBasicInfo | undefined;
+
+  for (const entry of entries) {
+    if (entry.roomBasicInfo !== undefined) {
+      pending = entry.roomBasicInfo;
+      continue;
+    }
+    if (entry.dailyCharge !== undefined && pending !== undefined) {
+      pairs.push({ info: pending, charge: entry.dailyCharge });
+      pending = undefined; // 같은 플랜의 두 번째 날짜 요금으로 중복 만들지 않는다
+    }
+  }
+  return pairs;
 }
 
 interface HotelEntry {
@@ -120,12 +149,14 @@ interface VacantHotelResponse {
 }
 
 /**
- * 라쿠텐의 위경도는 **초(秒) 단위**다 (1도 = 3600초). 그대로 쓰면 좌표가 지구 밖으로 나간다.
- * datumType=1(세계측지계)로 요청하고 3600으로 나눈다.
+ * `datumType=1`(세계측지계)에서 요청·응답 좌표 모두 **십진 도**다.
+ * 구 문서를 보고 초(秒)로 오해하기 쉬운데, 실호출로 확인했다 —
+ * 3600을 곱하면 요청이 `wrong_parameter: specify valid latitude`로 거절되고,
+ * 나누면 응답 좌표가 적도 근처로 무너진다.
  */
-const degrees = (seconds: number | undefined): number | null => {
-  if (seconds === undefined || !Number.isFinite(seconds)) return null;
-  return seconds / 3600;
+const degrees = (value: number | undefined): number | null => {
+  if (value === undefined || !Number.isFinite(value)) return null;
+  return value;
 };
 
 /** 숙박일수. checkout - checkin. 계산할 수 없으면 null이며 1박으로 추정하지 않는다 */
@@ -157,15 +188,13 @@ function toCandidate(
 
   const { pax, roomNum, nights, exactParty, fetchedAt } = options;
 
-  const priced = rooms
-    .map((room) => {
-      const charge = room.dailyCharge;
-      const info = room.roomBasicInfo;
-      const total = charge?.total ?? charge?.rakutenCharge;
-      if (total === undefined || info === undefined) return null;
+  const priced = pairRooms(rooms)
+    .map(({ info, charge }) => {
+      const total = charge.total ?? charge.rakutenCharge;
+      if (total === undefined) return null;
 
       // chargeFlag: 1 = 1인당, 0 = 1실당. 그룹 총액이 여기서 갈린다.
-      const groupTotal = charge?.chargeFlag === 1 ? total * pax : total * roomNum;
+      const groupTotal = charge.chargeFlag === 1 ? total * pax : total * roomNum;
       return {
         info,
         groupTotal,
@@ -327,8 +356,9 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
             largeClassCode: params['largeClassCode'] === undefined ? undefined : String(params['largeClassCode']),
             middleClassCode: params['middleClassCode'] === undefined ? undefined : String(params['middleClassCode']),
             smallClassCode: params['smallClassCode'] === undefined ? undefined : String(params['smallClassCode']),
-            latitude: params['latitude'] === undefined ? undefined : Number(params['latitude']) * 3600,
-            longitude: params['longitude'] === undefined ? undefined : Number(params['longitude']) * 3600,
+            // datumType=1에서는 십진 도 그대로다. 3600을 곱하면 거절당한다.
+            latitude: params['latitude'] === undefined ? undefined : Number(params['latitude']),
+            longitude: params['longitude'] === undefined ? undefined : Number(params['longitude']),
             searchRadius: params['searchRadius'] === undefined ? undefined : Number(params['searchRadius']),
             maxCharge: params['maxCharge'] === undefined ? undefined : Number(params['maxCharge']),
           },
