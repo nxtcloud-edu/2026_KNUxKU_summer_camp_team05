@@ -237,3 +237,46 @@ test('응답 정규화와 Candidate 생성은 구분하고 후보가 없으면 �
   assert.equal(result.receipts[0]?.status, 'NO_CANDIDATES');
   await repos.close();
 });
+
+test('Given 한 Provider 그룹 실패 When 다음 그룹 실행 Then 성공 후보와 실패 영수증을 함께 보존한다', async () => {
+  const broken = createFixtureProvider({
+    id: 'broken',
+    queryClasses: ['hotel.search'],
+    responses: { 'hotel.search': { payload: { candidates: [] }, confidence: 'live' } },
+    failing: ['hotel.search'],
+  });
+  const healthy = createFixtureProvider({
+    id: 'rakuten_travel',
+    queryClasses: ['hotel.search'],
+    responses: {
+      'hotel.search': { payload: { candidates: [hotelCandidate] }, confidence: 'live' },
+    },
+  });
+  const repos = createMemoryRepositories();
+  const gateway = createDataAgent({
+    cache: repos.cache,
+    providers: createStaticRegistry([broken, healthy], {
+      'jp-osaka': { hotel: ['broken', 'rakuten_travel'] },
+    }),
+  });
+  const port = createCandidateEvidenceExecutionPort(gateway);
+  const failedPlan = {
+    ...plan('query:broken', ['brief:u1']),
+    providerOrder: ['broken'],
+  };
+  const healthyPlan = {
+    ...plan('query:healthy', ['brief:u2', 'brief:neutral'], { area: '우메다' }),
+    providerOrder: ['rakuten_travel'],
+  };
+
+  const result = await port.execute(input([failedPlan, healthyPlan]));
+
+  assert.equal(result.status, 'PARTIAL');
+  assert.equal(result.executedProviderRequests, 2);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.receipts.length, 1);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(broken.calls.length, 1);
+  assert.equal(healthy.calls.length, 1);
+  await repos.close();
+});
