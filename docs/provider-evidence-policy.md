@@ -57,7 +57,7 @@
 
 | 어댑터 | 담당 QueryClass | 무료 조건 | 이 공급자가 답하지 않는 것 |
 | --- | --- | --- | --- |
-| `rakuten_travel` | `hotel.search` · `hotel.vacancy_price` · `hotel.room_combination` · `hotel.all_in_price` | 무료 앱ID · **1 req/sec** | 취소 조건, 잔여 객실 수, 침대 타입 |
+| `rakuten_travel` | `hotel.search` · `hotel.vacancy_price` · `hotel.room_combination` · `hotel.all_in_price` | 무료 · **1 req/sec** · 서버앱 IP 제한 | 취소 조건, 잔여 객실 수, 침대 타입 |
 | `hotpepper` | `dining.search` · `dining.hours` · `dining.diet_support` | 무료 · **크레딧 표시 의무** · 점포정보 재판매 금지 | 예약 슬롯, 실시간 공석 |
 | `tourapi` | `poi.search` · `dining.search` · `geo.place_details` · `hotel.search` · `hotel.room_combination` | 개발계정 1,000건/일 · 이용 제한 없음 | 날짜별 재고·가격 (시즌 밴드뿐) |
 | `kakao` | `poi.search` · `dining.search` · `geo.place_details` · `geo.geocode` | 각 100,000건/일 · 상업 이용 가능 | 영업시간, 가격, 정원 |
@@ -70,6 +70,25 @@
 정원 검증의 계약은 "장소의 총 수용량이 아니라 정확한 날짜·시간·인원 요청의 응답"이다(5절). 라쿠텐 공실 검색은 `checkinDate`·`checkoutDate`·`adultNum`·`roomNum`을 **검색 조건으로** 받으므로, 돌아온 플랜은 그 인원이 그 날짜에 실제로 묵을 수 있는 플랜이다. 그래서 `roomCombinationVerified`를 **정확한 인원·객실 수로 물었을 때만** 올린다.
 
 반대로 취소 조건이 응답에 없으므로 `allInPriceVerified`는 항상 false이고, 오사카 숙소는 `VERIFIED`까지만 간다. **`BOOKABLE`은 이 공급자 조합으로 도달할 수 없다.**
+
+### 라쿠텐 2026 개편 — 앱 종류를 잘못 고르면 키가 나와도 전부 403이다
+
+라쿠텐은 2026-05-14에 구 API를 폐지하면서 세 가지를 함께 바꿨다.
+
+| 항목 | 구버전 | 현행 |
+| --- | --- | --- |
+| 엔드포인트 | `app.rakuten.co.jp/services/api/…` | `openapi.rakuten.co.jp/engine/api/Travel/…` |
+| 인증 | `applicationId` | `applicationId` + `accessKey` |
+| 호출 제한 | 없음 | 앱 종류별 Referer 또는 IP 검사 |
+
+세 번째가 함정이다. 앱 등록 시 종류를 고르는데:
+
+- **「Webアプリケーション」** → `許可されたWebサイト`(도메인)을 등록하고 브라우저 `Referer` 헤더를 검사한다. 서버에서 호출하면 그 헤더가 없어 `REQUEST_CONTEXT_BODY_HTTP_REFERRER_MISSING` 403으로 **전부 막힌다.**
+- **「サーバーアプリ(백엔드)」** → `許可されたIPアドレス`를 등록하고 호출 IP를 검사한다. **워커에서 호출하는 우리는 이쪽이다.**
+
+허용 IP는 `curl -s https://api.ipify.org`로 확인한다. 가정용 회선은 공인 IP가 바뀌므로 `CLIENT_IP_NOT_ALLOWED`가 뜨면 콘솔에서 갱신한다. 배포 시에는 고정 IP를 쓴다.
+
+어댑터는 이 두 403을 원문 그대로 두지 않고 무엇을 고쳐야 하는지 문장으로 바꿔 던진다 — "HTTP 403"만 보면 키가 틀린 줄 알고 엉뚱한 곳을 고친다.
 
 ### 비상업 제약 — 배포 전 반드시 확인
 

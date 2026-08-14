@@ -128,7 +128,7 @@ const rakutenParams = {
 test('라쿠텐 공실 응답이 정규화 Candidate 스키마를 통과한다', async () => {
   stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
 
-  const provider = createRakutenProvider({ applicationId: 'app' });
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   const result = await provider.fetch(
     request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
   );
@@ -143,7 +143,7 @@ test('라쿠텐 공실 응답이 정규화 Candidate 스키마를 통과한다',
 test('라쿠텐: 초 단위 좌표를 도로 바꾼다', async () => {
   stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
 
-  const provider = createRakutenProvider({ applicationId: 'app' });
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   const result = await provider.fetch(
     request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
   );
@@ -157,7 +157,7 @@ test('라쿠텐: 초 단위 좌표를 도로 바꾼다', async () => {
 test('라쿠텐: chargeFlag=0은 1실당 요금이라 인원수로 곱하지 않는다', async () => {
   stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
 
-  const provider = createRakutenProvider({ applicationId: 'app' });
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   const result = await provider.fetch(
     request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
   );
@@ -170,7 +170,7 @@ test('라쿠텐: chargeFlag=0은 1실당 요금이라 인원수로 곱하지 않
 
 test('라쿠텐: 정확한 인원·객실로 물었을 때만 객실 조합을 확인했다고 한다', async () => {
   stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
-  const provider = createRakutenProvider({ applicationId: 'app' });
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
 
   const exact = await provider.fetch(
     request({ queryClass: 'hotel.room_combination', roundId: 'r_2', params: rakutenParams }),
@@ -198,7 +198,7 @@ test('라쿠텐: 정확한 인원·객실로 물었을 때만 객실 조합을 �
 test('라쿠텐: 취소 조건은 응답에 없으므로 null이고 총액도 확정하지 않는다', async () => {
   stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
 
-  const provider = createRakutenProvider({ applicationId: 'app' });
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   const result = await provider.fetch(
     request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
   );
@@ -215,7 +215,7 @@ test('라쿠텐: 공실 없음(404)은 오류가 아니라 빈 결과다', async
     { match: 'VacantHotelSearch', status: 404, body: { error: 'not_found', error_description: 'vacant_room_not_found' } },
   ]);
 
-  const provider = createRakutenProvider({ applicationId: 'app' });
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   const result = await provider.fetch(
     request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
   );
@@ -223,10 +223,62 @@ test('라쿠텐: 공실 없음(404)은 오류가 아니라 빈 결과다', async
   assert.deepEqual(payloadOf<unknown[]>(result, 'candidates'), []);
 });
 
+test('라쿠텐: 2026 개편 엔드포인트와 accessKey를 쓴다', async () => {
+  const stub = stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
+
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
+  await provider.fetch(
+    request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
+  );
+
+  const url = stub.calls[0] ?? '';
+  // 구 도메인은 2026-05-14에 폐지됐다. 폴백하지 않는다.
+  assert.match(url, /openapi\.rakuten\.co\.jp/);
+  assert.doesNotMatch(url, /app\.rakuten\.co\.jp/);
+  assert.match(url, /accessKey=ak/, '앱 ID만으로는 호출되지 않는다');
+});
+
+test('라쿠텐: Webアプリ로 등록했을 때의 403을 사람이 고칠 수 있게 설명한다', async () => {
+  stubFetch([
+    {
+      match: 'VacantHotelSearch',
+      status: 403,
+      body: { errorCode: 403, errorMessage: 'REQUEST_CONTEXT_BODY_HTTP_REFERRER_MISSING' },
+    },
+  ]);
+
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
+  await assert.rejects(
+    provider.fetch(request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams })),
+    /サーバーアプリ/,
+  );
+});
+
+test('라쿠텐: 허용되지 않은 IP의 403도 원인을 알려준다', async () => {
+  stubFetch([
+    { match: 'VacantHotelSearch', status: 403, body: { errorCode: 403, errorMessage: 'CLIENT_IP_NOT_ALLOWED' } },
+  ]);
+
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
+  await assert.rejects(
+    provider.fetch(request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams })),
+    /ipify|허용 IP/,
+  );
+});
+
+test('라쿠텐: accessKey가 없으면 어댑터를 만들지 않는다', () => {
+  const setup = providersFromEnv({ RAKUTEN_APPLICATION_ID: 'app' } as NodeJS.ProcessEnv);
+
+  assert.deepEqual(setup.adapters, [], '앱 ID만으로는 2026 개편 이후 호출되지 않는다');
+  assert.ok(
+    setup.missing.find((row) => row.id === 'rakuten_travel')?.envVars.includes('RAKUTEN_ACCESS_KEY'),
+  );
+});
+
 test('라쿠텐: 날짜가 없으면 오늘로 채우지 않고 거절한다', async () => {
   stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [] } }]);
 
-  const provider = createRakutenProvider({ applicationId: 'app' });
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   await assert.rejects(
     provider.fetch(request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: { adultNum: 3 } })),
     /필수 파라미터 누락/,
@@ -654,6 +706,7 @@ test('키가 있으면 레지스트리에 실린다', () => {
   const setup = providersFromEnv({
     ODSAY_API_KEY: 'key',
     RAKUTEN_APPLICATION_ID: 'app',
+    RAKUTEN_ACCESS_KEY: 'ak',
   } as NodeJS.ProcessEnv);
 
   assert.deepEqual(

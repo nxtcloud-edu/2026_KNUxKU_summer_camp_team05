@@ -23,7 +23,20 @@ import { httpJson, rawRefOf, requireEnv } from './http.js';
  *   · **잔여 객실 수가 없다** → "마지막 1실" 같은 압박을 만들 수 없다
  *   · **침대 타입이 없다** → 같은 객실 분리 동의 판정에 쓸 수 없다
  *
- * 무료 애플리케이션 ID로 쓰고 **1 req/sec**가 상한이다. 초과하면 429가 온다.
+ * ── 2026 개편 대응 ────────────────────────────────────────────────────────
+ * 라쿠텐은 2026-05-14에 구 API를 폐지했다. 세 가지가 함께 바뀌었다.
+ *
+ *   1. 엔드포인트  `app.rakuten.co.jp/services/api/…`
+ *                  → `openapi.rakuten.co.jp/engine/api/Travel/…`
+ *   2. 인증        `applicationId` 단독 → `applicationId` + `accessKey`
+ *   3. 호출 제한   앱 종류에 따라 검사 방식이 다르다
+ *
+ * 3번이 중요하다. **반드시 「サーバーアプリ(백엔드)」로 등록해야 한다.**
+ * 「Webアプリケーション」으로 등록하면 브라우저 `Referer` 헤더를 검사하는데,
+ * 이 어댑터는 Node에서 호출하므로 그 헤더가 없어 전부 403이 된다. 서버 앱은
+ * 대신 등록된 IP에서 오는지를 본다.
+ *
+ * 무료이고 **1 req/sec**가 상한이다. 초과하면 429가 온다.
  */
 
 const CLASSES: readonly QueryClass[] = [
@@ -35,6 +48,22 @@ const CLASSES: readonly QueryClass[] = [
 
 /** 공실이 없을 때 라쿠텐은 404 + not_found로 답한다. 오류가 아니라 빈 결과다 */
 const NOT_FOUND = 'HTTP 404';
+
+const TERMS = 'rakuten:webservice-terms (무료 · 1 req/sec · 서버앱 IP 제한)';
+
+/**
+ * 2026 개편으로 생긴 403 두 종류를 사람이 고칠 수 있는 문장으로 바꾼다.
+ * 원문만 보면 키가 틀린 줄 알고 엉뚱한 곳을 고치게 된다.
+ */
+function explain403(reason: string): string {
+  if (reason.includes('HTTP_REFERRER_MISSING') || reason.includes('HTTP_REFERRER_NOT_ALLOWED')) {
+    return `${reason} — 앱이 「Webアプリケーション」으로 등록됐습니다. 이 어댑터는 서버에서 호출하므로 Referer 헤더가 없습니다. 라쿠텐 콘솔에서 앱 종류를 「サーバーアプリ(백엔드)」로 바꾸고 허용 IP를 등록하세요.`;
+  }
+  if (reason.includes('CLIENT_IP_NOT_ALLOWED')) {
+    return `${reason} — 호출한 IP가 앱에 등록되어 있지 않습니다. 'curl -s https://api.ipify.org'로 현재 공인 IP를 확인해 라쿠텐 콘솔의 허용 IP에 추가하세요 (공인 IP는 바뀔 수 있습니다).`;
+  }
+  return reason;
+}
 
 interface HotelBasicInfo {
   hotelNo?: number;
@@ -219,13 +248,16 @@ function toCandidate(
 
 export interface RakutenConfig {
   applicationId: string;
+  /** 2026 개편으로 추가된 필수 자격증명. 구 "Application Secret"이 이 이름으로 바뀌었다 */
+  accessKey: string;
   baseUrl?: string;
   now?: () => number;
 }
 
 export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
+  // 구 도메인(app.rakuten.co.jp)은 2026-05-14에 폐지됐다. 폴백하지 않는다.
   const baseUrl =
-    config.baseUrl ?? 'https://app.rakuten.co.jp/services/api/Travel/VacantHotelSearch/20170426';
+    config.baseUrl ?? 'https://openapi.rakuten.co.jp/engine/api/Travel/VacantHotelSearch/20170426';
   const now = config.now ?? (() => Date.now());
 
   return {
@@ -261,6 +293,9 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
         raw = await httpJson<VacantHotelResponse>('rakuten_travel', baseUrl, {
           query: {
             applicationId: config.applicationId,
+            // 2026 개편으로 필수가 됐다. 헤더로도 보낼 수 있다고 하나 헤더 이름이
+            // 문서에서 확인되지 않아 쿼리로 보낸다 — 이름을 추측하지 않는다.
+            accessKey: config.accessKey,
             format: 'json',
             // 세계측지계. 좌표 단위는 여전히 초(秒)다.
             datumType: 1,
@@ -280,14 +315,19 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
           },
         });
       } catch (error) {
-        // 공실 없음은 실패가 아니다. 빈 후보로 돌려 다음 제공자를 부르지 않게 한다.
-        if (error instanceof ProviderError && error.reason.startsWith(NOT_FOUND)) {
-          return {
-            payload: { candidates: [] },
-            confidence: 'live',
-            termsRef: 'rakuten:webservice-terms (무료 앱ID · 1 req/sec)',
-            rawRef: null,
-          };
+        if (error instanceof ProviderError) {
+          // 공실 없음은 실패가 아니다. 빈 후보로 돌려 다음 제공자를 부르지 않게 한다.
+          if (error.reason.startsWith(NOT_FOUND)) {
+            return {
+              payload: { candidates: [] },
+              confidence: 'live',
+              termsRef: TERMS,
+              rawRef: null,
+            };
+          }
+          // 2026 개편의 403 두 종류는 원인이 분명하다. 그대로 알려준다 —
+          // "HTTP 403"만 보면 키가 틀린 줄 알고 엉뚱한 곳을 고치게 된다.
+          throw new ProviderError('rakuten_travel', explain403(error.reason), error.retryable);
         }
         throw error;
       }
@@ -308,7 +348,7 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
       return {
         payload: { candidates },
         confidence: 'live',
-        termsRef: 'rakuten:webservice-terms (무료 앱ID · 1 req/sec)',
+        termsRef: TERMS,
         rawRef: rawRefOf(raw),
       };
     },
@@ -317,7 +357,11 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
 
 export function rakutenFromEnv(env: NodeJS.ProcessEnv = process.env): ProviderAdapter | null {
   try {
-    return createRakutenProvider({ applicationId: requireEnv('RAKUTEN_APPLICATION_ID', env) });
+    return createRakutenProvider({
+      applicationId: requireEnv('RAKUTEN_APPLICATION_ID', env),
+      // 2026 개편 이후 앱 ID만으로는 호출되지 않는다. 둘 다 없으면 어댑터를 만들지 않는다.
+      accessKey: requireEnv('RAKUTEN_ACCESS_KEY', env),
+    });
   } catch {
     return null;
   }

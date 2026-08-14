@@ -36,7 +36,7 @@ const SOURCES: { id: string; envVars: string[]; create: (env: NodeJS.ProcessEnv)
   { id: 'kakao', envVars: ['KAKAO_REST_API_KEY'], create: kakaoFromEnv },
   { id: 'odsay', envVars: ['ODSAY_API_KEY'], create: odsayFromEnv },
   { id: 'tourapi', envVars: ['TOURAPI_SERVICE_KEY'], create: tourApiFromEnv },
-  { id: 'rakuten_travel', envVars: ['RAKUTEN_APPLICATION_ID'], create: rakutenFromEnv },
+  { id: 'rakuten_travel', envVars: ['RAKUTEN_APPLICATION_ID', 'RAKUTEN_ACCESS_KEY'], create: rakutenFromEnv },
   { id: 'hotpepper', envVars: ['HOTPEPPER_API_KEY'], create: hotPepperFromEnv },
   { id: 'travelpayouts', envVars: ['TRAVELPAYOUTS_TOKEN'], create: travelpayoutsFromEnv },
 ];
