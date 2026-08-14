@@ -9,7 +9,7 @@
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "smoke": "tsx src/smoke.ts",
-    "test": "node --import tsx --test src/orchestrator/finalize.test.ts"
+    "test": "node --import tsx --test src/orchestrator/finalize.test.ts src/codex-gateway.test.ts"
   },
   "dependencies": {
     "@tm/agents": "*",

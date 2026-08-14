@@ -33,7 +33,7 @@ packs/                    서울·부산·도쿄·오사카 데이터 팩
 docs/                     제품·아키텍처·공급자 계약
 ```
 
-`apps/codex-runtime-gateway/`는 목표 경계이며 아직 존재하지 않는다. 다른 브랜치에서 OAuth·모델 카탈로그·구조화 출력 부분만 선별 이식한다. Python Worker나 별도 제품 상태머신은 추가하지 않는다.
+`apps/codex-runtime-gateway/`에는 다른 브랜치의 OAuth·모델 카탈로그·구조화 출력 부분만 선별 이식돼 있다. Python Agent registry 의존성은 제거했고 `packages/contracts`의 TypeScript HTTP 계약과 golden JSON fixture, `apps/worker` 호출 포트가 입력을 소유한다. Python Worker나 별도 제품 상태머신은 추가하지 않았다.
 
 ## 3. 런타임 결정
 
@@ -102,6 +102,16 @@ npm run smoke --workspace @tm/db
 
 `VITE_API_BASE_URL`이 비어 있으면 기존 FE가 `sessionStorage` 경로를 사용한다. 이는 화면 목업 검증이며 Survey v4나 실제 에이전트 종단 실행 검증이 아니다.
 
+Gateway는 OAuth 없이 가짜 Backend로 계약을 검증할 수 있다.
+
+```bash
+python3.12 -m venv /private/tmp/moa-codex-gateway-venv
+/private/tmp/moa-codex-gateway-venv/bin/pip install -e 'apps/codex-runtime-gateway[dev]'
+/private/tmp/moa-codex-gateway-venv/bin/pytest apps/codex-runtime-gateway/tests
+```
+
+이 통과는 localhost 계약, allowlist 실패, 1회 복구, Evidence 제한, thread 격리만 증명한다. 실제 Codex 인증과 모델 품질은 별도 게이트다.
+
 ## 6. 환경변수 목표
 
 | 범위 | 예시 키 |
@@ -109,7 +119,7 @@ npm run smoke --workspace @tm/db
 | 런타임 | `NODE_ENV`, `LOG_LEVEL`, `API_PORT`, `WEB_ORIGIN` |
 | 저장소·큐 | `DATABASE_URL`, `REDIS_URL`, `WORKER_CONCURRENCY` |
 | 실행 상한 | `RUN_WALLCLOCK_LIMIT_SEC`, `MODEL_CALL_LIMIT`, `MODEL_REPAIR_LIMIT` |
-| 로컬 Codex | `MOA_CODEX_GATEWAY_URL`, `MOA_MODEL_ALLOWLIST`, `MOA_MODEL_PROFILE_FAST`, `MOA_MODEL_PROFILE_BALANCED`, `MOA_MODEL_PROFILE_DEEP_REASONING` |
+| 로컬 Codex | `MOA_CODEX_GATEWAY_URL`, `MOA_MODEL_PROFILE_FAST`, `MOA_MODEL_PROFILE_BALANCED`, `MOA_MODEL_PROFILE_DEEP_REASONING` |
 | Google | `GOOGLE_MAPS_API_KEY` |
 | 일본 식당·숙소 | `HOTPEPPER_API_KEY`, `RAKUTEN_APPLICATION_ID`, `RAKUTEN_ACCESS_KEY` |
 | 한국 장소·경로 | `TOURAPI_SERVICE_KEY`, `KAKAO_REST_API_KEY` |
@@ -123,7 +133,7 @@ Open-Meteo와 Frankfurter의 무료/상업 조건은 배포 시 다시 확인한
 
 1. Survey v4 고정 11문항, `TripCharter`, 숙소 Proposal/Ballot/Draft/View 계약
 2. 오사카 fixture의 정원·분리·예산·근거 검증과 leximin
-3. 로컬 Codex OAuth Gateway의 catalog/allowlist/schema 호출
+3. 로컬 Codex OAuth Gateway의 catalog/allowlist/schema 호출 계약 완료, 실제 OAuth smoke 대기
 4. `UserProxyAgent → StayArbiterAgent → TripSupervisorAgent` 수직 경로
 5. 결과 화면의 근거·상태·사용자 선택 표시
 6. [MVP 출시 게이트](operations/mvp-release-gates.md)의 fixture와 OAuth 시나리오

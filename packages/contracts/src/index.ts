@@ -16,3 +16,4 @@ export * from './pack.js';
 export * from './preference-v3.js';
 export * from './result.js';
 export * from './persona.js';
+export * from './codex-runtime-gateway.js';

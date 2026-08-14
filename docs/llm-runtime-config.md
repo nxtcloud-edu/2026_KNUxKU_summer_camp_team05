@@ -2,6 +2,7 @@
 
 - 문서 버전: v1.1 / 2026-08-14
 - 상태: [로컬 Codex OAuth 런타임 ADR](adr/0007-local-codex-oauth-runtime.md)에 따라 MVP 경계 확정
+- 현재 구현: localhost Gateway와 TypeScript 호출 계약은 fixture 검증 단계이며 OAuth 모델 실행은 미검증
 
 ## 1. MVP에서 LLM을 쓰는 역할
 
@@ -27,7 +28,6 @@
 
 ```text
 MOA_CODEX_GATEWAY_URL=http://127.0.0.1:<local-port>
-MOA_MODEL_ALLOWLIST=<comma-separated-current-model-ids>
 MOA_MODEL_PROFILE_FAST=<allowlisted-model-id>
 MOA_MODEL_PROFILE_BALANCED=<allowlisted-model-id>
 MOA_MODEL_PROFILE_DEEP_REASONING=<allowlisted-model-id>
@@ -36,6 +36,8 @@ MODEL_REPAIR_LIMIT=1
 ```
 
 `LLM_API_KEY`는 사용하지 않는다. 모델 ID는 문서에 미래 고정값으로 박지 않고 로그인한 Codex의 `model/list`와 allowlist 교집합으로 해석한다. 교집합이 없으면 실패하고 미허용 모델로 fallback하지 않는다.
+
+Python Gateway의 `MOA_GATEWAY_HOST`는 loopback만 허용하고 기본 저장소는 `:memory:`다. `MOA_CODEX_GATEWAY_URL`은 TypeScript Worker가 이 로컬 서비스에 연결할 때만 사용한다.
 
 ## 4. 모델 배분 원칙
 

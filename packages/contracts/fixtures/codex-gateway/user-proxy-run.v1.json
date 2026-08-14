@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-1",
+  "tripId": "trip-osaka",
+  "planVersion": 1,
+  "agent": {
+    "role": "USER_PROXY",
+    "instanceId": "user-proxy.v1",
+    "participantId": "alice",
+    "promptVersion": "v1",
+    "inputContractVersion": "v1",
+    "outputContractVersion": "v1"
+  },
+  "thread": {
+    "mode": "NEW"
+  },
+  "modelProfile": "BALANCED",
+  "reasoningEffort": "medium",
+  "input": {
+    "instruction": "계약된 JSON만 반환한다.",
+    "context": {
+      "runId": "run-1",
+      "tripId": "trip-osaka",
+      "planVersion": 1,
+      "profileView": {
+        "participantId": "alice",
+        "quietStay": true
+      }
+    },
+    "evidenceIds": [
+      "ev.hotel.price",
+      "ev.hotel.location"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "role",
+      "vote"
+    ],
+    "properties": {
+      "role": {
+        "const": "USER_PROXY"
+      },
+      "vote": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "proposalId",
+          "evidenceIds"
+        ],
+        "properties": {
+          "proposalId": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "limits": {
+    "timeoutMs": 60000,
+    "maxOutputTokens": 2048
+  }
+}

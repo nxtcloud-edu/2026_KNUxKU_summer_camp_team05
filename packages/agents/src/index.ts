@@ -48,6 +48,14 @@ export {
 export { createStubClient, type StubClient, type StubClientOptions } from './testing.js';
 
 export {
+  CodexGatewayHttpError,
+  CodexGatewayResponseError,
+  createCodexGatewayClient,
+  type CodexGatewayClient,
+  type CodexGatewayClientOptions,
+} from './codex-gateway.js';
+
+export {
   runRound,
   toCandidateCard,
   type RefereeDeps,

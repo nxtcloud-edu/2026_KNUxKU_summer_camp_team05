@@ -129,6 +129,7 @@ MVP는 `MULTI_PROXY`만 구현합니다. 참여자별 `UserProxyAgent`가 자기
 | --- | --- |
 | [MVP ADR](docs/adr/README.md) | 현재 MVP의 제품 흐름, 역할, 권한, 공정성, 데이터·런타임·계약 결정 |
 | [문서 권위](docs/operations/document-authority.md), [MVP 출시 게이트](docs/operations/mvp-release-gates.md) | 충돌 해소 순서, 실행·검증·완료 라벨 |
+| [Codex Runtime Gateway](apps/codex-runtime-gateway/README.md) | localhost OAuth·모델 allowlist·구조화 출력 실행과 오프라인 검증 |
 | [종합 기획서](docs/travel-mediation-plan.md) | 제품 목표, 0/1~5/6단계, 프로필·공정성·계약·평가 |
 | [에이전트 아키텍처](docs/agent-architecture.md) | 공식 역할, 책임, 권한, 데이터 계약 |
 | [Survey v4 + Profile Schema v1](docs/survey-v4-profile-v1.md) | 질문·축·태그 매핑, 프로필 저장, 적응형 중단·검증 |
@@ -142,6 +143,8 @@ MVP는 `MULTI_PROXY`만 구현합니다. 참여자별 `UserProxyAgent`가 자기
 ## 현재 구현 상태
 
 Accepted MVP 결정은 [ADR 목록](docs/adr/README.md)에 있습니다. 현재 코드는 이전 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 포함하므로 문서 확정이 새 수직 경로의 구현·검증을 뜻하지 않습니다.
+
+`dawnkim`에서 [Codex Runtime Gateway](apps/codex-runtime-gateway/README.md)의 로컬 실행 경계만 선별 이식했습니다. Python Worker·AgentCore·Docker 구성은 가져오지 않았고, TypeScript 계약과 Worker HTTP 포트가 role·schema·version을 소유합니다. 가짜 Backend 기반 계약 검증은 실제 OAuth 모델 실행의 증거가 아닙니다.
 
 [Python 에이전트 초안](prototypes/python-agents/README.md)의 Proxy·중재자·감독관 계약과 오프라인 fixture는 참고할 수 있습니다. 그 안의 ECS·AgentCore 코드는 과거 실험이며 MVP 선택 경로가 아닙니다. 선택 런타임은 로컬 Codex OAuth Gateway이고, 기존 TypeScript Worker가 업무 오케스트레이터입니다.
 
@@ -169,7 +172,7 @@ npm run build
 
 `VITE_API_BASE_URL`을 비워두면 기존 프론트 흐름이 `sessionStorage`에 저장됩니다. 이는 UI 목업 경로이며 새 백엔드 계약이 연결됐다는 뜻은 아닙니다.
 
-모델 호출은 로컬 Codex OAuth Gateway가 추가된 뒤에만 활성화합니다. 사용자가 `codex login`을 완료하고 현재 모델 목록에서 allowlist를 확정하기 전에는 fixture 기반 검증만 수행합니다.
+Gateway 계약은 추가됐지만 기존 레거시 Agent 흐름을 자동으로 교체하지 않습니다. 사용자가 `codex login`을 완료하고 현재 모델 목록에서 allowlist를 확정하기 전에는 가짜 Backend와 fixture 기반 검증만 수행합니다.
 
 ## 협업 원칙
 
