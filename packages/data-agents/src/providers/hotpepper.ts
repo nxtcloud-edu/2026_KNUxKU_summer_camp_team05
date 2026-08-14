@@ -1,5 +1,6 @@
 import type { DataRequest, QueryClass } from '@tm/contracts';
 import { ProviderError, type ProviderAdapter, type ProviderResult } from '../provider.js';
+import { numberOrUndefined, readParam } from '../provider-request.js';
 import { httpJson, rawRefOf, requireEnv } from './http.js';
 
 /**
@@ -107,8 +108,8 @@ export function createHotPepperProvider(config: HotPepperConfig): ProviderAdapte
           format: 'json',
           count: Number(params['limit'] ?? 20),
           keyword: params['keyword'] === undefined ? undefined : String(params['keyword']),
-          lat: params['lat'] === undefined ? undefined : Number(params['lat']),
-          lng: params['lng'] === undefined ? undefined : Number(params['lng']),
+          lat: numberOrUndefined(readParam(params, 'latitude', ['lat'])),
+          lng: numberOrUndefined(readParam(params, 'longitude', ['lng'])),
           // range: 1=300m 2=500m 3=1000m 4=2000m 5=3000m
           range: params['range'] === undefined ? undefined : Number(params['range']),
           large_area: params['largeArea'] === undefined ? undefined : String(params['largeArea']),
@@ -117,7 +118,7 @@ export function createHotPepperProvider(config: HotPepperConfig): ProviderAdapte
           genre: params['genre'] === undefined ? undefined : String(params['genre']),
           budget: params['budget'] === undefined ? undefined : String(params['budget']),
           // 그룹 인원으로 좁힐 수 있다. 단체석 상한 필터일 뿐 예약 확정은 아니다.
-          party_capacity: params['pax'] === undefined ? undefined : Number(params['pax']),
+          party_capacity: numberOrUndefined(readParam(params, 'guests', ['pax'])),
         },
       });
 

@@ -1,5 +1,6 @@
 import type { Candidate, DataRequest, QueryClass } from '@tm/contracts';
 import type { ProviderAdapter, ProviderResult } from '../provider.js';
+import { readParam } from '../provider-request.js';
 
 /**
  * 데모 제공자 — API 키 없이 파이프라인을 끝까지 돌리기 위한 어댑터.
@@ -76,7 +77,7 @@ function flights(request: DataRequest, now: string): Candidate[] {
   const destination = asString(params['destination'], 'KIX');
   const departureDate = typeof params['departureDate'] === 'string' ? params['departureDate'] : null;
   const returnDate = typeof params['returnDate'] === 'string' ? params['returnDate'] : null;
-  const pax = asNumber(params['pax'], 4);
+  const pax = asNumber(readParam(params, 'guests', ['pax']), 4);
   const seed = hash(`${origin}${destination}${departureDate ?? ''}`);
 
   return [0, 1, 2].map((index): Candidate => {
@@ -135,7 +136,7 @@ function hotels(request: DataRequest, now: string): Candidate[] {
   const params = request.params;
   const area = asString(params['area'], '중심가');
   const nights = asNumber(params['nights'], 2);
-  const pax = asNumber(params['pax'], 4);
+  const pax = asNumber(readParam(params, 'guests', ['pax']), 4);
   const seed = hash(`${area}${nights}`);
 
   const areas = ['난바', '우메다', '신사이바시'];
@@ -290,7 +291,7 @@ function places(request: DataRequest, now: string): Record<string, unknown>[] {
  * 발표에서 "몇 시에 몇 명 자리가 있다"를 보여주기 위한 순수 목업이다.
  */
 function diningSlots(request: DataRequest, now: string): Record<string, unknown>[] {
-  const pax = asNumber(request.params['pax'], 4);
+  const pax = asNumber(readParam(request.params, 'guests', ['pax']), 4);
   const date = typeof request.params['date'] === 'string' ? request.params['date'] : null;
   const seed = hash(`${date ?? ''}${pax}`);
 

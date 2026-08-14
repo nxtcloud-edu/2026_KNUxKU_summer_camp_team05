@@ -1,5 +1,6 @@
 import type { DataRequest, QueryClass } from '@tm/contracts';
 import { ProviderError, type ProviderAdapter, type ProviderResult } from '../provider.js';
+import { readParam } from '../provider-request.js';
 import { httpJson, rawRefOf, requireEnv } from './http.js';
 
 /**
@@ -235,7 +236,7 @@ export function createTourApiProvider(config: TourApiConfig): ProviderAdapter {
   /** 숙박: 지역 목록 → 각 숙소의 객실 정보. 목록 상위 N개만 상세를 본다 (쿼터 보호) */
   async function fetchLodging(request: DataRequest, limit: number): Promise<ProviderResult> {
     const params = request.params;
-    const pax = Number(params['pax'] ?? 4);
+    const pax = Number(readParam(params, 'guests', ['pax']) ?? 4);
     const nights = Number(params['nights'] ?? 2);
     const detailLimit = Math.min(limit, 5);
 

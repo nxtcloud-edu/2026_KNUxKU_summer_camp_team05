@@ -1,5 +1,6 @@
 import type { DataRequest, QueryClass } from '@tm/contracts';
 import { ProviderError, type ProviderAdapter, type ProviderResult } from '../provider.js';
+import { readParam } from '../provider-request.js';
 import { httpJson, rawRefOf, requireEnv } from './http.js';
 
 /**
@@ -330,13 +331,17 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
     async fetch(request: DataRequest): Promise<ProviderResult> {
       const params = request.params;
       /**
-       * 파이프라인의 용어를 받는다. 어댑터의 일은 호출과 정규화이고, 조달 계획이
-       * 라쿠텐의 파라미터 이름을 알아야 할 이유가 없다. 이 별칭이 없으면 매 요청이
-       * "필수 파라미터 누락"으로 떨어져 조용히 다음 제공자(데모)로 폴백한다 —
-       * 실키를 넣고도 실데이터가 한 건도 안 들어오는 형태로 나타난다.
+       * **파이프라인의 중립 용어를 받아 라쿠텐 방언으로 번역한다.**
+       *
+       * 방향이 중요하다. 조달 계획이 `checkinDate`·`adultNum`을 말하기 시작하면
+       * 제공자를 바꿀 때 계획 계층까지 따라 바뀐다. 번역은 여기서만 한다.
+       *
+       * 라쿠텐 이름을 별칭으로 계속 받는 이유는 실호출 검증(live-smoke)과 어댑터
+       * 계약 테스트가 계획 계층을 거치지 않고 제공자 용어로 직접 부르기 때문이다.
+       * 우선순위는 뒤집지 않는다 — 둘 다 있으면 중립 값이 진실이다.
        */
-      const checkinDate = params['checkinDate'] ?? params['checkIn'];
-      const checkoutDate = params['checkoutDate'] ?? params['checkOut'];
+      const checkinDate = readParam(params, 'checkIn', ['checkinDate']);
+      const checkoutDate = readParam(params, 'checkOut', ['checkoutDate']);
 
       // 날짜 없이는 공실을 물을 수 없다. 오늘로 대체하지 않는다 — 값을 지어내는 것이다.
       if (typeof checkinDate !== 'string' || typeof checkoutDate !== 'string') {
@@ -348,8 +353,8 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
         throw new ProviderError('rakuten_travel', `숙박일수를 계산할 수 없습니다: ${checkinDate}~${checkoutDate}`, false);
       }
 
-      const adultNum = params['adultNum'] ?? params['pax'] ?? params['guests'];
-      const roomNumParam = params['roomNum'] ?? params['rooms'];
+      const adultNum = readParam(params, 'guests', ['adultNum', 'pax']);
+      const roomNumParam = readParam(params, 'rooms', ['roomNum']);
       const exactParty = adultNum !== undefined && roomNumParam !== undefined;
       const pax = Number(adultNum ?? 2);
       const roomNum = Number(roomNumParam ?? 1);
@@ -374,16 +379,16 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
             checkoutDate,
             adultNum: pax,
             roomNum,
-            hits: Number(params['limit'] ?? 15),
+            hits: Number(readParam(params, 'limit', ['hits']) ?? 15),
             page: 1,
             largeClassCode: params['largeClassCode'] === undefined ? undefined : String(params['largeClassCode']),
             middleClassCode: params['middleClassCode'] === undefined ? undefined : String(params['middleClassCode']),
             smallClassCode: params['smallClassCode'] === undefined ? undefined : String(params['smallClassCode']),
             // datumType=1에서는 십진 도 그대로다. 3600을 곱하면 거절당한다.
-            latitude: coord(params['latitude'] ?? params['lat']),
-            longitude: coord(params['longitude'] ?? params['lng']),
+            latitude: coord(readParam(params, 'latitude', ['lat'])),
+            longitude: coord(readParam(params, 'longitude', ['lng'])),
             // 반경은 0.1~3.0km만 받는다. 벗어나면 wrong_parameter다.
-            searchRadius: radius(params['searchRadius'] ?? params['radiusKm']),
+            searchRadius: radius(readParam(params, 'radiusKm', ['searchRadius', 'radius'])),
             maxCharge: params['maxCharge'] === undefined ? undefined : Number(params['maxCharge']),
           },
         });
