@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
+import httpx
 from pydantic import BaseModel, ValidationError
 
 from .models import AgentRole
@@ -98,6 +99,135 @@ class CodexGatewayClient(Protocol):
     """ECS에서 Auth와 실제 모델을 소유하는 Gateway가 구현할 포트."""
 
     async def run(self, request: CodexGatewayRequest) -> CodexGatewayResponse: ...
+
+
+class HttpCodexGatewayClient:
+    """Gateway의 localhost AgentRun API를 호출하고 persistent thread를 격리한다."""
+
+    def __init__(
+        self,
+        base_url: str = "http://127.0.0.1:4600",
+        *,
+        timeout_seconds: float = 70.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._client = httpx.AsyncClient(
+            base_url=base_url.rstrip("/"),
+            timeout=timeout_seconds,
+            transport=transport,
+        )
+        self._thread_ids: dict[tuple[object, ...], str] = {}
+
+    async def __aenter__(self) -> "HttpCodexGatewayClient":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def ready(self) -> bool:
+        try:
+            response = await self._client.get("/readyz")
+            return response.status_code == 200 and bool(response.json().get("ready"))
+        except httpx.HTTPError:
+            return False
+
+    @staticmethod
+    def _thread_key(request: CodexGatewayRequest) -> tuple[object, ...]:
+        data = request.input
+        participant = data.get("participant")
+        participant_id = participant.get("participantId") if isinstance(participant, dict) else None
+        return (
+            data.get("tripId"), data.get("planVersion"), request.role,
+            participant_id, data.get("debateIssueId"), data.get("category"),
+        )
+
+    async def run(self, request: CodexGatewayRequest) -> CodexGatewayResponse:
+        key = self._thread_key(request)
+        persistent = request.thread.get("mode") == "PERSISTENT"
+        thread_id = self._thread_ids.get(key) if persistent else None
+        instruction = request.prompt["text"]
+        if request.repair is not None:
+            instruction += (
+                "\n직전 출력이 JSON Schema를 통과하지 못했다. schemaIssues를 반영해 "
+                "계약된 JSON 객체만 다시 반환한다."
+            )
+
+        data = request.input
+        participant = data.get("participant")
+        payload = {
+            "runId": request.agent_run_id,
+            "tripId": data["tripId"],
+            "planVersion": data["planVersion"],
+            "agent": {
+                "role": request.role,
+                "instanceId": request.spec_id,
+                "participantId": participant.get("participantId") if isinstance(participant, dict) else None,
+                "debateIssueId": data.get("debateIssueId"),
+                "category": data.get("category"),
+                "promptVersion": request.prompt["version"],
+                "outputSchemaVersion": "v1",
+            },
+            "thread": {"mode": "CONTINUE" if thread_id else "NEW", "threadId": thread_id},
+            "modelProfile": request.model_profile,
+            "reasoningEffort": request.reasoning_effort,
+            "input": {
+                "instruction": instruction,
+                "context": data,
+                "evidenceIds": _collect_evidence_ids(data),
+            },
+            "limits": {
+                "timeoutMs": request.timeout_ms,
+                "maxOutputTokens": request.max_output_tokens,
+            },
+        }
+        if request.repair is not None:
+            payload["input"]["context"] = {  # type: ignore[index]
+                "originalInput": data,
+                "repair": request.repair,
+            }
+
+        response = await self._client.post("/internal/v1/agent-runs", json=payload)
+        response.raise_for_status()
+        body = response.json()
+        if body.get("status") != "SUCCEEDED":
+            error = body.get("error") or {}
+            raise RuntimeError(f"{body.get('status', 'FAILED')}: {error.get('safeMessage', 'Gateway run failed')}")
+        returned_thread_id = body.get("threadId")
+        if persistent and returned_thread_id:
+            self._thread_ids[key] = returned_thread_id
+        usage = body.get("usage") or {}
+        return CodexGatewayResponse(
+            output=body["output"],
+            model=body["modelContext"]["model"],
+            thread_id=returned_thread_id,
+            usage=AgentUsage(
+                input_tokens=int(usage.get("inputTokens") or 0),
+                output_tokens=int(usage.get("outputTokens") or 0),
+            ),
+        )
+
+
+def _collect_evidence_ids(value: Any) -> list[str]:
+    found: set[str] = set()
+
+    def visit(item: Any) -> None:
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if key in {"evidenceId", "evidenceIds"}:
+                    if isinstance(child, str):
+                        found.add(child)
+                    elif isinstance(child, list):
+                        found.update(value for value in child if isinstance(value, str))
+                visit(child)
+        elif isinstance(item, list):
+            for child in item:
+                visit(child)
+
+    visit(value)
+    return sorted(found)
 
 
 class CodexAgentRuntime(AgentRuntime):

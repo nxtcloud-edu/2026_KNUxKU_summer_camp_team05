@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moa-agent-worker"
+version = "0.1.0"
+description = "MOA Agent 결정론적 workflow orchestrator"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.139,<1",
+  "httpx>=0.28,<1",
+  "moa-agents>=0.1.0",
+  "pydantic>=2.13,<3",
+  "uvicorn>=0.50,<1",
+]
+
+[project.optional-dependencies]
+dev = ["httpx2>=2.10,<3", "pytest>=9,<10"]
+
+[project.scripts]
+moa-agent-worker = "moa_worker.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["moa_worker*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = [".", "../../packages/agents"]

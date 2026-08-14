@@ -5,6 +5,7 @@
 
 # Dependencies and build output
 node_modules/
+.venv/
 .next/
 dist/
 coverage/
@@ -13,9 +14,14 @@ vite.config.js
 vite.config.d.ts
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
+.pytest-cache/
+.pytest-tmp/
+.pytest-tmp-*/
 .mypy_cache/
 .ruff_cache/
+.data/
 
 # Logs, editors, and local tools
 *.log

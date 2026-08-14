@@ -7,10 +7,14 @@ name = "moa-agents"
 version = "0.1.0"
 description = "MOA 여행 중재 서비스의 역할별 Agent 런타임"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.13,<3"]
+dependencies = ["httpx>=0.28,<1", "pydantic>=2.13,<3"]
 
 [project.optional-dependencies]
 dev = ["pytest>=9,<10"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["moa_agents*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

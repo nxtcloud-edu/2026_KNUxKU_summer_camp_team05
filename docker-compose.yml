@@ -33,6 +33,56 @@ services:
       timeout: 5s
       retries: 10
 
+  codex-runtime-gateway:
+    profiles: ['agents']
+    build:
+      context: .
+      dockerfile: apps/codex-runtime-gateway/Dockerfile
+    restart: unless-stopped
+    environment:
+      CODEX_HOME: /var/lib/moa-codex
+      MOA_GATEWAY_HOST: 0.0.0.0
+      MOA_GATEWAY_PORT: 4600
+      MOA_GATEWAY_DB: /var/lib/moa-gateway/gateway.sqlite3
+      MOA_AGENT_WORKSPACE: /var/lib/moa-gateway/sandbox
+      MOA_MODEL_PROFILE_FAST: ${MOA_MODEL_PROFILE_FAST:-}
+      MOA_MODEL_PROFILE_BALANCED: ${MOA_MODEL_PROFILE_BALANCED:-}
+      MOA_MODEL_PROFILE_DEEP_REASONING: ${MOA_MODEL_PROFILE_DEEP_REASONING:-}
+      MOA_AUTH_BOUNDARY_ID: ${MOA_AUTH_BOUNDARY_ID:-team05-codex-runtime}
+      MOA_WORKSPACE_ID: ${MOA_WORKSPACE_ID:-}
+    ports:
+      - '127.0.0.1:4600:4600'
+    volumes:
+      - codex-home:/var/lib/moa-codex
+      - gateway-data:/var/lib/moa-gateway
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4600/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  agent-worker:
+    profiles: ['agents']
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      MOA_WORKER_HOST: 0.0.0.0
+      MOA_WORKER_PORT: 4700
+      MOA_WORKER_DB: /var/lib/moa-worker/worker.sqlite3
+      MOA_CODEX_GATEWAY_URL: http://codex-runtime-gateway:4600
+    ports:
+      - '127.0.0.1:4700:4700'
+    volumes:
+      - worker-data:/var/lib/moa-worker
+    depends_on:
+      codex-runtime-gateway:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   redis-data:
+  codex-home:
+  gateway-data:
+  worker-data:

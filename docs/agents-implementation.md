@@ -1,8 +1,8 @@
 # Agent 구현 가이드
 
-> 상태: 6개 역할의 계약·프롬프트·Fixture 실행·Codex Gateway 경계 구현 완료  
-> 범위: `packages/agents`  
-> 제외: 실제 Provider API, DB, Worker 상태머신, Codex Auth/ECS 배포
+> 상태: 6개 역할·실제 Codex Gateway·Worker 상태머신 구현 완료
+> 범위: `packages/agents`, `apps/codex-runtime-gateway`, `apps/worker`
+> 제외: 실제 Provider API, SQS/RDS adapter, ECS 인프라 프로비저닝
 
 ## 1. 구현된 Agent
 
@@ -15,7 +15,7 @@
 | Debate Supervisor | 투표, 감시 결과, legal moves | 다음 토론 행동 | 점수 계산, 최종 일정 확정 |
 | Result Finalizer | 검증 완료 일정, 개인별 결과, 근거 | 사용자용 일정·양보·경고·출처 | 새 후보·가격 생성, 검증 승격 |
 
-`Orchestrator`는 Agent가 아니라 Worker의 결정론적 코드다. 호출 순서, 상태 전이, 재시도, 점수·예산·시간 계산, 저장, 권한 판정은 향후 `apps/worker`가 담당한다.
+`Orchestrator`는 Agent가 아니라 Worker의 결정론적 코드다. `apps/worker`가 호출 순서, 반복 상한, legal move, 사용자 확인 대기·재개, 멱등 저장과 최종 반영 권한을 담당한다. 점수·예산·시간 계산은 Agent 입력 전의 기계 검증 결과로 주입한다.
 
 ## 2. 파일 지도
 
@@ -35,6 +35,17 @@ packages/agents/
 ├─ prompts/<role>/v1.md       개발자 검토용 버전 프롬프트
 ├─ tests/test_agents.py       계약·권한·개인정보·repair·종단 테스트
 └─ pyproject.toml             Python 3.12·Pydantic·pytest 설정
+
+apps/codex-runtime-gateway/
+├─ moa_codex_gateway/backend.py  공식 openai-codex SDK adapter
+├─ service.py                    Auth·모델·schema·evidence 정책
+├─ store.py                      run 멱등성과 thread 격리 저장소
+└─ app.py                        localhost AgentRun HTTP API
+
+apps/worker/
+├─ moa_worker/orchestrator.py    6개 Agent 결정론적 상태 머신
+├─ store.py                      Job·사용자 대기 상태 저장소
+└─ app.py                        제출·조회·resume HTTP API
 ```
 
 프롬프트의 실행 기준은 `moa_agents/prompts.py`, 사람의 리뷰 기준은 `prompts/*/v1.md`다. 프롬프트를 변경할 때는 둘을 같은 변경에서 수정하고 버전을 올린다. 운영 단계에서는 단일 prompt registry 저장소로 합쳐 중복을 제거한다.
@@ -69,13 +80,19 @@ sequenceDiagram
     F-->>O: 사용자용 결과
 ```
 
-현재 `run_demo_debate()`는 Data Gateway와 부분 재계획을 fixture로 대체한다. 운영 순서의 권위 문서는 [Agent 아키텍처](agent-architecture.md)다.
+`run_demo_debate()`는 빠른 fixture 검증용이다. 실제 실행은 Worker가 Gateway를 통해 같은 순서를 수행하고, `REQUEST_REBUTTAL`·`PROPOSE_COMPROMISE`·`CALL_VOTE`는 최대 3회 안에서 다음 iteration으로 넘긴다. 운영 순서의 권위 문서는 [Agent 아키텍처](agent-architecture.md)다.
 
 ## 4. 로컬 실행
 
-```bash
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -e "packages/agents[dev]"
-python -m pytest -c packages/agents/pyproject.toml packages/agents/tests
+python -m pip install -e "apps/codex-runtime-gateway[dev]"
+python -m pip install -e "apps/worker[dev]"
+python -m pip check
+python -m pytest -q
 # 또는 루트에서 전체 테스트
 npm test
 ```
@@ -97,14 +114,14 @@ Python 내부 필드명은 `snake_case`, TypeScript·HTTP JSON 경계는 alias�
 
 ## 5. ECS Codex 연결 경계
 
-`CodexAgentRuntime`은 모델이나 Auth 파일을 직접 읽지 않는다. ECS 내부 Gateway가 구현할 `CodexGatewayClient`만 호출한다.
+`CodexAgentRuntime`은 모델이나 Auth 파일을 직접 읽지 않는다. `HttpCodexGatewayClient`를 통해 Gateway만 호출한다.
 
 ```text
 apps/worker
   → CodexAgentRuntime
-    → CodexGatewayClient (HTTP 구현 예정)
+    → HttpCodexGatewayClient
       → apps/codex-runtime-gateway
-        → ECS가 보유한 Codex Auth
+        → 공식 openai-codex SDK와 Gateway 전용 Codex Auth
           → 계정에 허용된 실제 모델
 ```
 

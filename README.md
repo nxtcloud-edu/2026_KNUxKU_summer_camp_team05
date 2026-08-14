@@ -744,17 +744,18 @@ Proxy Agent의 투표는 사용자 투표가 아니라 설문으로 위임받은
 
 ```text
 apps/web/            React 기반 웹 클라이언트
+apps/worker/         Agent workflow 상태 머신과 Job API
+apps/codex-runtime-gateway/ Codex Auth·모델·thread 전용 Gateway
 packages/contracts/  공용 타입과 설문 계약
+packages/agents/     6개 Agent 계약·프롬프트·Runtime
 docs/                기획·아키텍처·구현 설계 문서
 ```
 
-### 목표 구조
+### 후속 목표 구조
 
 ```text
 apps/api/             방·설문·일정·재논의 API
-apps/worker/          작업 큐와 워크플로 오케스트레이터
 packages/core/        검증·점수·최적화·상태 머신
-packages/agents/      Proxy·Supervisor·Watcher·Search·Finalizer
 packages/data-gateway/ Provider Connector·RAG·캐시·정규화·근거 저장
 packages/db/          마이그레이션과 리포지토리
 ```
@@ -767,6 +768,7 @@ packages/db/          마이그레이션과 리포지토리
 
 - Node.js 20.10 이상
 - npm 10 이상
+- Python 3.12 이상
 - Docker Desktop
 
 ### 실행 명령
@@ -782,6 +784,40 @@ npm run typecheck
 
 `VITE_API_BASE_URL`을 비워두면 설문 제출을 `sessionStorage`에 저장하므로 백엔드 없이도 화면 흐름을 확인할 수 있습니다.
 
+### Agent Gateway와 Worker
+
+Windows PowerShell에서는 전역 Python 패키지와 충돌하지 않도록 프로젝트 전용 가상환경을 사용합니다.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e "packages/agents[dev]"
+python -m pip install -e "apps/codex-runtime-gateway[dev]"
+python -m pip install -e "apps/worker[dev]"
+python -m pip check
+python -m pytest -q
+```
+
+Gateway는 공식 `openai-codex` SDK가 사용하는 Codex 로그인을 그대로 사용합니다. 먼저 `codex login --device-auth`로 로그인하고 `codex login status`가 성공하는지 확인합니다. 그다음 `apps/codex-runtime-gateway/.env.example`의 세 모델 profile allowlist를 현재 계정의 `model/list` 결과에 맞게 설정하고 두 프로세스를 각각 실행합니다.
+
+```bash
+python -m moa_codex_gateway
+python -m moa_worker
+```
+
+- Gateway: `http://127.0.0.1:4600`, readiness는 `/readyz`
+- Worker: `http://127.0.0.1:4700`, Job API는 `/internal/v1/jobs`
+- Docker: `.env`에 모델 allowlist를 설정한 뒤 `docker compose --profile agents up --build`
+
+Docker의 Gateway 전용 `codex-home` 볼륨에 최초 로그인을 등록하려면 다음 one-off 명령을 먼저 실행합니다.
+
+```bash
+docker compose --profile agents run --rm codex-runtime-gateway codex login --device-auth
+```
+
+인증 파일과 토큰은 Gateway만 접근합니다. Worker는 HTTP 계약만 사용하며 SQLite에 Job 멱등성, 토론 결과, 사용자 확인 대기 상태를 보존합니다.
+
 ---
 
 ## 14. 상세 문서
@@ -793,6 +829,7 @@ README는 프로젝트의 전체 구조와 책임 경계를 설명합니다. 세
 | [개발 문서 시작점](docs/README.md) | 팀원별 읽기 순서, 문서 권위, 현재 상태, 충돌 처리 규칙 |
 | [MVP 구현 가이드](docs/mvp-implementation-guide.md) | 작업 패키지, API·이벤트 경계, 의존성, 완료 조건, 통합 데모 |
 | [Agent 구현 가이드](docs/agents-implementation.md) | 6개 Agent 파일 지도, 호출 순서, 로컬 실행, Codex Gateway 연결 경계 |
+| [Agent Runtime 구현·설치·검증 기록](docs/agent-runtime-setup-and-verification.md) | Gateway·Worker 구현, 가상환경 설치, 패키징 오류 해결, 최종 검증 결과 |
 | [그룹 여행 설문·Agent 백엔드 설계](docs/group-trip-survey-agent-backend.md) | 설문, 점수, 최소 만족도, Agent 토론과 백엔드 흐름 |
 | [종합 기획서](docs/travel-mediation-plan.md) | 문제 정의, 합의 알고리즘, 시스템 구성, 로드맵 |
 | [Agent 아키텍처](docs/agent-architecture.md) | Agent 제어 계약과 Planning Graph |

@@ -25,7 +25,8 @@
 | 전역 Planning Graph·근거·검증 | [종합 기획서 19장](travel-mediation-plan.md#19-v13-실행-보강--전역-계획검증협업-계약) | [Agent 아키텍처](agent-architecture.md) | 오래된 본문 예시보다 19장을 우선한다 |
 | 변경 권한 | [백엔드 설계 19장](group-trip-survey-agent-backend.md#19-변경-권한-경계) | [change-authority.ts](../packages/contracts/src/change-authority.ts) | 네 단계 정책을 사용한다 |
 | 로컬 개발 | [개발·배포 문서 1~6장](development-and-deployment.md) | 이 문서 | PostgreSQL·Redis는 Docker Compose를 사용한다 |
-| Agent 런타임·운영 배포 | [ECS Codex Auth 설계](ecs-codex-auth-agent-architecture.md) | [AgentSpec](agent-spec.md) | 기존 EC2·일반 LLM API Key 설명보다 우선한다 |
+| Agent 런타임·로컬 실행 | [Agent Runtime 구현·설치·검증 기록](agent-runtime-setup-and-verification.md) | [Agent 구현 가이드](agents-implementation.md) | 현재 코드와 설치·검증 결과를 설명한다 |
+| Agent 운영 배포 | [ECS Codex Auth 설계](ecs-codex-auth-agent-architecture.md) | [AgentSpec](agent-spec.md) | 기존 EC2·일반 LLM API Key 설명보다 우선한다 |
 | 항공 | [항공 구현서](flight-referee-implementation.md) | 공통 Data Gateway 계약 | 공통 fail-closed 규칙을 완화할 수 없다 |
 | 교통 | [교통 구현서](transport-referee-implementation.md) | 공통 Data Gateway 계약 | 동선 수치는 코드가 계산한다 |
 | 숙소 | [숙소 구현서](accommodation-referee-implementation.md) | 공통 Data Gateway 계약 | 객실 조합과 안전은 fail-closed다 |
@@ -57,13 +58,13 @@
 | 공통 계약 | 일부 구현 | `packages/contracts` |
 | PostgreSQL·Redis 로컬 환경 | 구현 | `docker-compose.yml` |
 | API 서버 | 미구현 | 목표 `apps/api` |
-| Worker·Orchestrator | 미구현 | 목표 `apps/worker` |
+| Worker·Orchestrator | 로컬 구현 완료 | `apps/worker` — 상태 머신·SQLite·사용자 대기/재개 |
 | 결정론 엔진 | 미구현 | 목표 `packages/core` |
 | Agent 역할 구현 | 로컬 구현 완료 | `packages/agents` — 6개 계약·Fixture Runtime·Codex Gateway 경계 |
 | Data Gateway·Connector | 미구현 | 목표 `packages/data-gateway` |
 | DB 마이그레이션·Repository | 미구현 | 목표 `packages/db` |
 | Destination Pack | 미구현 | 목표 `packs/` |
-| Codex Runtime Gateway | 설계만 완료 | 목표 `apps/codex-runtime-gateway` |
+| Codex Runtime Gateway | 로컬 구현 완료 | `apps/codex-runtime-gateway` — 실제 SDK 연결, 사용자 로그인 필요 |
 | ECS 배포 | 설계만 완료 | 로컬 세로 기능 검증 후 착수 |
 
 ## 5. 현재 코드와 목표 계약의 알려진 차이
@@ -112,6 +113,7 @@ README 6~9장
 → Agent 아키텍처 3·4·7·8장
 → AgentSpec
 → Agent 구현 가이드
+→ Agent Runtime 구현·설치·검증 기록
 → MVP 구현 가이드 W5·W6
 ```
 
@@ -128,6 +130,7 @@ Agent 아키텍처 6장
 ```text
 개발·배포 문서 1~6장
 → ECS Codex Auth 설계
+→ Agent Runtime 구현·설치·검증 기록
 → MVP 구현 가이드 W10
 ```
 

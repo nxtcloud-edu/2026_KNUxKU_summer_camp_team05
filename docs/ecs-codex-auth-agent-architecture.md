@@ -733,21 +733,21 @@ Rolling deployment 때 두 Gateway가 같은 Auth 파일을 동시에 갱신하�
 
 ### Phase 1 — Gateway
 
-- [ ] `apps/codex-runtime-gateway` 생성
-- [ ] Codex SDK wrapper 구현
-- [ ] `ModelCatalog` / `ModelResolver` 구현
-- [ ] `ThreadRegistry` 구현
-- [ ] `/internal/v1/agent-runs` 구현
-- [ ] JSON Schema validation과 error taxonomy 구현
-- [ ] 로그 redaction test 구현
+- [x] `apps/codex-runtime-gateway` 생성
+- [x] Codex SDK wrapper 구현
+- [x] `ModelCatalog` / `ModelResolver` 구현
+- [x] `ThreadRegistry` 구현
+- [x] `/internal/v1/agent-runs` 구현
+- [x] JSON Schema validation과 error taxonomy 구현
+- [x] 로그 redaction test 구현
 
 ### Phase 2 — Agent 연결
 
-- [ ] `packages/agents`의 `AgentSpec` 통합
-- [ ] Proxy별 thread 격리
-- [ ] Supervisor / Watcher / Auditor 순서 연결
-- [ ] Agent 결과를 기존 Evidence·Logic 검증 파이프라인과 연결
-- [ ] Finalizer가 검증된 데이터만 받는 projection 구현
+- [x] `packages/agents`의 `AgentSpec` 통합
+- [x] Proxy별 thread 격리
+- [x] Supervisor / Watcher / Auditor 순서 연결
+- [x] Agent 출력 evidence allowlist 검증 연결
+- [x] Finalizer가 `VERIFIED`·필수조건 통과 계획만 받는 경계 구현
 
 ### Phase 3 — ECS
 

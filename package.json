@@ -17,7 +17,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present && npm run test:agents",
-    "test:agents": "python -m pytest -c packages/agents/pyproject.toml packages/agents/tests",
+    "test:agents": "python -m pytest -q",
+    "test:backend": "python -m pytest -q packages/agents/tests apps/codex-runtime-gateway/tests apps/worker/tests",
     "local:up": "docker compose up -d",
     "local:down": "docker compose down",
     "local:logs": "docker compose logs -f"
