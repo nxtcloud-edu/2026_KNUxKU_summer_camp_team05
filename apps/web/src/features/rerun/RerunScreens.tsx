@@ -1,14 +1,123 @@
-import { useState } from 'react'
-import { ArrowDown, ArrowLeft, ArrowRight, Check, SpinnerGap, WarningCircle } from '@phosphor-icons/react'
-import { demoRerunImpact, reopenOptions } from '../../product/mockData'
+import { useState, type ReactNode } from 'react'
+import { ArrowLeft, ArrowRight, Check, Info, SpinnerGap, WarningCircle } from '@phosphor-icons/react'
+import { demoRerunFlow, demoRerunImpact, reopenOptions } from '../../product/mockData'
 import type { DecisionSummary, ReopenReason, RerunDiff } from '../../product/types'
 import { Page } from '../../components/ui'
 
-export function ReopenFlow({decision,reason,choice,applyFuture,setReason,setChoice,setApplyFuture,back,start}:{decision:DecisionSummary;reason:ReopenReason|null;choice:'station'|'room';applyFuture:boolean;setReason:(reason:ReopenReason)=>void;setChoice:(choice:'station'|'room')=>void;setApplyFuture:(value:boolean)=>void;back:()=>void;start:()=>void}) {
-  const [step,setStep]=useState<'reason'|'followup'|'confirm'|'impact'>('reason')
-  return <Page narrow><button className="moa-back" onClick={step==='reason'?back:()=>setStep(step==='impact'?'confirm':step==='confirm'?'followup':'reason')}><ArrowLeft/>이전</button>{step==='reason'&&<><div className="moa-product-head"><span className="moa-kicker">PARTIAL RE-DISCUSSION</span><h1>왜 다시 보고 싶나요?</h1><p><strong>{decision.title}</strong> 결정만 다시 검토해요. 전체 질문을 다시 하지 않습니다.</p></div><div className="moa-reopen-options">{reopenOptions.map((option)=><button key={option.id} className={reason===option.id?'active':''} onClick={()=>setReason(option.id)}>{option.label}{option.criticalCorrection&&<span>안전·사실 수정 우선</span>}</button>)}</div><aside className="moa-limit-note"><strong>자동 재논의 안내</strong><p>참여자 1회 · 방 전체 3회가 기본이에요. 알레르기, 접근성, 새 하드 제약, 명백한 사실 오류는 서버 확인 없이 제한하지 않아요.</p></aside><button className="moa-button big full" disabled={!reason} onClick={()=>setStep('followup')}>다음 <ArrowRight/></button></>}{step==='followup'&&<><div className="moa-product-head"><span className="moa-kicker">SHORT FOLLOW-UP</span><h1>어떤 부분이 다르게 이해됐나요?</h1><p>숙소 위치에서 더 중요한 한 가지만 알려주세요.</p></div><section className="moa-followup"><h2>더 중요한 쪽은?</h2><div><button className={choice==='station'?'active':''} onClick={()=>setChoice('station')}><strong>역과 가까운 곳</strong><span>이동 시간을 줄이고 싶어요.</span></button><button className={choice==='room'?'active':''} onClick={()=>setChoice('room')}><strong>더 넓은 객실</strong><span>객실 안에서 편하게 쉬고 싶어요.</span></button></div></section><button className="moa-button big full" onClick={()=>setStep('confirm')}>이해한 내용 확인 <ArrowRight/></button></>}{step==='confirm'&&<><div className="moa-product-head"><span className="moa-kicker">CONFIRM CHANGE</span><h1>이렇게 다시 이해했어요.</h1><p>장기 취향은 자동으로 바꾸지 않아요.</p></div><section className="moa-change-summary"><div><span>숙소 위치</span><p><strong>보통</strong><ArrowRight/><b>{choice==='station'?'매우 중요':'중요'}</b></p></div><div><span>객실 크기</span><p><strong>매우 중요</strong><ArrowRight/><b>{choice==='room'?'매우 중요':'중요'}</b></p></div><label className="moa-check-row"><input type="checkbox" checked={applyFuture} onChange={(event)=>setApplyFuture(event.target.checked)}/><span><Check/></span><div><strong>다음 여행에도 적용</strong><small>선택하지 않으면 이번 여행에만 적용해요.</small></div></label></section><div className="moa-profile-actions"><button className="moa-button ghost big" onClick={()=>setStep('followup')}>수정</button><button className="moa-button big" onClick={()=>setStep('impact')}>맞아요 <ArrowRight/></button></div></>}{step==='impact'&&<><div className="moa-product-head"><span className="moa-kicker">IMPACT PREVIEW</span><h1>다시 논의하면</h1><p>숙소 변경이 영향을 주는 결정만 순서대로 다시 검토해요.</p></div><div className="moa-impact-chain">{demoRerunImpact.affectedDecisions.map((item,index)=><div key={item}><strong>{item}</strong>{index<demoRerunImpact.affectedDecisions.length-1&&<ArrowDown/>}</div>)}</div><dl className="moa-impact-meta"><div><dt>다시 검토</dt><dd>{demoRerunImpact.decisionCount}개 결정</dd></div><div><dt>예상 시간</dt><dd>{demoRerunImpact.estimatedTimeLabel}</dd></div><div><dt>예약 영향</dt><dd>{demoRerunImpact.bookingImpact}</dd></div></dl><aside className="moa-demo-note">재논의 실행과 영향 범위는 프론트엔드 데모입니다. 실제 제한·의존성·새 결과는 서버 응답이 필요해요.</aside><button className="moa-button big full" onClick={start}>이대로 다시 진행 <ArrowRight/></button></>}</Page>
+const debugVisible = () => import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('debug') === '1'
+
+function FlowHeader({ label, title, children }: { label: string; title: string; children?: ReactNode }) {
+  return <header className="moa-rediscussion-head"><span>{label}</span><h1>{title}</h1>{children}</header>
 }
 
-export function RerunProcessing({decision,next,leave}:{decision:DecisionSummary;next:()=>void;leave:()=>void}) { return <Page narrow><section className="moa-planning-screen"><div className="moa-status-mark loading"><SpinnerGap/></div><span className="moa-kicker">RERUN DEMO</span><h1>{decision.categoryLabel} 결정을 다시 논의하고 있어요.</h1><p>새 기준 · 역과 가까운 위치를 더 중요하게</p><div className="moa-planning-list">{['숙소 검토 중','일정 영향 확인','최종 확인'].map((item,index)=><div key={item} className={index===0?'active':''}><span>{index===0?<SpinnerGap/>:index+1}</span><strong>{item}</strong><small>{index===0?'검토 중':'대기'}</small></div>)}</div><aside className="moa-demo-note">실제 재논의 작업은 아직 서버에 연결되지 않았어요. 아래 버튼은 준비된 변경 예시를 보여줍니다.</aside><div className="moa-planning-actions"><button className="moa-button ghost big" onClick={leave}>이 화면 나가기</button><button className="moa-button big" onClick={next}>데모 업데이트 보기 <ArrowRight/></button></div></section></Page> }
+function ReDiscussionActions({ secondary, secondaryAction, primary, primaryAction, disabled = false, sticky = false }: { secondary?: string; secondaryAction?: () => void; primary: string; primaryAction: () => void; disabled?: boolean; sticky?: boolean }) {
+  return <div className={`moa-rediscussion-actions${sticky ? ' sticky' : ''}`}>
+    {secondary && secondaryAction && <button type="button" className="secondary" onClick={secondaryAction}>{secondary}</button>}
+    <button type="button" className="primary" disabled={disabled} onClick={primaryAction}>{primary}<ArrowRight /></button>
+  </div>
+}
 
-export function RerunResult({diff,back,evidence}:{diff:RerunDiff;back:()=>void;evidence:()=>void}) { return <Page narrow><section className="moa-rerun-result"><div className={`moa-status-mark ${diff.changed?'success':'verdict'}`}>{diff.changed?<Check weight="bold"/>:<WarningCircle/>}</div><span className="moa-kicker">UPDATED RESULT</span><h1>{diff.changed?'다시 논의가 끝났어요.':'기존 결정이 유지됐어요.'}</h1>{diff.changed?<div className="moa-before-after"><div><span>이전</span><strong>{diff.beforeTitle}</strong></div><ArrowRight/><div><span>변경 후</span><strong>{diff.afterTitle}</strong></div></div>:<p className="moa-unchanged">새 기준을 반영해 다시 검토했지만 현재 선택이 여전히 가장 적합했습니다.</p>}{diff.metrics.length>0&&<dl>{diff.metrics.map((metric)=><div key={metric.label}><dt>{metric.label}</dt><dd><span>{metric.before}</span><ArrowRight/><strong>{metric.after}</strong></dd></div>)}</dl>}<section><h2>왜 {diff.changed?'바뀌었나요?':'유지됐나요?'}</h2><p>{diff.reason}</p><ul>{diff.evidenceChanges.map((item)=><li key={item}><Check/>{item}</li>)}</ul>{diff.bookingReadinessChange&&<aside>{diff.bookingReadinessChange}</aside>}</section><div className="moa-profile-actions"><button className="moa-button ghost big" onClick={evidence}>다시 확인한 근거 보기</button><button className="moa-button big" onClick={back}>업데이트 결과로 돌아가기 <ArrowRight/></button></div></section></Page> }
+export function ReopenFlow({ decision, reason, choice, applyFuture, setReason, setChoice, setApplyFuture, back, start }: { decision: DecisionSummary; reason: ReopenReason | null; choice: 'station' | 'room'; applyFuture: boolean; setReason: (reason: ReopenReason) => void; setChoice: (choice: 'station' | 'room') => void; setApplyFuture: (value: boolean) => void; back: () => void; start: () => void }) {
+  const [step, setStep] = useState<'reason' | 'followup' | 'confirm' | 'impact'>('reason')
+  const copy = demoRerunFlow.copy
+  const selectedChoice = demoRerunFlow.followUp.choices.find((item) => item.id === choice) ?? demoRerunFlow.followUp.choices[0]
+  const impactItems = demoRerunImpact.affectedDecisionDetails
+    ?? demoRerunImpact.affectedDecisions.map((label) => ({ label, detail: undefined }))
+  const goToStep = (next: typeof step) => {
+    setStep(next)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const previous = () => goToStep(step === 'impact' ? 'confirm' : step === 'confirm' ? 'followup' : 'reason')
+
+  return <Page narrow>
+    <div className={`moa-rediscussion-page is-${step}`}>
+      <button className="moa-back moa-rediscussion-back" onClick={step === 'reason' ? back : previous}><ArrowLeft />{copy.back}</button>
+
+      {step === 'reason' && <>
+        <FlowHeader label={copy.start.label} title={copy.start.title}>
+          <p><strong>{decision.title}</strong> {copy.start.decisionDescriptionSuffix}</p>
+        </FlowHeader>
+        <div className="moa-reopen-options moa-rediscussion-options">
+          {reopenOptions.map((option) => <button type="button" key={option.id} className={reason === option.id ? 'active' : ''} aria-pressed={reason === option.id} onClick={() => setReason(option.id)}>
+            <i aria-hidden="true" />
+            <strong>{option.label}</strong>
+          </button>)}
+        </div>
+        {demoRerunFlow.limitInfo && <details className="moa-rediscussion-info"><summary>{copy.start.infoSummary}<Info /><ArrowRight /></summary><p>{demoRerunFlow.limitInfo}</p></details>}
+        <ReDiscussionActions primary={copy.start.nextAction} primaryAction={() => goToStep('followup')} disabled={!reason} sticky />
+      </>}
+
+      {step === 'followup' && <>
+        <FlowHeader label={demoRerunFlow.followUp.label} title={demoRerunFlow.followUp.title}><p>{demoRerunFlow.followUp.description}</p></FlowHeader>
+        <section className="moa-followup moa-adaptive-followup">
+          {demoRerunFlow.followUp.choices.map((item) => <button type="button" key={item.id} className={choice === item.id ? 'active' : ''} aria-pressed={choice === item.id} onClick={() => setChoice(item.id)}>
+            <i aria-hidden="true" /><span><strong>{item.title}</strong><small>{item.description}</small></span>
+          </button>)}
+        </section>
+        <ReDiscussionActions primary={copy.followUpAction} primaryAction={() => goToStep('confirm')} sticky />
+      </>}
+
+      {step === 'confirm' && <>
+        <FlowHeader label={copy.confirm.label} title={copy.confirm.title}><p>{copy.confirm.description}</p></FlowHeader>
+        <section className="moa-change-summary moa-preference-change-summary">
+          <div className="moa-preference-changes">
+            {selectedChoice.changes.map((change) => <article key={change.label}><span>{change.label}</span><p><strong>{change.before}</strong><ArrowRight /><b>{change.after}</b></p></article>)}
+          </div>
+          <label className="moa-check-row moa-memory-scope">
+            <input type="checkbox" checked={applyFuture} onChange={(event) => setApplyFuture(event.target.checked)} />
+            <span><Check /></span>
+            <div><strong>{copy.confirm.rememberLabel}</strong><small>{copy.confirm.rememberDescription}</small></div>
+          </label>
+        </section>
+        <ReDiscussionActions secondary={copy.confirm.editAction} secondaryAction={() => goToStep('followup')} primary={copy.confirm.confirmAction} primaryAction={() => goToStep('impact')} sticky />
+      </>}
+
+      {step === 'impact' && <>
+        <FlowHeader label={copy.impact.label} title={copy.impact.title}><p><strong>{decision.categoryLabel}</strong> {copy.impact.descriptionSuffix}</p></FlowHeader>
+        <section className="moa-impact-preview">
+          <div className="moa-impact-list">{impactItems.map((item) => <article key={item.label}><Check /><div><strong>{item.label}</strong>{item.detail && <span>{item.detail}</span>}</div></article>)}</div>
+          <dl className="moa-impact-meta">
+            <div><dt>{copy.impact.countLabel}</dt><dd>{demoRerunImpact.decisionCount}{copy.impact.countSuffix}</dd></div>
+            {demoRerunImpact.estimatedTimeLabel && <div><dt>{copy.impact.durationLabel}</dt><dd>{demoRerunImpact.estimatedTimeLabel}</dd></div>}
+            {demoRerunImpact.bookingImpact && <div><dt>{copy.impact.bookingLabel}</dt><dd>{demoRerunImpact.bookingImpact}</dd></div>}
+          </dl>
+        </section>
+        {debugVisible() && <aside className="moa-rediscussion-debug">{demoRerunFlow.debug.impactNote}</aside>}
+        <ReDiscussionActions primary={copy.impact.action} primaryAction={start} sticky />
+      </>}
+    </div>
+  </Page>
+}
+
+export function RerunProcessing({ decision, next, leave }: { decision: DecisionSummary; next: () => void; leave: () => void }) {
+  const copy = demoRerunFlow.copy.processing
+  return <Page narrow><section className="moa-planning-screen moa-rediscussion-processing">
+    <div className="moa-status-mark loading"><SpinnerGap /></div>
+    <span className="moa-kicker">{copy.label}</span>
+    <h1>{decision.categoryLabel} {copy.titleSuffix}</h1>
+    <p>{copy.criterionPrefix} · {demoRerunFlow.processing.criterion}</p>
+    <div className="moa-planning-list">{demoRerunFlow.processing.steps.map((item, index) => <div key={item} className={index === 0 ? 'active' : ''}><span>{index === 0 ? <SpinnerGap /> : index + 1}</span><strong>{item}</strong><small>{index === 0 ? copy.activeStatus : copy.pendingStatus}</small></div>)}</div>
+    {debugVisible() && <aside className="moa-rediscussion-debug">{demoRerunFlow.debug.processingNote}</aside>}
+    <ReDiscussionActions secondary={copy.leaveAction} secondaryAction={leave} primary={copy.resultAction} primaryAction={next} />
+  </section></Page>
+}
+
+export function RerunResult({ diff, back, evidence }: { diff: RerunDiff; back: () => void; evidence: () => void }) {
+  const copy = demoRerunFlow.copy.result
+  return <Page narrow><section className="moa-rerun-result moa-updated-result">
+    <div className={`moa-status-mark ${diff.changed ? 'success' : 'verdict'}`}>{diff.changed ? <Check weight="bold" /> : <WarningCircle />}</div>
+    <span className="moa-kicker">{copy.label}</span>
+    <h1>{copy.title}</h1>
+    <p className="moa-updated-result-description">{copy.description}</p>
+    <section className="moa-updated-comparison">
+      <h2>{diff.summaryTitle ?? (diff.changed ? copy.changedHeading : copy.unchangedHeading)}</h2>
+      {diff.changed && <div className="moa-before-after"><div><span>{copy.beforeLabel}</span><strong>{diff.beforeTitle}</strong></div><ArrowRight /><div><span>{copy.afterLabel}</span><strong>{diff.afterTitle}</strong></div></div>}
+    </section>
+    {diff.metrics.length > 0 && <dl className="moa-updated-metrics">{diff.metrics.map((metric) => <div key={metric.label}><dt>{metric.label}</dt><dd><span>{metric.before}</span><ArrowRight /><strong>{metric.after}</strong></dd></div>)}</dl>}
+    <section className="moa-updated-reason"><h2>{diff.changed ? copy.changedReasonTitle : copy.unchangedReasonTitle}</h2><p>{diff.reason}</p><ul>{diff.evidenceChanges.map((item) => <li key={item}><Check />{item}</li>)}</ul></section>
+    {diff.bookingReadinessChange && <aside className="moa-updated-booking-warning"><strong>{copy.bookingWarningTitle}</strong><p>{diff.bookingReadinessChange}</p></aside>}
+    <ReDiscussionActions secondary={copy.evidenceAction} secondaryAction={evidence} primary={copy.returnAction} primaryAction={back} />
+  </section></Page>
+}

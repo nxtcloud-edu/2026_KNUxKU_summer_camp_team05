@@ -103,10 +103,15 @@ export function BookingStatus({ availability }: { availability: AvailabilityView
 export function SourceDetail({ evidence }: { evidence?: EvidenceSummary }) {
   if (!evidence?.source) return null
   const source = evidence.source
+  const sourceLabel = source.label === '예약처 조회'
+    ? '예약처에서 확인'
+    : source.label === '지도 경로 정보'
+      ? '지도에서 위치 확인'
+      : source.label
   return (
     <div className={`moa-source-detail state-${evidence.state}`}>
       <Info />
-      <div><strong>{source.label}</strong></div>
+      <div><strong>{sourceLabel}</strong></div>
       {source.url && <a href={source.url} target="_blank" rel="noreferrer">근거 보기 <ArrowSquareOut /></a>}
     </div>
   )

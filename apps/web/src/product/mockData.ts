@@ -7,6 +7,7 @@ import type {
   ProductResult,
   ReopenOption,
   RerunDiff,
+  RerunFlowFixture,
   RerunImpact,
   SourceView,
   TripPace,
@@ -61,7 +62,7 @@ const trainEvidence = evidence('train-verified','열차 운행','JR 신쾌속','
 export const demoDecisions: DecisionSummary[] = [
   {
     id:'transport-inbound', category:'transport', categoryLabel:'오는 길·가는 길', title:'대한항공 KE721', location:'인천 → 간사이', detail:'출발 시간이 모두의 가능 범위에 들어오는 직항', summaryReason:'새벽 출발을 피하면서 체류 시간을 가장 길게 확보했습니다.', reasons:['5명 모두 가능한 출발 시간','새벽 출발 불가 조건 충족','환승 없이 이동','후보 B보다 체류 시간 3시간 20분 증가'], status:'verified', evidence:[flightEvidence], rejectedCandidates:[{id:'flight-b',title:'저가항공 새벽편',reason:'2명의 새벽 출발 불가 조건과 충돌',hardConstraintConflict:true}],
-    travelData:{kind:'transport',mode:'flight',modeLabel:'항공',operator:'대한항공',serviceNumber:'KE721',departureLocation:'인천',arrivalLocation:'간사이',departureTime:'09:10',arrivalTime:'11:00',durationMinutes:110,transferCount:0,baggage:'위탁 수하물 포함',inventory:{state:'available',label:'좌석 확인됨',detail:'5명 좌석 조회',evidence:flightEvidence},baseFare:{type:'live',amount:309000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},additionalTransportCost:{type:'estimated',amount:19000,currency:'KRW',unit:'person'},effectiveTotalPrice:{type:'live',amount:328000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},bookingUrl:'https://www.koreanair.com',evidence:flightEvidence},
+    travelData:{kind:'transport',mode:'flight',modeLabel:'항공',operator:'대한항공',serviceNumber:'KE721',departureLocation:'인천',departureCode:'ICN',arrivalLocation:'간사이',arrivalCode:'KIX',departureTime:'09:10',arrivalTime:'11:00',durationMinutes:110,transferCount:0,baggage:'위탁 수하물 포함',inventory:{state:'available',label:'좌석 확인됨',detail:'5명 좌석 조회',evidence:flightEvidence},baseFare:{type:'live',amount:309000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},additionalTransportCost:{type:'estimated',amount:19000,currency:'KRW',unit:'person'},effectiveTotalPrice:{type:'live',amount:328000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},bookingUrl:'https://www.koreanair.com',evidence:flightEvidence},
   },
   {
     id:'stay-namba', category:'stay', categoryLabel:'체류 거점·숙소', title:'Hotel Resol Trinity Osaka', location:'난바 · 역 도보 4분', detail:'5명이 함께 이동하기 편한 중심 지역 숙소', summaryReason:'음식과 교통 접근성이 다른 후보보다 좋았습니다.', reasons:['5명 모두 절대 예산 범위 충족','도보 제한 조건 충족','음식 접근성이 가장 좋음','후보 B보다 이동시간 42분 감소'], status:'verified', evidence:[hotelEvidence,evidence('hotel-location','주소·위치','난바역 도보 4분','verified','확인됨','오늘 확인',mapSource)], rejectedCandidates:[{id:'hotel-b',title:'Hotel B',reason:'1명의 절대 예산 상한 초과',hardConstraintConflict:true},{id:'hotel-c',title:'Hotel C',reason:'그룹 객실 재고 확인 불가'}],
@@ -94,11 +95,12 @@ export const demoPlanB: PlanB[] = [
 export const demoResult: ProductResult = {
   status:'VERIFIED_DRAFT', pace:tripPaces[1], destination:'오사카', destinationImage:featuredDestinations.find((item) => item.id === 'osaka')!.image, duration:'3박 4일', dateRange:'10.15 – 10.18', participantCount:5, budgetPerPerson:742000, stayArea:'난바', checksRequired:3,
   decisions:demoDecisions,
+  bookingSummary:{attentionCount:2,readyCount:2,priorityBookingId:'book-hotel-unknown'},
   bookings:[
-    {id:'book-flight',category:'오는 길',title:'대한항공 KE721',state:'ready',stateLabel:'예약 준비 완료',price:{type:'live',amount:328000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},note:'좌석과 운임을 확인했지만 결제 전 최종 조건을 확인해 주세요.',actionLabel:'예약처에서 확인',externalUrl:'https://www.koreanair.com',evidence:flightEvidence},
-    {id:'book-hotel',category:'숙소',title:'Hotel Resol Trinity Osaka',state:'ready',stateLabel:'객실 확인됨',price:{type:'live',amount:15200,currency:'JPY',convertedKRW:142000,unit:'night',exchangeRate:9.34,checkedAt:'오늘 05:40',checkedLabel:'12분 전 확인'},note:'선택한 객실 조합과 취소 기한을 결제 전에 확인해 주세요.',actionLabel:'예약처에서 확인',externalUrl:'https://www.google.com/travel/hotels',evidence:hotelEvidence},
-    {id:'book-hotel-estimated',category:'숙소 후보',title:'난바 비즈니스 호텔 B',state:'needs-check',stateLabel:'예약 전 확인 필요',price:{type:'estimated',currency:'KRW',rangeMin:120000,rangeMax:180000,unit:'night',checkedLabel:'범위 추정'},note:'객실 조합에 따라 금액 차이가 커 재고 조회가 필요해요.',freshness:'추정 정보'},
-    {id:'book-hotel-unknown',category:'숙소 후보',title:'난바 소형 숙소 C',state:'blocked',stateLabel:'가격 확인 필요',price:{type:'unknown'},note:'그룹 수용 가능 여부와 가격 정보가 아직 없어요.'},
+    {id:'book-flight',category:'항공',title:'대한항공 KE721',state:'ready',stateLabel:'예약 준비 완료',detail:'09:10 인천 → 11:00 간사이',price:{type:'live',amount:328000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},note:'좌석과 운임을 확인했지만 결제 전 최종 조건을 확인해 주세요.',availabilityLabel:'좌석 확인됨',actionLabel:'예약처에서 확인',externalUrl:'https://www.koreanair.com',evidence:flightEvidence},
+    {id:'book-hotel',category:'숙소',title:'Hotel Resol Trinity Osaka',state:'ready',stateLabel:'객실 확인됨',detail:'트윈룸 2실 + 싱글룸 1실',price:{type:'live',amount:15200,currency:'JPY',convertedKRW:142000,unit:'night',exchangeRate:9.34,checkedAt:'오늘 05:40',checkedLabel:'12분 전 확인'},note:'선택한 객실 조합과 취소 기한을 결제 전에 확인해 주세요.',availabilityLabel:'객실 확인됨',actionLabel:'예약처에서 확인',externalUrl:'https://www.google.com/travel/hotels',evidence:hotelEvidence},
+    {id:'book-hotel-estimated',category:'숙소',title:'난바 비즈니스 호텔 B',state:'needs-check',stateLabel:'예약 전 확인 필요',price:{type:'estimated',currency:'KRW',rangeMin:120000,rangeMax:180000,unit:'night',checkedLabel:'범위 추정'},note:'객실 조합에 따라 가격 차이가 커요.',followUpLabel:'출발 전 재고와 최종 금액 확인',freshness:'추정 정보'},
+    {id:'book-hotel-unknown',category:'숙소',title:'난바 소형 숙소 C',state:'blocked',stateLabel:'가격 확인 필요',price:{type:'unknown'},note:'그룹 수용 가능 여부와 정확한 가격 정보가 아직 없어요.',checkItems:['객실 재고','5명 수용','가격']},
   ],
   itinerary:[
     {id:'day-1',dayLabel:'DAY 1',dateLabel:'10월 15일',title:'도착과 난바',weather:{condition:'맑음',temperatureMinC:17,temperatureMaxC:23,precipitationProbability:10,summary:'대체로 맑고 선선해요.'},items:[{id:'day1-arrival',time:'11:00',title:'간사이공항 도착',detail:'수하물 수령 후 난바로 이동'},{id:'day1-route',time:'12:10',title:'공항 → 난바',route:{id:'route-airport-namba',origin:'간사이공항',destination:'난바',mode:'train',modeLabel:'공항철도',durationMinutes:38,distanceKm:43,transferCount:0,walkingMinutes:6,departureTime:'12:10',arrivalTime:'12:48',fare:{type:'live',amount:1450,currency:'JPY',convertedKRW:13500,unit:'route',exchangeRate:9.34,checkedAt:'오늘 05:40',checkedLabel:'오늘 확인'},steps:[{id:'airport-step',mode:'train',station:'간사이공항역',instruction:'난카이 라피트 탑승',durationMinutes:38}],evidence:trainEvidence}},{id:'day1-evening',time:'18:30',title:'도톤보리 저녁 산책',location:{name:'도톤보리',area:'난바',address:'Dotonbori, Chuo Ward, Osaka',coordinates:{latitude:34.6687,longitude:135.5013}}}]},
@@ -112,18 +114,54 @@ export const demoResult: ProductResult = {
 }
 
 export const reopenOptions: ReopenOption[] = [
-  {id:'misunderstood',label:'취향을 잘못 이해했어요'},
-  {id:'incorrect-fact',label:'사실이 틀렸어요',criticalCorrection:true},
+  {id:'misunderstood',label:'취향을 잘못 이해한 것 같아요'},
+  {id:'incorrect-fact',label:'정보가 달라졌어요',criticalCorrection:true},
   {id:'new-constraint',label:'새로운 조건이 생겼어요',criticalCorrection:true},
   {id:'budget-change',label:'예산을 바꾸고 싶어요'},
-  {id:'other-candidate',label:'다른 후보를 보고 싶어요'},
-  {id:'other',label:'기타'},
+  {id:'other-candidate',label:'다른 후보도 보고 싶어요'},
+  {id:'other',label:'직접 입력할게요'},
 ]
 
-export const demoRerunImpact: RerunImpact = { affectedDecisions:['숙소','갈 곳·할 일','식사','날짜별 일정','예산'], decisionCount:5, estimatedTimeLabel:'약 12분', bookingImpact:'현재 예약 항목 영향 없음' }
+export const demoRerunFlow: RerunFlowFixture = {
+  copy:{
+    back:'이전',
+    start:{label:'결정 다시 보기',title:'왜 다시 보고 싶나요?',decisionDescriptionSuffix:'결정만 다시 살펴볼게요. 처음부터 다시 답할 필요는 없어요.',infoSummary:'다시 검토는 어떻게 진행되나요?',nextAction:'다음'},
+    followUpAction:'선택 내용 확인',
+    confirm:{label:'변경 내용 확인',title:'이렇게 다시 이해했어요',description:'아래 내용만 이번 결정에 새롭게 반영할게요.',rememberLabel:'다음 여행에도 기억하기',rememberDescription:'끄면 이번 여행에만 적용돼요.',editAction:'다시 수정하기',confirmAction:'이 내용으로 다시 보기'},
+    impact:{label:'영향 범위 확인',title:'이 부분만 다시 확인할게요',descriptionSuffix:'선택이 바뀌면 영향을 받는 항목만 다시 살펴봐요.',countLabel:'다시 확인하는 결정',countSuffix:'개',durationLabel:'예상 소요 시간',bookingLabel:'현재 예약에 미치는 영향',action:'이 범위만 다시 확인하기'},
+    processing:{label:'다시 확인 중',titleSuffix:'결정을 다시 확인하고 있어요',criterionPrefix:'새 기준',activeStatus:'확인 중',pendingStatus:'대기',leaveAction:'이 화면 나가기',resultAction:'변경 결과 확인'},
+    result:{label:'업데이트 완료',title:'다시 확인이 끝났어요',description:'바뀐 내용을 한눈에 확인해보세요.',changedHeading:'선택이 변경됐어요',unchangedHeading:'선택은 그대로 유지됐어요',beforeLabel:'변경 전',afterLabel:'변경 후',changedReasonTitle:'왜 바뀌었나요?',unchangedReasonTitle:'왜 유지됐나요?',bookingWarningTitle:'예약 전 확인',evidenceAction:'다시 확인한 근거 보기',returnAction:'업데이트된 여행으로 돌아가기'},
+  },
+  limitInfo:'참여자당 1회, 방 전체 3회까지 다시 볼 수 있어요. 알레르기나 접근성 문제, 새로운 필수 조건, 명백히 달라진 정보는 이 횟수와 관계없이 먼저 살펴봐요.',
+  followUp:{
+    label:'한 가지만 더 확인할게요',
+    title:'숙소를 고를 때 어느 쪽이 더 중요한가요?',
+    description:'지금 선택에 가장 영향을 주는 한 가지만 알려주세요.',
+    choices:[
+      {id:'station',title:'역과 가까운 곳',description:'이동 시간을 줄이고 싶어요.',changes:[{label:'숙소 위치',before:'보통',after:'매우 중요'},{label:'객실 크기',before:'매우 중요',after:'중요'}]},
+      {id:'room',title:'더 넓은 객실',description:'숙소에서 편하게 쉬고 싶어요.',changes:[{label:'숙소 위치',before:'보통',after:'중요'},{label:'객실 크기',before:'매우 중요',after:'매우 중요'}]},
+    ],
+  },
+  processing:{criterion:'역과 가까운 위치를 더 중요하게',steps:['숙소 검토 중','일정 영향 확인','최종 확인']},
+  debug:{impactNote:'재논의 실행과 영향 범위는 준비된 화면 데이터입니다. 실제 제한·의존성·새 결과는 서버 응답이 필요합니다.',processingNote:'실제 재논의 작업은 아직 서버에 연결되지 않았습니다. 다음 버튼은 준비된 변경 예시를 표시합니다.'},
+}
 
-export const changedRerunDiff: RerunDiff = { changed:true,beforeTitle:'Hotel Resol Trinity Osaka',afterTitle:'Hotel Monterey Grasmere Osaka',metrics:[{label:'1인 예상',before:'₩742,000',after:'₩728,000'},{label:'총 이동시간',before:'4시간 20분',after:'3시간 41분'}],reason:'숙소 위치의 중요도가 높아져 역 접근성이 낮은 후보가 제외되었습니다.',evidenceChanges:['역 도보 시간 다시 비교','객실 가격 범위 다시 확인'],bookingReadinessChange:'숙소는 예약 전 재고 확인이 필요해요.' }
-export const unchangedRerunDiff: RerunDiff = { changed:false,beforeTitle:'Hotel Resol Trinity Osaka',afterTitle:'Hotel Resol Trinity Osaka',metrics:[],reason:'새 기준을 반영해 다시 검토했지만 현재 선택이 여전히 가장 적합했습니다.',evidenceChanges:['가격 범위 다시 확인','역 접근성 근거 다시 확인'] }
+export const demoRerunImpact: RerunImpact = {
+  affectedDecisions:['숙소','갈 곳·할 일','식사','날짜별 일정','예산'],
+  affectedDecisionDetails:[
+    {label:'숙소',detail:'새 조건으로 다시 비교'},
+    {label:'갈 곳·할 일',detail:'숙소 위치 변경 영향 확인'},
+    {label:'식사',detail:'동선 변화 확인'},
+    {label:'날짜별 일정',detail:'필요한 구간만 다시 조정'},
+    {label:'예산',detail:'변경된 비용 다시 계산'},
+  ],
+  decisionCount:5,
+  estimatedTimeLabel:'약 12분',
+  bookingImpact:'현재 예약 항목 영향 없음',
+}
+
+export const changedRerunDiff: RerunDiff = { changed:true,summaryTitle:'숙소가 변경됐어요',beforeTitle:'Hotel Resol Trinity Osaka',afterTitle:'Hotel Monterey Grasmere Osaka',metrics:[{label:'1인 예상',before:'₩742,000',after:'₩728,000'},{label:'총 이동시간',before:'4시간 20분',after:'3시간 41분'}],reason:'숙소 위치의 중요도가 높아져 역 접근성이 낮은 후보가 제외되었습니다.',evidenceChanges:['역 도보 시간 다시 비교','객실 가격 범위 다시 확인'],bookingReadinessChange:'숙소는 예약 전 재고 확인이 필요해요.' }
+export const unchangedRerunDiff: RerunDiff = { changed:false,summaryTitle:'숙소 선택은 그대로예요',beforeTitle:'Hotel Resol Trinity Osaka',afterTitle:'Hotel Resol Trinity Osaka',metrics:[],reason:'새 기준을 반영해 다시 검토했지만 현재 선택이 여전히 가장 적합했습니다.',evidenceChanges:['가격 범위 다시 확인','역 접근성 근거 다시 확인'] }
 
 const unavailableEvidence = (destination: string) => evidence(`unavailable-${destination}`,'여행 정보','연결 대기 중','unknown','정보 없음','데모 데이터 없음',undefined,'실제 여행 데이터가 연결되면 이 항목을 확인할 수 있어요.')
 

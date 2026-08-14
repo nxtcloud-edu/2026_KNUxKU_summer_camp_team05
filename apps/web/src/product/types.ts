@@ -152,7 +152,9 @@ export type TransportView = {
   operator: string
   serviceNumber?: string
   departureLocation: string
+  departureCode?: string
   arrivalLocation: string
+  arrivalCode?: string
   departureTime: string
   arrivalTime: string
   durationMinutes: number
@@ -265,6 +267,10 @@ export type BookingReadiness = {
   price?: PriceView
   priceLabel?: string
   note: string
+  detail?: string
+  checkItems?: string[]
+  followUpLabel?: string
+  availabilityLabel?: string
   actionLabel?: string
   externalUrl?: string
   freshness?: string
@@ -348,13 +354,98 @@ export type ReopenOption = {
 
 export type RerunImpact = {
   affectedDecisions: string[]
+  affectedDecisionDetails?: Array<{
+    label: string
+    detail: string
+  }>
   decisionCount: number
   estimatedTimeLabel: string
   bookingImpact: string
 }
 
+export type RerunFlowFixture = {
+  copy: {
+    back: string
+    start: {
+      label: string
+      title: string
+      decisionDescriptionSuffix: string
+      infoSummary: string
+      nextAction: string
+    }
+    followUpAction: string
+    confirm: {
+      label: string
+      title: string
+      description: string
+      rememberLabel: string
+      rememberDescription: string
+      editAction: string
+      confirmAction: string
+    }
+    impact: {
+      label: string
+      title: string
+      descriptionSuffix: string
+      countLabel: string
+      countSuffix: string
+      durationLabel: string
+      bookingLabel: string
+      action: string
+    }
+    processing: {
+      label: string
+      titleSuffix: string
+      criterionPrefix: string
+      activeStatus: string
+      pendingStatus: string
+      leaveAction: string
+      resultAction: string
+    }
+    result: {
+      label: string
+      title: string
+      description: string
+      changedHeading: string
+      unchangedHeading: string
+      beforeLabel: string
+      afterLabel: string
+      changedReasonTitle: string
+      unchangedReasonTitle: string
+      bookingWarningTitle: string
+      evidenceAction: string
+      returnAction: string
+    }
+  }
+  limitInfo?: string
+  followUp: {
+    label: string
+    title: string
+    description: string
+    choices: Array<{
+      id: 'station' | 'room'
+      title: string
+      description: string
+      changes: Array<{
+        label: string
+        before: string
+        after: string
+      }>
+    }>
+  }
+  processing: {
+    criterion: string
+    steps: string[]
+  }
+  debug: {
+    impactNote: string
+    processingNote: string
+  }
+}
+
 export type RerunDiff = {
   changed: boolean
+  summaryTitle?: string
   beforeTitle: string
   afterTitle: string
   metrics: Array<{ label: string; before: string; after: string }>
@@ -376,6 +467,11 @@ export type ProductResult = {
   checksRequired: number
   decisions: DecisionSummary[]
   bookings: BookingReadiness[]
+  bookingSummary: {
+    attentionCount: number
+    readyCount: number
+    priorityBookingId?: string
+  }
   itinerary: ItineraryDayView[]
   coverage: PreferenceCoverage
   concessions: Concession[]
