@@ -58,7 +58,7 @@
 | 어댑터 | 담당 QueryClass | 무료 조건 | 이 공급자가 답하지 않는 것 |
 | --- | --- | --- | --- |
 | `rakuten_travel` | `hotel.search` · `hotel.vacancy_price` · `hotel.room_combination` · `hotel.all_in_price` | 무료 · **1 req/sec** · 서버앱 IP 제한 | 취소 조건, 잔여 객실 수, 침대 타입 |
-| `hotpepper` | `dining.search` · `dining.hours` · `dining.diet_support` | 무료 · **크레딧 표시 의무** · 점포정보 재판매 금지 | 예약 슬롯, 실시간 공석 |
+| `hotpepper` | `dining.search` · `dining.hours` · `dining.diet_support` | 무료 · **크레딧 표시 의무** · 점포정보 재판매 금지 · **한국에서 키 발급 실패(아래)** | 예약 슬롯, 실시간 공석 |
 | `tourapi` | `poi.search` · `dining.search` · `geo.place_details` · `hotel.search` · `hotel.room_combination` | 개발계정 1,000건/일 · 이용 제한 없음 | 날짜별 재고·가격 (시즌 밴드뿐) |
 | `kakao` | `poi.search` · `dining.search` · `geo.place_details` · `geo.geocode` | 각 100,000건/일 · 상업 이용 가능 | 영업시간, 가격, 정원 |
 | `odsay` | `transit.route` · `transit.airport_transfer` | 1,000건/일 · **비상업 목적 한정** | 계단·엘리베이터, 막차 |
@@ -113,6 +113,21 @@ dailyCharge    { stayDate: 2026-10-13, rakutenCharge: 7650, total: 22950, charge
 ```
 
 `chargeFlag: 0`은 1실당이므로 그룹 총액은 `total × roomNum = 22,950엔`이고 1인 7,650엔(3박), 1인 1박 2,550엔이다. `chargeFlag`를 무시하고 인원을 곱했다면 68,850엔으로 3배 틀렸을 것이다.
+
+### HotPepper 키 발급이 한국에서 막힌다 (2026-08-14 확인)
+
+어댑터는 만들었지만 **키를 받지 못했다.** 등록 폼 제출이 서버에서 거부된다.
+
+| 확인 | 결과 |
+| --- | --- |
+| `webservice.recruit.co.jp/register/` GET | HTTP 200 |
+| 폼 구조 | 순수 HTML(`_csrf` · `agree` · `email` · `termSetId`), JS 개입 없음 |
+| 신선한 CSRF 토큰으로 POST | 302 → `/common/errors/forbidden.html` |
+| 브라우저에서 수동 제출 | 동일한 `アクセスできません` |
+
+브라우저와 curl 양쪽에서, 유효한 토큰으로, 동의 체크를 포함해 같은 결과다. 남은 공통 변수는 출발지 IP다. **정황상 지역 제한으로 보이지만 일본 IP에서 대조할 수 없어 단정하지는 않는다.**
+
+MVP 처리: 일본 식당은 `demo-fixture`로 둔다. 우회 접속은 서비스가 의도적으로 건 접근 제어를 무력화하는 것이므로 쓰지 않는다. 정식 문의 창구는 <https://rws.zendesk.com/hc/ja/requests/new>이며, 키를 받게 되면 어댑터는 그대로 쓸 수 있다 — 등록만 남았지 구현은 끝나 있다.
 
 ### 비상업 제약 — 배포 전 반드시 확인
 
