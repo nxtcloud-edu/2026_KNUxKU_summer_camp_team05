@@ -63,7 +63,11 @@ export function createDataAgent(deps: GatewayDeps): DataAgentGateway {
   async function callWithFallback(
     request: DataRequest,
   ): Promise<{ result: ProviderResult; providerId: string; degraded: boolean; reason?: string }> {
-    const chain = deps.providers.resolve(request.packId, request.queryClass);
+    const chain = deps.providers.resolve(
+      request.packId,
+      request.queryClass,
+      request.providerOrder,
+    );
     if (chain.length === 0) {
       throw new ProviderError('none', `${request.queryClass}를 지원하는 제공자가 없습니다`, false);
     }
@@ -149,7 +153,10 @@ export function createDataAgent(deps: GatewayDeps): DataAgentGateway {
           const age = (now().getTime() - Date.parse(record.retrievedAt)) / 1000;
           const strict = request.maxStalenessSec === undefined || age <= request.maxStalenessSec;
 
-          if (fresh && trusted && strict) {
+          const requestedSource =
+            request.providerOrder === undefined || request.providerOrder.includes(record.source);
+
+          if (fresh && trusted && strict && requestedSource) {
             quota.increment(request.roundId, request.queryClass);
             return finish(
               record.payload,

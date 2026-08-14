@@ -1,6 +1,6 @@
 # 개발 환경과 배포 계획
 
-- 문서 버전: v2.2 / 2026-08-14
+- 문서 버전: v2.3 / 2026-08-14
 - 상위 문서: [종합 기획서](travel-mediation-plan.md), [에이전트 아키텍처](agent-architecture.md)
 - 범위: 현재 코드, 목표 계약, 런타임 경계, 로컬 검증, 배포 전 게이트
 - MVP 결정 기준: [Accepted ADR](adr/README.md). 충돌하면 ADR을 우선한다.
@@ -12,7 +12,7 @@
 이 코드는 이전 설계의 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 migration 경로로 포함한다. 공식 5역할 strict 계약, `AgentRuntime`, Codex Gateway adapter, 5역할 숙소 fixture, 비실데이터 `VERIFIED` 방지 상한은 구현됐다. 아직 구현되지 않은 제품 경로는 다음과 같다.
 
 - Survey v4 + Profile Schema v1
-- 실제 Provider Gateway 호출·Candidate 정규화·공통 Pool 저장
+- Candidate/Evidence 영속화와 FactConstraintValidator를 거친 공통 Pool 저장
 - 운영 큐의 `TripCharter → CategoryDecisionContract × 5 → FinalPlanRecord` 전환
 - `FactConstraintValidator`의 Python 구현
 - 네 도시의 실제 공급자 연결과 `BOOKABLE` 검증
@@ -36,6 +36,8 @@ docs/                     제품·아키텍처·공급자 계약
 `apps/codex-runtime-gateway/`에는 다른 브랜치의 OAuth·모델 카탈로그·구조화 출력 부분만 선별 이식돼 있다. Python Agent registry 의존성은 제거했고 `packages/contracts`의 TypeScript HTTP 계약과 golden JSON fixture, `apps/worker` 호출 포트가 입력을 소유한다. Python Worker나 별도 제품 상태머신은 추가하지 않았다.
 
 `stay` 한 카테고리에 공식 5역할 계약 fixture가 연결됐다. 세 Proxy가 서로 다른 `ProxySearchBrief`를 만들고 CandidateEvidence가 Proxy·중립 Brief를 QueryPlan으로 변환하며, 전원이 같은 ProposalSet 전체를 투표한 뒤 결정론적 leximin, CategoryArbiter, TripOrchestrator, PlanFinalizer를 거친다. Provider Network I/O가 없는 fixture이므로 최종 상태는 항상 `PROVISIONAL`이다. 이전 3역할 fixture와 R0~R6 Persona·Referee·Supervisor는 migration 호환 경로이며 기본 명령에서 제외됐다.
+
+별도의 Provider 연결 스모크에서는 `RunController`가 CandidateEvidence의 QueryPlan을 받아 Pack 허용 목록과 교차한 뒤 Provider Gateway를 호출하고, 정규화 결과를 strict `EvidenceSnapshot`과 `CandidateRecord`로 변환한다. 2026-08-14 Rakuten 실호출에서 인증 성공, 요청 1회로 QueryPlan 4개 중 중복 3개 제거, 후보 5개와 근거 스냅샷 20개 생성이 관찰됐다. 이 경로는 아직 DB, FactConstraintValidator, 공통 Pool, ProposalSet에 연결되지 않았으므로 후보는 `UNVERIFIED`, 근거는 `UNKNOWN`, 최종 상태는 `PROVISIONAL`이다.
 
 ## 3. 런타임 결정
 
@@ -102,6 +104,14 @@ npm run mvp:fixture --workspace @tm/worker
 
 `FIXTURE_CONTRACT_CLEAR`는 오사카 3인 숙소 fixture에서 Proxy별 Brief, CandidateEvidence QueryPlan, 동일 버전 전체 Ballot, leximin, Arbiter 선택 불변성, Orchestrator, Finalizer 계약이 관찰됐다는 뜻이다. 실제 Provider 호출·EvidenceSnapshot 검증·Codex OAuth 실행은 증명하지 않으며 결과도 `PROVISIONAL`이다. 이전 3역할 fixture가 필요할 때만 `npm run mvp:legacy-fixture --workspace @tm/worker`를 사용한다.
 
+Rakuten 자격 증명을 저장소 루트 `.env`에 둔 경우 Provider 연결 경로를 별도로 확인한다.
+
+```bash
+npm run mvp:provider-smoke --workspace @tm/worker
+```
+
+`LIVE_CANDIDATE_EVIDENCE_PATH_CLEAR`는 해당 실행에서의 Provider 인증과 정규화 성공만 증명한다. API 키 보유, 다른 Provider 인증, Fact 검증, Pool 승격, `VERIFIED`, `BOOKABLE`은 각각 별도 게이트다. 스모크 출력은 키와 Provider 원문을 내보내지 않는다.
+
 DB 경로:
 
 ```bash
@@ -145,13 +155,13 @@ Open-Meteo와 Frankfurter의 무료/상업 조건은 배포 시 다시 확인한
 2. 오사카 fixture의 정원·분리·예산·근거 검증과 leximin
 3. 로컬 Codex OAuth Gateway의 catalog/allowlist/schema 호출 계약 완료, 실제 OAuth smoke 대기
 4. 공식 5역할 AgentRuntime 계약 fixture와 CodexGatewayAgentRuntime adapter
-5. `CandidateEvidence QueryPlan → Provider Gateway → EvidenceSnapshot` 제품 경로
+5. `CandidateEvidence QueryPlan → Provider Gateway → EvidenceSnapshot` 실행 경로와 영속화·검증·Pool 승격
 6. 결과 화면의 근거·상태·사용자 선택 표시
 7. [MVP 출시 게이트](operations/mvp-release-gates.md)의 fixture와 OAuth 시나리오
 
 전체 0~6단계, 다른 도시·카테고리, 중앙 비교선, 자동 재토론, 예약은 후속 범위다.
 
-현재 4번은 fixture runtime으로 종단 연결됐고 Codex Gateway adapter는 strict output schema와 fail-closed 실패를 자동 검증한다. 5번의 실제 Provider 실행·Candidate/Evidence 영속화, Survey v4 입력, 결과 화면, 출시 게이트 수동 시나리오, 실제 Codex OAuth 실행은 아직 남아 있다.
+현재 4번은 fixture runtime으로 종단 연결됐고 Codex Gateway adapter는 strict output schema와 fail-closed 실패를 자동 검증한다. 5번의 숙소 QueryPlan→Rakuten Provider 실행과 Candidate/Evidence 인메모리 변환은 구현·실호출 확인됐으며, 영속화·FactConstraintValidator·공통 Pool·ProposalSet 연결은 남아 있다. Survey v4 입력, 결과 화면, 출시 게이트 수동 시나리오, 실제 Codex OAuth 실행도 아직 남아 있다.
 
 ## 8. 실행 범위
 

@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { FixtureAgentRuntime, type AgentRuntime } from '@tm/agents';
 import type { AgentRunRequest } from '@tm/contracts';
+import {
+  createCandidateEvidenceExecutionPort,
+  createDataAgent,
+  createDemoProvider,
+  createStaticRegistry,
+  type ProviderAdapter,
+} from '@tm/data-agents';
+import { createMemoryRepositories } from '@tm/db';
 import { runCanonicalStayContractFixture } from './canonical-fixture-run.js';
 
 class RecordingRuntime implements AgentRuntime {
@@ -53,5 +61,48 @@ test('모든 Proxy는 동일 ProposalSet 전체를 평가하고 비밀 키를 �
   const serialized = JSON.stringify(runtime.requests);
   for (const forbidden of ['apiKey', 'credentials', 'providerRaw', 'TRIP_SUPERVISOR', 'STAY_ARBITER']) {
     assert.equal(serialized.includes(forbidden), false);
+  }
+});
+
+test('공식 QueryPlan이 Provider Gateway를 거쳐 CandidateRecord와 EvidenceSnapshot을 만든다', async () => {
+  const demo = createDemoProvider();
+  let providerCalls = 0;
+  const provider: ProviderAdapter = {
+    id: 'rakuten_travel',
+    supports: (queryClass) => demo.supports(queryClass),
+    async fetch(request) {
+      providerCalls += 1;
+      return demo.fetch(request);
+    },
+  };
+  const repos = createMemoryRepositories();
+  const gateway = createDataAgent({
+    cache: repos.cache,
+    providers: createStaticRegistry([provider], {
+      'jp-osaka': { hotel: ['rakuten_travel'] },
+    }),
+  });
+  try {
+    const result = await runCanonicalStayContractFixture(
+      new FixtureAgentRuntime(),
+      createCandidateEvidenceExecutionPort(gateway),
+    );
+    assert.equal(providerCalls, 1);
+    assert.equal(result.providerExecution?.status, 'SUCCEEDED');
+    assert.equal(result.providerExecution?.requestedQueryPlans, 4);
+    assert.equal(result.providerExecution?.executedProviderRequests, 1);
+    assert.equal(result.providerExecution?.deduplicatedQueryPlans, 3);
+    assert.ok((result.providerExecution?.candidates.length ?? 0) > 0);
+    assert.ok(
+      result.providerExecution?.candidates.every(
+        (candidate) => candidate.poolEligibility === 'UNVERIFIED',
+      ),
+    );
+    assert.ok(
+      result.providerExecution?.evidence.every((item) => item.status === 'UNKNOWN'),
+    );
+    assert.equal(result.finalPlan.status, 'PROVISIONAL');
+  } finally {
+    await repos.close();
   }
 });

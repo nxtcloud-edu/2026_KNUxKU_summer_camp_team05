@@ -7,6 +7,7 @@ import {
   type FinalPlanRecord,
   type ProxyBallot,
   type ProxySearchBrief,
+  type NeutralSearchBrief,
   type TripCharter,
   type TripOrchestratorReport,
   type UserProxyProfileView,
@@ -16,6 +17,10 @@ import {
   type CandidateEvidenceQueryPlan,
 } from '@tm/contracts';
 import { selectCategoryProposalLeximin } from '@tm/core';
+import type {
+  CandidateEvidenceExecutionPort,
+  CandidateEvidenceExecutionResult,
+} from '@tm/data-agents';
 
 const participantIds = ['u1', 'u2', 'u3'] as const;
 
@@ -154,6 +159,7 @@ export interface CanonicalFixtureRunResult {
   roleTrace: AgentRole[];
   searchBriefs: ProxySearchBrief[];
   queryPlans: CandidateEvidenceQueryPlan[];
+  providerExecution: CandidateEvidenceExecutionResult | null;
   ballots: ProxyBallot[];
   selection: DeterministicSelection;
   categoryContract: CategoryDecisionContract;
@@ -163,6 +169,7 @@ export interface CanonicalFixtureRunResult {
 
 export async function runCanonicalStayContractFixture(
   runtime: AgentRuntime = new FixtureAgentRuntime(),
+  candidateExecutionPort?: CandidateEvidenceExecutionPort,
 ): Promise<CanonicalFixtureRunResult> {
   const roleTrace: AgentRole[] = [];
   const searchBriefs: ProxySearchBrief[] = [];
@@ -186,6 +193,14 @@ export async function runCanonicalStayContractFixture(
     searchBriefs.push(result.brief);
   }
 
+  const neutralBrief: NeutralSearchBrief = {
+    schemaVersion: 1,
+    briefId: 'brief:neutral:stay:1',
+    category: 'stay',
+    charterVersion: charter.charterVersion,
+    hardConstraintRefs: ['charter:party-size', 'charter:budget'],
+    searchTerms: ['오사카 3인 숙소 가격 위치 절충'],
+  };
   const candidateEvidence = await runtime.run({
     schemaVersion: 1,
     role: 'CANDIDATE_EVIDENCE',
@@ -194,15 +209,8 @@ export async function runCanonicalStayContractFixture(
     inputVersion: 1,
     category: 'stay',
     briefs: searchBriefs,
-    neutralBrief: {
-      schemaVersion: 1,
-      briefId: 'brief:neutral:stay:1',
-      category: 'stay',
-      charterVersion: charter.charterVersion,
-      hardConstraintRefs: ['charter:party-size', 'charter:budget'],
-      searchTerms: ['오사카 3인 숙소 가격 위치 절충'],
-    },
-    availableProviderIds: ['rakuten_travel', 'tourapi'],
+    neutralBrief,
+    availableProviderIds: ['rakuten_travel'],
     searchAttempt: 0,
     currentCandidateIds: [],
   });
@@ -210,6 +218,28 @@ export async function runCanonicalStayContractFixture(
   if (candidateEvidence.role !== 'CANDIDATE_EVIDENCE') {
     throw new Error('CandidateEvidence 결과가 아닙니다.');
   }
+  const providerExecution = candidateExecutionPort === undefined
+    ? null
+    : await candidateExecutionPort.execute({
+        runId: 'run:canonical-fixture:1',
+        tripId: 'trip:osaka:fixture',
+        inputVersion: 1,
+        searchAttempt: 0,
+        packId: 'jp-osaka',
+        category: 'stay',
+        charter,
+        queryPlans: candidateEvidence.queryPlans,
+        expectedBriefIds: [
+          ...searchBriefs.map((brief) => brief.briefId),
+          neutralBrief.briefId,
+        ],
+        queryBudget: 4,
+        area: '난바',
+        center: { lat: 34.6659, lng: 135.5017 },
+        roomCount: 1,
+        limit: 5,
+        searchRadiusKm: 2,
+      });
 
   const ballots: ProxyBallot[] = [];
   for (const profile of profiles) {
@@ -311,6 +341,7 @@ export async function runCanonicalStayContractFixture(
     roleTrace,
     searchBriefs,
     queryPlans: candidateEvidence.queryPlans,
+    providerExecution,
     ballots,
     selection,
     categoryContract: arbiter.contract,

@@ -58,10 +58,17 @@ export const queryClasses = [
 export type QueryClass = (typeof queryClasses)[number];
 
 /**
- * 호출자 종류. 페르소나 에이전트는 Data Agent를 직접 호출하지 않는다 —
+ * 호출자 종류. 제품 경로에서는 RunController만 실제 Provider I/O를 요청한다.
+ * 이전 심판·Supervisor prefix는 migration 실행 경로가 남아 있는 동안만 허용한다.
+ * UserProxy와 CandidateEvidence 모델은 Data Agent를 직접 호출하지 않는다 —
  * 후보 밖 항목 주장, 참여자 간 정보 비대칭, 인원수만큼 곱해지는 비용을 막는다.
  */
-export const allowedCallerPrefixes = ['referee:', 'orchestrator:', 'supervisor:'] as const;
+export const allowedCallerPrefixes = [
+  'run-controller:',
+  'referee:',
+  'orchestrator:',
+  'supervisor:',
+] as const;
 
 export function isAllowedCaller(callerId: string): boolean {
   return allowedCallerPrefixes.some((prefix) => callerId.startsWith(prefix));
@@ -79,15 +86,17 @@ export const dataRequestSchema = z.object({
   runId: z.string(),
   roundId: z.string(),
   /**
-   * 'referee:accommodation' | 'orchestrator:date_resolver' 형태.
-   * 페르소나 에이전트(`persona:*`)는 조달 권한이 없다 — 그라운딩 경계다.
+   * 공식 형식은 `run-controller:candidate-evidence`다.
+   * Agent 역할 이름이나 participantId를 callerId로 사용할 수 없다.
    */
   callerId: z.string().refine(isAllowedCaller, {
-    message: 'Data Agent는 심판·오케스트레이터·Supervisor만 호출할 수 있습니다',
+    message: 'Provider Gateway는 RunController 또는 migration 제어 경로만 호출할 수 있습니다',
   }),
   queryClass: z.enum(queryClasses),
   purpose: z.enum(dataPurposes),
   packId: z.string(),
+  /** CandidateEvidence가 제안하고 Pack 정책과 교집합으로 집행할 Provider 우선순위 */
+  providerOrder: z.array(z.string().min(1)).min(1).optional(),
   params: z.record(z.string(), z.unknown()),
   /** 호출자가 정책보다 더 엄격한 신선도를 요구할 때만 지정 */
   maxStalenessSec: z.number().int().positive().optional(),

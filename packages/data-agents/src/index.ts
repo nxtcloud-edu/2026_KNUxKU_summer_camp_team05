@@ -59,3 +59,14 @@ export {
   type ProviderStatus,
   type ProviderStatusId,
 } from './providers/status.js';
+export {
+  CandidateEvidenceExecutionError,
+  createCandidateEvidenceExecutionPort,
+  type CandidateEvidenceExecutionErrorCode,
+  type CandidateEvidenceExecutionFailure,
+  type CandidateEvidenceExecutionFailureCode,
+  type CandidateEvidenceExecutionInput,
+  type CandidateEvidenceExecutionPort,
+  type CandidateEvidenceExecutionReceipt,
+  type CandidateEvidenceExecutionResult,
+} from './candidate-evidence.js';

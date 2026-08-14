@@ -10,13 +10,21 @@ test('Key가 없으면 Adapter와 인증을 완료로 표시하지 않는다', (
   assert.equal(statuses.every((status) => status.authenticationState === 'NOT_CHECKED'), true);
 });
 
-test('Key가 있어도 실제 인증과 자동 연결은 미확인으로 남긴다', () => {
+test('Key가 있어도 실제 인증은 미확인이고 Provider별 자동 연결 구현은 별도로 표시한다', () => {
   const statuses = providerStatuses({ ODSAY_API_KEY: 'secret-value' } as NodeJS.ProcessEnv);
   const odsay = statuses.find((status) => status.providerId === 'odsay');
   assert.equal(odsay?.credentialState, 'PRESENT_UNVERIFIED');
   assert.equal(odsay?.adapterState, 'CREATED_UNVERIFIED');
   assert.equal(odsay?.authenticationState, 'NOT_CHECKED');
   assert.equal(odsay?.candidateNormalization, 'TRANSPORT');
-  assert.equal(odsay?.automaticCandidateSupply, 'NOT_CHECKED');
+  assert.equal(odsay?.automaticCandidateSupply, 'NOT_CONNECTED');
   assert.equal(JSON.stringify(statuses).includes('secret-value'), false);
+
+  const rakuten = providerStatuses({
+    RAKUTEN_APPLICATION_ID: 'app-id',
+    RAKUTEN_ACCESS_KEY: 'access-key',
+  } as NodeJS.ProcessEnv).find((status) => status.providerId === 'rakuten_travel');
+  assert.equal(rakuten?.credentialState, 'PRESENT_UNVERIFIED');
+  assert.equal(rakuten?.authenticationState, 'NOT_CHECKED');
+  assert.equal(rakuten?.automaticCandidateSupply, 'STAY_PATH_IMPLEMENTED_UNVERIFIED');
 });

@@ -19,7 +19,7 @@ export interface ProviderStatus {
   authenticationState: 'NOT_CHECKED';
   responseNormalization: 'IMPLEMENTED';
   candidateNormalization: 'HOTEL' | 'HOTEL_ONLY' | 'TRANSPORT' | 'NONE';
-  automaticCandidateSupply: 'NOT_CHECKED';
+  automaticCandidateSupply: 'STAY_PATH_IMPLEMENTED_UNVERIFIED' | 'NOT_CONNECTED';
 }
 
 const REQUIRED_ENV: Record<ProviderStatusId, readonly string[]> = {
@@ -41,6 +41,18 @@ const CANDIDATE_NORMALIZATION: Record<
   rakuten_travel: 'HOTEL',
   hotpepper: 'NONE',
   travelpayouts: 'NONE',
+};
+
+const AUTOMATIC_SUPPLY: Record<
+  ProviderStatusId,
+  ProviderStatus['automaticCandidateSupply']
+> = {
+  kakao: 'NOT_CONNECTED',
+  odsay: 'NOT_CONNECTED',
+  tourapi: 'NOT_CONNECTED',
+  rakuten_travel: 'STAY_PATH_IMPLEMENTED_UNVERIFIED',
+  hotpepper: 'NOT_CONNECTED',
+  travelpayouts: 'NOT_CONNECTED',
 };
 
 function hasCredential(env: NodeJS.ProcessEnv, names: readonly string[]): boolean {
@@ -65,7 +77,7 @@ export function providerStatuses(
       authenticationState: 'NOT_CHECKED',
       responseNormalization: 'IMPLEMENTED',
       candidateNormalization: CANDIDATE_NORMALIZATION[providerId],
-      automaticCandidateSupply: 'NOT_CHECKED',
+      automaticCandidateSupply: AUTOMATIC_SUPPLY[providerId],
     };
   });
 }

@@ -48,7 +48,11 @@ export class ProviderError extends Error {
  */
 export interface ProviderRegistry {
   /** packId + queryClass → 시도할 어댑터 순서. 앞이 1순위, 뒤가 폴백 */
-  resolve(packId: string, queryClass: QueryClass): ProviderAdapter[];
+  resolve(
+    packId: string,
+    queryClass: QueryClass,
+    requestedProviderOrder?: readonly string[],
+  ): ProviderAdapter[];
 }
 
 export function createStaticRegistry(
@@ -59,21 +63,25 @@ export function createStaticRegistry(
   const byId = new Map(adapters.map((adapter) => [adapter.id, adapter]));
 
   return {
-    resolve(packId, queryClass) {
+    resolve(packId, queryClass, requestedProviderOrder) {
       const category = queryClass.split('.')[0] ?? '';
       const packPolicy = packProviders[packId];
       const preferred = packPolicy?.[category];
-
-      if (preferred !== undefined) {
-        const ordered: ProviderAdapter[] = [];
-        for (const id of preferred) {
-          const adapter = byId.get(id);
-          if (adapter !== undefined && adapter.supports(queryClass)) ordered.push(adapter);
+      const supported = adapters.filter((adapter) => adapter.supports(queryClass));
+      const packOrder = preferred ?? supported.map((adapter) => adapter.id);
+      const packAllowed = new Set(packOrder);
+      const order = requestedProviderOrder ?? packOrder;
+      const seen = new Set<string>();
+      const resolved: ProviderAdapter[] = [];
+      for (const id of order) {
+        if (seen.has(id) || !packAllowed.has(id)) continue;
+        const adapter = byId.get(id);
+        if (adapter !== undefined && adapter.supports(queryClass)) {
+          resolved.push(adapter);
+          seen.add(id);
         }
-        return ordered;
       }
-
-      return adapters.filter((adapter) => adapter.supports(queryClass));
+      return resolved;
     },
   };
 }

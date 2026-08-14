@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "smoke": "tsx src/smoke.ts",
     "mvp:fixture": "node --import tsx src/canonical-fixture-demo.ts",
+    "mvp:provider-smoke": "node --import tsx src/canonical-provider-smoke.ts",
     "mvp:legacy-fixture": "node --import tsx src/mvp-fixture-demo.ts",
     "test": "node --import tsx --test src/orchestrator/finalize.test.ts src/orchestrator/state-ceiling.test.ts src/codex-gateway.test.ts src/mvp-fixture-run.test.ts src/canonical-fixture-run.test.ts"
   },

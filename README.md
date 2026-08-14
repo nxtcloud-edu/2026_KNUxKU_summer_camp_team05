@@ -180,9 +180,17 @@ npm run mvp:fixture --workspace @tm/worker
 
 정상 결과의 내부 실행 상태는 `FIXTURE_CONTRACT_CLEAR`입니다. 이는 5역할 계약과 순서의 로컬 증거일 뿐입니다. [출시 게이트](docs/operations/mvp-release-gates.md)의 모든 수동 시나리오를 통과하기 전에는 이를 `VALIDATED_LOCAL_FIXTURE_MVP`로 승격하지 않습니다. 이전 3역할 fixture는 명시적으로 `mvp:legacy-fixture`를 실행할 때만 사용합니다.
 
+저장소 루트의 `.env`에 Rakuten 자격 증명이 있는 경우, 공식 CandidateEvidence QueryPlan을 실제 Provider Gateway까지 연결하는 숙소 스모크를 실행할 수 있습니다.
+
+```bash
+npm run mvp:provider-smoke --workspace @tm/worker
+```
+
+`LIVE_CANDIDATE_EVIDENCE_PATH_CLEAR`는 이 실행에서 Rakuten 인증, 응답 정규화, `EvidenceSnapshot`·`CandidateRecord` 계보 생성이 관찰됐다는 뜻이다. 키 보유만으로 인증 성공을 주장하지 않고, 다른 Provider의 인증이나 자동 연결도 함께 주장하지 않는다. FactConstraintValidator와 공통 Pool 승격 전이므로 후보는 `UNVERIFIED`, 근거는 `UNKNOWN`, 최종안은 `PROVISIONAL`에 머물며 `VERIFIED`·`BOOKABLE`의 증거가 아니다. 출력에는 키와 Provider 원문을 포함하지 않는다.
+
 `VITE_API_BASE_URL`을 비워두면 기존 프론트 흐름이 `sessionStorage`에 저장됩니다. 이는 UI 목업 경로이며 새 백엔드 계약이 연결됐다는 뜻은 아닙니다.
 
-Gateway 계약은 추가됐지만 기존 레거시 Agent 흐름을 자동으로 교체하지 않습니다. 사용자가 `codex login`을 완료하고 현재 모델 목록에서 allowlist를 확정하기 전에는 가짜 Backend와 fixture 기반 검증만 수행합니다.
+Gateway 계약은 추가됐지만 기존 레거시 Agent 흐름을 자동으로 교체하지 않습니다. Provider 쪽은 위 스모크로 실호출을 검증할 수 있지만, LLM 쪽은 사용자가 `codex login`을 완료하고 현재 모델 목록에서 allowlist를 확정하기 전까지 가짜 Backend와 fixture 기반 계약 검증만 수행합니다.
 
 ## 협업 원칙
 

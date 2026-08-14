@@ -25,7 +25,7 @@ const request = (
     requestId: 'rq_1',
     runId: 'run_1',
     roundId: 'r_2',
-    callerId: 'referee:accommodation',
+    callerId: 'run-controller:candidate-evidence',
     queryClass,
     purpose: 'exploration',
     packId: 'jp-osaka',
@@ -126,6 +126,34 @@ test('1순위 실패 시 폴백 제공자를 쓰고 degraded로 표시한다', a
   assert.ok(response.evidence.fallbackReason);
 });
 
+test('CandidateEvidence providerOrder는 캐시보다 우선하고 Pack 허용 목록 안에서만 실행된다', async () => {
+  const { agent, primary, secondary } = setup({ secondary: true });
+  const params = { packId: 'jp-osaka', area: '난바', type: 'hotel', guests: 6 };
+  const first = await agent.resolve(request('hotel.search', params));
+  assert.equal(first.evidence.source, 'rakuten_travel');
+
+  const second = await agent.resolve(
+    request('hotel.search', params, {
+      requestId: 'rq_provider_order',
+      providerOrder: ['amadeus_hotel'],
+    }),
+  );
+  assert.equal(second.evidence.source, 'amadeus_hotel');
+  assert.equal(second.evidence.cacheHit, false);
+  assert.equal(primary.calls.length, 1);
+  assert.equal(secondary.calls.length, 1);
+
+  await assert.rejects(
+    agent.resolve(
+      request('hotel.search', params, {
+        requestId: 'rq_provider_outside_pack',
+        providerOrder: ['outside_pack'],
+      }),
+    ),
+    /지원하는 제공자가 없습니다/,
+  );
+});
+
 test('A22: 웹 결과는 live로 와도 advisory + estimated로 강등된다', async () => {
   const { agent } = setup();
   const response = await agent.resolve(
@@ -141,7 +169,7 @@ test('A21: 페르소나 에이전트의 호출은 스키마에서 거부된다',
     agent.resolve(
       request('web.search', { packId: 'jp-osaka', query: '오사카' }, { callerId: 'persona:user_3' }),
     ),
-    /Data Agent는 심판·오케스트레이터·Supervisor만/,
+    /Provider Gateway는 RunController 또는 migration 제어 경로만/,
   );
 });
 

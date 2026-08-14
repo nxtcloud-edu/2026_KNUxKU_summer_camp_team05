@@ -166,7 +166,7 @@ export const candidateRecordSchema = z
     providerId: identifierSchema,
     providerCandidateId: identifierSchema,
     title: z.string().min(1),
-    sourceMode: z.enum(['fixture', 'estimated', 'live']),
+    sourceMode: z.enum(['fixture', 'unknown', 'estimated', 'live']),
     poolEligibility: z.enum(['ELIGIBLE', 'UNVERIFIED', 'BLOCKED']),
     exclusionReasons: z.array(z.string().min(1)),
     evidenceIds: z.array(identifierSchema).min(1),
