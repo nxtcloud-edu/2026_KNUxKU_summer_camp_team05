@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   agentRoles,
   type AgentRunRequest,
+  type CandidateEvidenceRequest,
   type CodexGatewayAgentRunRequest,
   type CodexGatewayAgentRunResult,
   type PlanFinalizerRequest,
@@ -53,6 +54,57 @@ function searchBriefRequest(
     charter,
     priorContractRefs: [],
   };
+}
+
+function candidateEvidenceRequest(): CandidateEvidenceRequest {
+  const briefs: ProxySearchBrief[] = ['u1', 'u2', 'u3'].map((participantId, index) => ({
+    schemaVersion: 1,
+    briefId: `brief:${participantId}:stay:1`,
+    participantId,
+    category: 'stay',
+    profileVersion: `profile:${participantId}:1`,
+    mustKeepRefs: [],
+    preferenceTargetRefs: [`fact:${participantId}:preference`],
+    desiredTraits: [`선호 ${index + 1}`],
+    avoidTraits: [],
+    tradeoffs: [],
+    searchTerms: [`오사카 숙소 선호 ${index + 1}`],
+  }));
+  return {
+    schemaVersion: 1,
+    role: 'CANDIDATE_EVIDENCE',
+    runId: 'run:1',
+    tripId: 'trip:1',
+    inputVersion: 1,
+    category: 'stay',
+    briefs,
+    neutralBrief: {
+      schemaVersion: 1,
+      briefId: 'brief:neutral:stay:1',
+      category: 'stay',
+      charterVersion: charter.charterVersion,
+      hardConstraintRefs: [],
+      searchTerms: ['오사카 3인 숙소'],
+    },
+    availableProviderIds: ['rakuten_travel'],
+    searchAttempt: 0,
+    currentCandidateIds: [],
+  };
+}
+
+function runtimeReturning(output: Record<string, unknown>): CodexGatewayAgentRuntime {
+  const client: CodexGatewayClient = {
+    async ready() {
+      return { ready: true, authMode: 'chatgpt', modelCount: 1, allowedModelCount: 1, allowlistConfigured: true };
+    },
+    async listModels() {
+      return { fetchedAt: '2026-08-14T00:00:00.000Z', models: [] };
+    },
+    async run(request) {
+      return successfulGatewayResult(request, output);
+    },
+  };
+  return new CodexGatewayAgentRuntime({ client });
 }
 
 function successfulGatewayResult(
@@ -138,6 +190,46 @@ test('CandidateEvidence는 Proxy Brief와 중립 Brief를 모두 QueryPlan linea
   assert.deepEqual(
     [...sourceBriefIds].sort(),
     [...briefs.map((brief) => brief.briefId), 'brief:neutral:stay:1'].sort(),
+  );
+});
+
+test('Codex CandidateEvidence 결과는 queryPlanId가 고유해야 한다', async () => {
+  const request = candidateEvidenceRequest();
+  const fixtureResult = await new FixtureAgentRuntime().run(request);
+  if (fixtureResult.role !== 'CANDIDATE_EVIDENCE') {
+    throw new Error('CandidateEvidence fixture 결과가 아닙니다.');
+  }
+  const firstPlanId = fixtureResult.queryPlans[0]?.queryPlanId;
+  if (firstPlanId === undefined) throw new Error('CandidateEvidence QueryPlan이 없습니다.');
+  const output = {
+    ...fixtureResult,
+    queryPlans: fixtureResult.queryPlans.map((plan, index) =>
+      index === 1 ? { ...plan, queryPlanId: firstPlanId } : plan),
+  };
+  await assert.rejects(
+    () => runtimeReturning(output).run(request),
+    /Brief별 계획 예산, queryPlanId 또는 승인 Provider 경계를 벗어났습니다/,
+  );
+});
+
+test('Codex CandidateEvidence 결과는 같은 Brief를 여러 QueryPlan에 재배정하지 않는다', async () => {
+  const request = candidateEvidenceRequest();
+  const fixtureResult = await new FixtureAgentRuntime().run(request);
+  if (fixtureResult.role !== 'CANDIDATE_EVIDENCE') {
+    throw new Error('CandidateEvidence fixture 결과가 아닙니다.');
+  }
+  const firstBriefId = request.briefs[0]?.briefId;
+  if (firstBriefId === undefined) throw new Error('ProxySearchBrief가 없습니다.');
+  const output = {
+    ...fixtureResult,
+    queryPlans: fixtureResult.queryPlans.map((plan, index) =>
+      index === 1
+        ? { ...plan, sourceBriefIds: [...plan.sourceBriefIds, firstBriefId] }
+        : plan),
+  };
+  await assert.rejects(
+    () => runtimeReturning(output).run(request),
+    /Brief별 계획 예산, queryPlanId 또는 승인 Provider 경계를 벗어났습니다/,
   );
 });
 

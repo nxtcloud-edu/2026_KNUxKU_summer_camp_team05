@@ -220,7 +220,7 @@ const roleInstructions: Record<AgentRole, string> = {
   USER_PROXY:
     '자기 참가자 투영만 사용해 탐색 방향 또는 동일 버전 전체 Proposal의 투표를 작성한다. 다른 참가자 정보와 여행 API를 요청하지 않는다.',
   CANDIDATE_EVIDENCE:
-    'Proxy별 Brief와 중립 Brief를 공정하게 QueryPlan으로 변환한다. 실제 HTTP, API Key, 검증 통과, 후보 선택은 수행하지 않는다.',
+    'Proxy별 Brief와 중립 Brief를 공정하게 QueryPlan으로 변환하고 MVP에서는 각 Brief를 정확히 한 QueryPlan에만 배정한다. 실제 HTTP, API Key, 검증 통과, 후보 선택은 수행하지 않는다.',
   CATEGORY_ARBITER:
     '결정론 선택을 변경하지 않고 갈등, 조건부 수용, 종료 또는 차단 이유를 CategoryDecisionContract로 작성한다.',
   TRIP_ORCHESTRATOR:
@@ -279,6 +279,23 @@ function participantIdOf(request: AgentRunRequest): string | undefined {
 
 function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
   return JSON.stringify([...new Set(left)].sort()) === JSON.stringify([...new Set(right)].sort());
+}
+
+function hasUniqueStrings(values: readonly string[]): boolean {
+  return new Set(values).size === values.length;
+}
+
+function hasOneQueryPlanPerBrief(
+  queryPlans: CandidateEvidenceResult['queryPlans'],
+  expectedBriefIds: readonly string[],
+): boolean {
+  const countByBrief = new Map<string, number>();
+  for (const plan of queryPlans) {
+    for (const briefId of plan.sourceBriefIds) {
+      countByBrief.set(briefId, (countByBrief.get(briefId) ?? 0) + 1);
+    }
+  }
+  return expectedBriefIds.every((briefId) => countByBrief.get(briefId) === 1);
 }
 
 function assertPlanFinalizerCeiling(
@@ -382,16 +399,21 @@ function assertResultMatchesRequest(request: AgentRunRequest, result: AgentRunRe
         request.neutralBrief.briefId,
       ];
       const sourceBriefIds = result.queryPlans.flatMap((plan) => plan.sourceBriefIds);
+      const queryPlanIds = result.queryPlans.map((plan) => plan.queryPlanId);
       const allowedProviders = new Set(request.availableProviderIds);
       if (
         !sameStringSet(sourceBriefIds, expectedBriefIds) ||
+        !hasUniqueStrings(queryPlanIds) ||
+        !hasOneQueryPlanPerBrief(result.queryPlans, expectedBriefIds) ||
         result.queryPlans.some(
           (plan) =>
             plan.category !== request.category ||
             plan.providerOrder.some((providerId) => !allowedProviders.has(providerId)),
         )
       ) {
-        throw new Error('CandidateEvidenceAgent가 Brief 계보 또는 승인 Provider 경계를 벗어났습니다.');
+        throw new Error(
+          'CandidateEvidenceAgent가 Brief별 계획 예산, queryPlanId 또는 승인 Provider 경계를 벗어났습니다.',
+        );
       }
     }
   }

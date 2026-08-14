@@ -157,6 +157,38 @@ test('Proxy·중립 QueryPlan을 한 Provider 요청으로 병합하고 lineage�
   await repos.close();
 });
 
+test('중복 queryPlanId는 Provider 호출 전에 거부한다', async () => {
+  const { provider, repos, port } = setup();
+  await assert.rejects(
+    () => port.execute(input([
+      plan('query:duplicate', ['brief:u1']),
+      plan('query:duplicate', ['brief:u2']),
+      plan('query:neutral', ['brief:neutral']),
+    ])),
+    (error: unknown) =>
+      error instanceof CandidateEvidenceExecutionError &&
+      error.code === 'QUERY_PLAN_ID_DUPLICATED',
+  );
+  assert.equal(provider.calls.length, 0);
+  await repos.close();
+});
+
+test('같은 Brief를 여러 QueryPlan에 배정하면 공정 예산 위반으로 거부한다', async () => {
+  const { provider, repos, port } = setup();
+  await assert.rejects(
+    () => port.execute(input([
+      plan('query:u1:first', ['brief:u1']),
+      plan('query:u1:again', ['brief:u1', 'brief:u2']),
+      plan('query:neutral', ['brief:neutral']),
+    ])),
+    (error: unknown) =>
+      error instanceof CandidateEvidenceExecutionError &&
+      error.code === 'BRIEF_QUERY_BUDGET_EXCEEDED',
+  );
+  assert.equal(provider.calls.length, 0);
+  await repos.close();
+});
+
 test('QueryPlan이 인원·날짜 같은 RunController 조건을 바꾸면 호출 전에 거부한다', async () => {
   const { provider, repos, port } = setup();
   await assert.rejects(

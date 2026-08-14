@@ -78,7 +78,9 @@ export interface CandidateEvidenceExecutionPort {
 export type CandidateEvidenceExecutionErrorCode =
   | 'INVALID_INPUT'
   | 'QUERY_BUDGET_EXCEEDED'
+  | 'QUERY_PLAN_ID_DUPLICATED'
   | 'BRIEF_LINEAGE_MISMATCH'
+  | 'BRIEF_QUERY_BUDGET_EXCEEDED'
   | 'SENSITIVE_CONTEXT'
   | 'UNAPPROVED_RELAXATION'
   | 'HARD_CONTEXT_OVERRIDE'
@@ -204,6 +206,31 @@ function validateBriefLineage(
     throw new CandidateEvidenceExecutionError(
       'BRIEF_LINEAGE_MISMATCH',
       'Proxy Brief와 중립 Brief가 QueryPlan에 정확히 한 번 이상 대표되어야 합니다.',
+    );
+  }
+
+  const planIds = new Set<string>();
+  const countByBrief = new Map<string, number>();
+  for (const plan of plans) {
+    if (planIds.has(plan.queryPlanId)) {
+      throw new CandidateEvidenceExecutionError(
+        'QUERY_PLAN_ID_DUPLICATED',
+        `중복 queryPlanId를 실행할 수 없습니다: ${plan.queryPlanId}`,
+      );
+    }
+    planIds.add(plan.queryPlanId);
+    for (const briefId of plan.sourceBriefIds) {
+      countByBrief.set(briefId, (countByBrief.get(briefId) ?? 0) + 1);
+    }
+  }
+
+  const overBudgetBriefIds = expectedBriefIds.filter(
+    (briefId) => (countByBrief.get(briefId) ?? 0) > 1,
+  );
+  if (overBudgetBriefIds.length > 0) {
+    throw new CandidateEvidenceExecutionError(
+      'BRIEF_QUERY_BUDGET_EXCEEDED',
+      `MVP에서는 각 Brief를 정확히 한 QueryPlan에만 배정할 수 있습니다: ${overBudgetBriefIds.join(',')}`,
     );
   }
 }
