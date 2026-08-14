@@ -44,10 +44,13 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $requiredMarkers = @{
-            'docs/travel-mediation-plan.md' = @('## 19. v1.3 실행 보강', 'Negotiation Causality Ledger', 'fail-closed', 'Booking Readiness')
-            'docs/flight-referee-implementation.md' = @('OriginAccessProfile', 'groupInventoryVerified', '## 19. v1.1 실행 보강')
-            'docs/transport-referee-implementation.md' = @('matrixVersion', '## 19. v1.1 실행 보강', 'fail-closed')
-            'docs/accommodation-referee-implementation.md' = @('groupInventoryVerified', '## 20. v1.1 실행 보강', '원자적 객실 조합 검증')
+            'docs/travel-mediation-plan.md' = @('0단계', '1~5단계', 'CategoryDecisionContract', 'ContinuityAuditReport', 'FinalPlanRecord')
+            'docs/agent-architecture.md' = @('UserProxyAgent', 'CandidateEvidenceAgent', 'CategoryArbiterAgent', 'TripOrchestratorAgent', 'PlanFinalizerAgent', 'FactConstraintValidator', 'RunController')
+            'docs/survey-v4-profile-v1.md' = @('47개', '정확히 11개', '0~2개', 'ProfilePatchCandidate', 'CanonicalProfile')
+            'docs/provider-evidence-policy.md' = @('타베로그', 'dining_slot_inventory', 'EvidenceSnapshot', 'BOOKABLE')
+            'docs/flight-referee-implementation.md' = @('CategoryProposal', 'FactConstraintValidator', 'NO_SAFE_DECISION')
+            'docs/transport-referee-implementation.md' = @('matrixVersion', 'leximin', '공급자 공백')
+            'docs/accommodation-referee-implementation.md' = @('객실 조합', 'CategoryProposal', 'BOOKABLE', 'leximin')
           }
           foreach ($path in $requiredMarkers.Keys) {
             $content = Get-Content -Raw -Encoding utf8 -LiteralPath $path
@@ -57,8 +60,8 @@ jobs:
           }
           $plan = Get-Content -Raw -Encoding utf8 -LiteralPath 'docs/travel-mediation-plan.md'
           if ($plan -match '(?m)^- \[x\]') { throw 'MVP scope must not be marked as implemented.' }
-          if (-not $plan.Contains('"method": "debated"') -or -not $plan.Contains('"debated": true')) {
-            throw 'Date resolution example must represent the documented debated decision.'
+          if (-not $plan.Contains('0단계와 6단계에는 카테고리 중재관이 없다') -or -not $plan.Contains('DateResolver')) {
+            throw 'Stage 0 must use deterministic DateResolver without category arbitration.'
           }
       - name: Reject committed secret-like values
         shell: pwsh

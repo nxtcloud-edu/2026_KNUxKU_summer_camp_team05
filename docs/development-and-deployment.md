@@ -1,327 +1,173 @@
 # 개발 환경과 배포 계획
 
-- **문서 버전**: v1.0 / 2026-08-13
-- **상위 문서**: [travel-mediation-plan.md](travel-mediation-plan.md) · [agent-architecture.md](agent-architecture.md)
-- **다루는 범위**: 저장소 구조, 스택 결정, 로컬 개발 절차, 프론트–백엔드 계약 현황, MVP 범위 변경, AWS EC2 배포 계획
-- **권위**: 스택·환경·배포·범위 변경은 이 문서가 최신이다. 기획서 10.1의 구성도와 다르면 이 문서를 따른다.
+- 문서 버전: v2.0 / 2026-08-14
+- 상위 문서: [종합 기획서](travel-mediation-plan.md), [에이전트 아키텍처](agent-architecture.md)
+- 범위: 현재 코드, 목표 계약, 런타임 경계, 로컬 검증, 배포 전 게이트
 
----
+## 1. 현재 상태와 목표 상태
 
-## 1. 개발 원칙 — 로컬 우선, 배포는 나중에 EC2
+현재 저장소는 TypeScript 모노레포이며 React/Vite 프론트, Fastify API, BullMQ Worker, PostgreSQL·Redis, 공용 계약, 결정론적 점수·그래프·DateResolver, 데이터 게이트웨이 골격을 포함한다.
 
-```
-[1] 로컬에서 전 기능 개발·검증          ← 현재 단계
-    docker compose(PostgreSQL·Redis) + npm workspaces
-[2] 단일 AWS EC2 인스턴스에 배포
-    nginx(정적 + 리버스 프록시) + API + Worker + 데이터스토어
-[3] 부하·데이터 중요도가 올라가면 분리
-    RDS / ElastiCache / S3 / CloudFront
-```
+이 코드는 이전 설계의 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 포함한다. 이번 문서 갱신은 목표 아키텍처를 정리한 것이며 아래 항목이 구현됐다는 뜻이 아니다.
 
-로컬에서 끝까지 돌려본 뒤 EC2로 올린다. 초기부터 ECS·EKS·오토스케일링·IaC를 도입하지 않는다. 캠프 기간(8주) 안에 검증해야 하는 것은 인프라 탄력성이 아니라 **에이전트 파이프라인의 결과 품질**이다.
+- Survey v4 + Profile Schema v1
+- `TripCharter → CategoryDecisionContract × 5 → FinalPlanRecord`
+- 새 공식 에이전트 5종
+- `FactConstraintValidator`의 Python 구현
+- 네 도시의 실제 공급자 연결과 `BOOKABLE` 검증
 
-배포 시점에 특히 주의할 점은 워커가 LLM·외부 여행 API를 호출한다는 사실이다. API 키가 인스턴스에 상주하고, 방 1개 실행마다 실비가 발생한다. 비용 상한과 시크릿 관리를 배포 전에 확정한다(8.5·8.6절).
-
----
-
-## 2. 저장소 구조
+## 2. 목표 저장소 경계
 
 ```text
-.
-├─ apps/
-│  └─ web/                    MOA 프론트엔드 (React 19 + Vite 7 + Tailwind 3)
-│     ├─ src/                 App.tsx · components/ · data.ts · formState.ts · formApi.ts
-│     ├─ public/              정적 자산, PWA manifest
-│     └─ .env.example         VITE_API_BASE_URL
-├─ packages/
-│  └─ contracts/              공용 타입·zod 스키마 (planning · rounds · dispatch · data-agent · candidates · verdict)
-├─ docs/                      설계 문서 (권위 순서: 기획서 19장 > agent-architecture > 개별 심판 문서)
-├─ docker-compose.yml         로컬 PostgreSQL 16 · Redis 7
-├─ package.json               npm workspaces 루트
-├─ tsconfig.base.json         공용 컴파일러 설정
-└─ .nvmrc                     Node 20.20.2
+apps/web/                 Survey v4, 프로필 확인, 결과·재논의 UI
+apps/api/                 인증, 방·설문·결과·재논의 API
+apps/worker/              RunController와 비동기 실행
+packages/contracts/       FE/백엔드 공용 스키마와 버전
+packages/core/            날짜·점수·leximin·예산·상태·의존성 계산
+packages/agents/          공식 LLM 에이전트 5종
+packages/data-agents/     공급자 게이트웨이·정규화·어댑터
+packages/db/              프로필·계약·원장·예약 레코드 저장
+services/validator/       Python 중심 FactConstraintValidator 후보 경계
+packs/                    서울·부산·도쿄·오사카 데이터 팩
+docs/                     제품·아키텍처·공급자 계약
 ```
 
-### 2.1 앞으로 추가될 워크스페이스
+`services/validator/`는 목표 경계이며 아직 존재하지 않는다. Python을 별도 프로세스로 둘지, Worker가 라이브러리/CLI로 호출할지는 구현 spike 후 확정한다.
 
-| 경로 | 역할 | 비고 |
+## 3. 런타임 결정
+
+| 영역 | 현재/권장 | 이유 |
 | --- | --- | --- |
-| `apps/api` | API Gateway — 방·설문·이의 접수, 잡 디스패치 | 골격 완료 (Fastify). PostgreSQL·큐 연동 검증 완료, **인증 미착수** |
-| `apps/worker` | Debate Worker — Orchestrator 루프, 심판·페르소나 실행 | 잡 소비·실행 기록 완료 (BullMQ + PostgreSQL). **심판·페르소나 에이전트 미착수** |
-| `packages/core` | 결정론 엔진 — Planning Graph STALE 전파, 이의 영향 산출, 디스패치 검증 | 부분 구현 (V1·V2·V5·V7) |
-| `packages/agents` | LLM 에이전트 — Supervisor, 심판 7종, 페르소나, 문서 생성 | 미착수 |
-| `packages/data-agents` | Data Agent read-through + 제공자 어댑터 (웹·RAG 포함) | 게이트웨이·정책 카탈로그·인스턴스 8종 완료 (테스트 26개). **실제 제공자 어댑터 미착수** |
-| `packages/db` | 마이그레이션·리포지토리 | 착수 — 초기 스키마 + 리포지토리 3종, 실행 검증 통과 (4.2.1) |
-| `packs/` | Destination Pack 데이터 (JSON) | 착수 (`jp-osaka` 초안) |
+| FE·API·Worker·공용 계약 | TypeScript 유지 | 기존 코드와 FE 타입 공유 |
+| 날짜·점수·상태머신 | 결정론적 코드 | LLM 산술·상태 변경 금지 |
+| 사실·제약 검증 | Python 중심 권장 | 시간·경로·예산·조합 검사 라이브러리 활용 |
+| LLM 에이전트 | Python 또는 TypeScript 미결정 | SDK보다 계약·평가·운영 단순성이 우선 |
+| 저장소 | PostgreSQL + Redis | 계약·원장 영속화와 비동기 실행 |
 
-`apps/api`는 **Fastify(ESM)** 로 확정했다. 기획서 10.1은 "NestJS 또는 FastAPI"였고 앞선 초안은 NestJS를 기본안으로 두었으나, 실제 복잡도는 게이트웨이가 아니라 워커(Orchestrator·심판)에 있다. 게이트웨이는 인증·CRUD·잡 디스패치로 얇게 유지되므로, NestJS의 DI·모듈 규약이 주는 이점보다 데코레이터·CommonJS 설정 비용이 크다. 저장소 전체를 ESM + TypeScript 하나로 유지하는 편이 낫다. 모듈 경계가 실제로 부족해지면 그때 NestJS로 옮긴다.
+따라서 이전의 “TypeScript 전면 확정”은 폐기한다. 다만 Python 선호만으로 현재 TypeScript 코드를 전면 이식하지 않는다. 경계 간에는 JSON Schema/OpenAPI와 불변 ID·버전 계약을 사용한다.
 
----
+## 4. 프론트엔드·백엔드 목표 계약
 
-## 3. 스택 결정 기록
+### 4.1 방 생성
 
-| 항목 | 결정 | 근거 | 재검토 조건 |
-| --- | --- | --- | --- |
-| 프론트엔드 | **React 19 SPA + Vite 7** | 프론트 담당이 React로 MVP를 이미 구현. 기획서 10.1의 Next.js에서 변경 | SEO·SSR·공유 링크 OG 프리뷰가 요구사항이 되면 Next.js 재검토 |
-| PWA | `public/manifest.webmanifest` + 필요 시 `vite-plugin-pwa` | 기획서 14.2 "네이티브 앱 대신 PWA" | — |
-| 패키지 매니저 | **npm workspaces** | 로컬에 pnpm 미설치. Node 20 기본 도구로 충분 | 워크스페이스가 10개를 넘고 설치 시간이 문제되면 pnpm |
-| 언어 | TypeScript 전면 | 문서 예시·프론트와 일치, 계약 타입 공유 | — |
-| 로컬 데이터스토어 | Docker Compose (PostgreSQL 16, Redis 7) | 기획서 10.1 Storage 구성 | — |
-| 잡 큐 | BullMQ (Redis) | 기획서 10.1, 비동기 배치 실행 모델 | — |
-| 배포 | 단일 EC2 + Docker Compose | 캠프 규모, 운영 인력 없음 | 동시 실행 방이 늘어 워커 격리가 필요해지면 분리 |
-
-### 3.1 프론트엔드를 `apps/web`으로 이동한 이유
-
-프론트 MVP는 저장소 루트에 머지되어 있었다. 이를 `apps/web`으로 옮기고 루트를 워크스페이스로 만든 것은 **설문 스키마를 프론트와 백엔드가 한 곳에서 공유**하기 위해서다. 이 서비스는 설문이 유일한 입력이고(기획서 마무리 1번), 설문 스키마가 어긋나면 에이전트 품질이 즉시 무너진다. `packages/contracts`를 양쪽이 import하면 그 어긋남이 컴파일 단계에서 막힌다.
-
-이동은 `git mv`로 수행해 파일 히스토리를 보존했다. 프론트 담당의 작업 경로는 `apps/web/`으로 바뀌며, 명령은 저장소 루트에서 `npm run dev`로 동일하게 실행된다.
-
----
-
-## 4. 로컬 개발 절차
-
-### 4.1 사전 요구
-
-| 도구 | 버전 | 확인 |
-| --- | --- | --- |
-| Node.js | 20.10 이상 (`.nvmrc` = 20.20.2) | `node --version` |
-| npm | 10 이상 | `npm --version` |
-| Docker Desktop | 최신 | `docker --version` |
-
-### 4.2 실행
-
-```bash
-npm install               # 워크스페이스 전체 설치. lockfile은 루트에 1개
-npm run local:up          # PostgreSQL 16 · Redis 7 기동 (docker compose up -d)
-npm run local:logs        # 데이터스토어 로그
-npm run local:down        # 정지
-npm run dev               # 프론트 개발 서버 → http://localhost:5173
-npm run typecheck         # 워크스페이스 전체 타입 검증
-npm run build             # 워크스페이스 전체 빌드
-npm run lint
+```ts
+type CreateRoomInput = {
+  schemaVersion: 2;
+  destinationId: "kr-seoul" | "kr-busan" | "jp-tokyo" | "jp-osaka";
+  targetPace: "one_anchor" | "two_anchors" | "three_anchors";
+};
 ```
 
-### 4.2.1 PostgreSQL 경로 실행 검증
+목표 페이스는 사용자 설명용 입력이다. 실제 일정은 활동시간·이동·대기·버퍼·체력·접근성을 함께 계산한다. 방장은 날짜·교통수단·그룹 예산을 확정하지 않는다.
 
-DB를 쓰는 코드는 타입 검사로 확인되지 않는다. 예약어·jsonb 캐스팅·조인·부분 유니크 인덱스는 실행해야 드러난다.
+### 4.2 설문
+
+현재 `/api/survey-responses`의 schema v2는 레거시다. Survey v4는 다음 블록을 구분한다.
+
+1. 필수 입력: 가용 날짜, 하드 제약, 개인 목표·절대상한 예산, 가치 정책
+2. 고정 취향 질문: 정확히 11개 질문 블록
+3. 적응형 질문: 0~2개
+4. 프로필 확인: `ProfilePatchCandidate` 중 장기 저장 항목 체크
+
+FE는 질문 문구에서 점수를 계산하지 않고 `surveyVersion`, `questionId`, `optionId`를 전송한다. 백엔드의 버전된 매핑이 축·태그 신호를 만들고 같은 fixture가 FE와 백엔드에서 같은 결과를 내야 한다.
+
+### 4.3 결과와 재논의
+
+- 결과 API는 `FinalPlanRecord`의 상태·근거·만료·차단 사유를 그대로 노출한다.
+- `BOOKABLE`과 `BOOKED`를 합치지 않는다.
+- 재논의 요청은 원장 버전, 문제 카테고리, 사용자 이유, 프로필 반영 범위를 포함한다.
+- 영향 미리보기를 승인한 뒤에만 `RunController`가 활성 계약 참조를 비운다.
+
+## 5. 로컬 실행
+
+요구사항: Node 20.10+, npm 10+, Docker Desktop.
 
 ```bash
-npm run local:up                                # PostgreSQL 16 · Redis 7
+npm install
+npm run local:up
+npm run dev
+npm run typecheck
+npm run test
+npm run build
+```
+
+DB 경로:
+
+```bash
 export DATABASE_URL=postgres://tm:tm_local@localhost:5432/travel_mediation
-npm run migrate --workspace @tm/db              # 미적용 마이그레이션만 실행
-npm run smoke   --workspace @tm/db              # 리포지토리 3종 왕복 검증
+npm run migrate --workspace @tm/db
+npm run smoke --workspace @tm/db
 ```
 
-`smoke`는 실제로 방·설문·이의를 쓰고 읽은 뒤 `DELETE FROM rooms`로 정리한다(CASCADE). 확인 범위는 rooms 생성·상태 전이·`markCompleted`, surveys upsert와 `allergens` 승격, `rooms.get`의 파생 조회(SETTLED 라운드 · BOOKED 노드), objections 저장·집계·상태 갱신, 그리고 같은 사용자가 같은 라운드에 중복 이의를 낼 수 없다는 제약이다. SQL을 건드리는 PR은 이걸 통과시킨다.
+`VITE_API_BASE_URL`이 비어 있으면 기존 FE가 `sessionStorage` 경로를 사용한다. 이는 화면 목업 검증이며 Survey v4나 실제 에이전트 종단 실행 검증이 아니다.
 
-API까지 붙여서 확인하려면 (2026-08-13 확인 완료):
+## 6. 환경변수 목표
 
-```bash
-DATABASE_URL=$DATABASE_URL ENABLE_QUEUE=true npm run dev --workspace @tm/api
-curl localhost:3001/health          # → {"storage":"postgres","database":true,"queue":true}
-```
-
-방 생성 → 설문 제출 → 이의 preview/접수까지 태우면, 이의가 `queued`로 바뀌고 `rerun:{objectionId}` 잡이 Redis에 남는다. `ENABLE_QUEUE=false`면 접수는 되지만 `accepted`에 머문다 — 실행되지 않은 이의를 `queued`로 표시하지 않기 위한 의도된 동작이다.
-
-워커까지 띄우면 이의 한 바퀴가 닫힌다.
-
-```bash
-DATABASE_URL=$DATABASE_URL npm run dev --workspace @tm/worker
-```
-
-`queued` → 대상 라운드 재실행 → `runs`·`rounds` 기록 → 이의 `applied` + `outcome`. 워커는 `DATABASE_URL`이 없으면 기동을 거부한다 — 인메모리 저장소는 프로세스가 달라 API가 만든 이의가 보이지 않고, 조용히 아무것도 하지 않는 워커가 된다.
-
-| 상황 | 동작 |
-| --- | --- |
-| 같은 이의가 다시 큐에 들어옴 | 잡 ID 고정으로 1차 차단, 워커에서 `applied` 확인 후 건너뜀 (O12) |
-| 마지막 시도까지 실패 | run `FAILED` + 이의 `outcome.unresolvedReason`. **이의를 `applied`로 올리지 않는다** — 반영되지 않은 이의를 처리 완료로 표시하면 사용자는 바뀐 게 없는 결과를 "반영됨"으로 읽는다 |
-| 심판 미구현 상태 | 라운드는 돌지만 후보를 조달하지 않으므로 `outcome.changed: false` + 사유를 남긴다 (O11) |
-
-`VITE_API_BASE_URL`을 비워두면 프론트는 폼 제출을 `sessionStorage`에 적재한다(`apps/web/src/formApi.ts`). 따라서 **백엔드 없이도 전체 화면 흐름을 확인할 수 있다.** 백엔드가 붙으면 `apps/web/.env`에 값을 넣는다.
-
-### 4.3 환경변수
-
-`.env`는 커밋하지 않는다. 아래 목록을 참고해 각자 로컬에 만든다.
-
-**프론트엔드 (`apps/web/.env`)**
-
-| 키 | 예시 | 설명 |
-| --- | --- | --- |
-| `VITE_API_BASE_URL` | `http://localhost:3001` | 비우면 sessionStorage 적재 모드 |
-
-**백엔드 (`apps/api`, `apps/worker` — 착수 시 사용)**
-
-| 그룹 | 키 |
+| 범위 | 예시 키 |
 | --- | --- |
 | 런타임 | `NODE_ENV`, `LOG_LEVEL`, `API_PORT`, `WEB_ORIGIN` |
-| 데이터스토어 | `DATABASE_URL`, `REDIS_URL` |
-| 실행 상한 | `RUN_WALLCLOCK_LIMIT_SEC`(1800), `RUN_COST_CAP_USD`(0.6), `ROUND_TURN_CAP`(32), `ROUND_RERUN_CAP`(2), `GLOBAL_RECALC_CAP`(3), `WORKER_CONCURRENCY` |
-| LLM | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL_PERSONA`, `LLM_MODEL_REFEREE`, `LLM_MODEL_SUPERVISOR` |
-| 웹·RAG | `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_API_KEY`, `WEB_SEARCH_CALLS_PER_ROUND`, `RAG_EMBEDDING_MODEL`(2차) — 심판 전용 조달 경로 (agent-architecture 6.9) |
-| 여행 API | `AMADEUS_CLIENT_ID`, `AMADEUS_CLIENT_SECRET`, `AMADEUS_ENV`, `RAKUTEN_APPLICATION_ID`, `GOOGLE_MAPS_API_KEY`, `GOOGLE_PLACES_API_KEY`, `ODSAY_API_KEY`, `NAVITIME_API_KEY`, `TOURAPI_SERVICE_KEY`, `HOTPEPPER_API_KEY`, `KAKAO_REST_API_KEY`, `KOREAEXIM_FX_API_KEY` |
+| 저장소·큐 | `DATABASE_URL`, `REDIS_URL`, `WORKER_CONCURRENCY` |
+| 실행 상한 | `RUN_WALLCLOCK_LIMIT_SEC`, `RUN_COST_CAP_USD`, `CATEGORY_TURN_CAP`, `CATEGORY_RERUN_CAP` |
+| LLM | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL_PROXY`, `LLM_MODEL_EVIDENCE`, `LLM_MODEL_ARBITER`, `LLM_MODEL_ORCHESTRATOR`, `LLM_MODEL_FINALIZER` |
+| Google | `GOOGLE_MAPS_API_KEY` |
+| 일본 식당·숙소 | `HOTPEPPER_API_KEY`, `RAKUTEN_APPLICATION_ID`, `RAKUTEN_ACCESS_KEY` |
+| 한국 장소·경로 | `TOURAPI_SERVICE_KEY`, `KAKAO_REST_API_KEY` |
 | 인증 | `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `SESSION_SECRET` |
 
-> Amadeus는 테스트 환경과 운영 환경의 데이터가 다르다. **테스트 키로 실서비스를 하면 안 된다** (항공 심판 15.2).
+Open-Meteo와 Frankfurter의 무료/상업 조건은 배포 시 다시 확인한다. 타베로그 스크래핑 키나 비공식 API URL은 환경변수 목록에 넣지 않는다.
 
----
+## 7. 개발 순서
 
-## 5. 프론트엔드 ↔ 백엔드 계약 현황
+1. 공용 계약: Profile v1, TripCharter, CategoryProposal/Ballot/Contract/View, DecisionLedger, FinalPlanRecord
+2. Survey v4 FE·API와 동일 fixture 매핑
+3. `RunController`의 0/1~5/6단계 상태·버전·재개방
+4. 한 도시·한 카테고리의 실제 후보 조달과 `FactConstraintValidator`
+5. `UserProxyAgent → CategoryArbiterAgent` 수직 경로
+6. 계약 의무 승계와 `PlanFinalizerAgent`
+7. 네 도시 공급자·Pack 확장
+8. 실제 사용자 선택 기반 취향축 평가
 
-프론트가 이미 두 엔드포인트를 가정하고 있다. 백엔드는 이 형태부터 맞춘다.
+한 카테고리 수직 경로는 구조 검증용이며 전체 제품·`BOOKABLE` 완료로 표시하지 않는다.
 
-| 메서드 | 경로 | 페이로드 | 비고 |
-| --- | --- | --- | --- |
-| POST | `/api/trip-rooms` | `RoomSubmissionPayload` `{ schemaVersion: 1, destinationId }` | 방장은 목적지만 선택 (기획서 v1.2) |
-| POST | `/api/survey-responses` | `SurveySubmissionPayload` `{ schemaVersion: 2, destinationId, availability, hardConstraints, travelStyles, activityScores, mustDo, avoid }` | `credentials: 'include'` |
-| GET | `/api/rooms/:roomId/objections` | — | 이의 상한·잔여·이력 |
-| POST | `/api/rooms/:roomId/objections/preview` | `ObjectionRequest` | 재실행 영향 예측 |
-| POST | `/api/rooms/:roomId/objections` | `ObjectionRequest` | 이의 접수 → 재토론 |
+## 8. 배포
 
-서버는 `@tm/contracts`의 zod 스키마로만 페이로드를 검증한다. 프론트와 서버가 같은 정의를 쓰는 것이 A안(모노레포 통합)의 목적이다. 이의 제기 정책은 [objection-and-rerun.md](objection-and-rerun.md)에 있다.
-
-### 5.1 설문 스키마 v2 — 알레르기를 식이 제약에서 분리
-
-v1은 `hardConstraints.diet`이 단일 문자열이었고 `'알레르기'`가 식이 옵션 하나로 들어가 있었다. 이 구조로는 **어떤 알레르겐인지 알 수 없고**, "비건 + 갑각류 알레르기"처럼 두 축이 겹치는 경우를 표현할 수 없다.
-
-```
-v1: diet: '알레르기' | '비건' | '없음' | …            (단일 선택)
-v2: dietary:   string[]   비건·베지테리언·페스코·할랄·코셔·없음 (다중, '없음'은 배타)
-    allergies: string[]   갑각류·땅콩·견과류·계란·유제품… + 자유 입력 (다중)
-```
-
-두 축을 나눈 것은 UI 편의가 아니라 **처리 방식이 다르기 때문**이다.
-
-| 축 | 성격 | 심판 처리 |
-| --- | --- | --- |
-| `dietary` | 취향·신념 | 하드 제약이지만 대체 메뉴·대체 식당으로 절충 가능 |
-| `allergies` | 안전 | 협상 불가. 코드 레벨 실격, 대응 확인 실패 시 후보 `BLOCKED`, 계획서에 현지어 고지문 첨부 |
-
-근거: 기획서 5.1 ①, 9.4 안전 규칙, 19.6 fail-closed, 숙소 20.2. 알레르기는 `dining.diet_support` 조회가 `verification` 목적일 때 항상 실시간이며 캐시로 통과할 수 없다(agent-architecture 6.5).
-
-페르소나 확인 화면은 알레르기를 제약 목록 **맨 앞**에 표시한다. 이 화면이 사용자의 마지막 통제 지점이므로 안전 항목이 먼저 보여야 한다.
-
----
-
-## 6. MVP 범위 변경 — 방 배정 선호 미수집
-
-**결정: MVP에서 방 배정 선호(rooming preferences)를 수집하지 않는다.**
-
-| 항목 | 내용 |
-| --- | --- |
-| 수집하지 않는 것 | 같은 방 희망/곤란한 상대, 1인실 희망, 코골이 자각, 수면 예민도 |
-| 이유 | 설문 부담과 민감정보 취급 비용이 MVP 검증 목표(결과 납득 여부)에 비해 크다 |
-| 대신 하는 것 | 숙소 심판은 **객실 구성 충족 여부만** 판정한다. 그룹 인원 수용, 객실 조합 동시 재고, 침실 분리 여부까지가 판정 범위다 |
-| 유지되는 안전장치 | 하드 제약의 `도미토리 불가`·`남녀 혼숙 불가`·`흡연실 불가`는 설문 "절대 안 돼요"에 남아 있어 계속 실격 사유로 작동한다 |
-| 사라지는 것 | 배정 점수 계산(숙소 8.2), 배정 결과를 `comfortFit`에 반영(숙소 8.3), 미충족 선호 기록 |
-| Phase 2 복귀 조건 | 실사용자 피드백에서 방 배정 불만이 반복 관측되면 재도입. 그때는 숙소 20.4의 private enclave 처리와 노출 금지 규칙을 그대로 적용한다 |
-
-**주의**: 방 배정을 다루지 않게 되었어도 숙소 심판의 **침실 분리 확인 의무는 유지된다.** "6인 수용"이 "한 방에 6명"인지 "2인실 3개"인지는 여전히 판결에 영향을 주고(숙소 원칙 4), 객실 조합 동시 재고는 fail-closed 항목이다(숙소 20.1).
-
----
-
-## 7. AWS EC2 배포 계획
-
-### 7.1 목표 토폴로지 (초기)
+초기에는 단일 EC2 + Docker Compose를 유지할 수 있다.
 
 ```text
-            인터넷
-              │ 443 / 80
-        ┌─────▼──────────────────────────────────┐
-        │  EC2 (t3.small ~ t3.medium, Amazon Linux 2023)
-        │  ┌──────────────────────────────────┐  │
-        │  │ nginx                            │  │
-        │  │  · /            → web dist 정적  │  │
-        │  │  · /api         → api:3001       │  │
-        │  │  · TLS (certbot)                 │  │
-        │  ├──────────────────────────────────┤  │
-        │  │ api      (Node, @tm/api)         │  │
-        │  │ worker   (Node, @tm/worker)      │  │
-        │  │ postgres (docker)                │  │
-        │  │ redis    (docker)                │  │
-        │  └──────────────────────────────────┘  │
-        └────────────────────────────────────────┘
-              │ 아웃바운드 (LLM · 여행 API)
+nginx
+  ├─ web 정적 파일
+  └─ /api → API
+API + Worker + PostgreSQL + Redis
+Python validator sidecar 또는 Worker 호출 경계
 ```
 
-프론트는 별도 서버가 필요 없다. `apps/web`을 빌드해 나온 `dist`를 nginx가 정적 서빙한다.
+ECS/EKS, 오토스케일링, 멀티 AZ는 해커톤 MVP 비목표다. 다만 실제 사용자 프로필·예산·건강·가치 정보를 받기 전에는 다음이 필요하다.
 
-### 7.2 배포 절차 (초기 — 수동)
+- OAuth·세션과 방 멤버 권한
+- 필드 수준 접근 제어
+- 전송·저장 암호화
+- 보존기간·삭제·정정·동의
+- 시크릿 관리와 로그 PII 제거
+- 계약·원장 멱등성과 Worker 재시도
+- 비용·쿼터·DLQ 관측
 
-EC2 인스턴스에 접속한 뒤 실행한다.
+## 9. 배포 전 게이트
 
-```bash
-git pull origin main
-npm ci
-npm run build                       # apps/web dist 생성
-docker compose -f infra/ec2/docker-compose.prod.yml up -d --build
-sudo nginx -s reload
-```
+- [ ] Survey v4 FE/백엔드 fixture 일치
+- [ ] `unknown`, `avoid`, `hard`, `approval_required` 상호 오변환 0건
+- [ ] 0단계에서 미응답자의 날짜·예산·하드 제약을 추정하지 않음
+- [ ] 1~5단계 같은 `proposalSetVersion` 투표 강제
+- [ ] `CONTINUE`가 계약을 만들지 않고 체크포인트만 저장
+- [ ] `NO_SAFE_DECISION`이 선택안 없는 차단 계약 생성
+- [ ] `BOOKABLE`의 유효기간과 공급자 근거 연결
+- [ ] 계약 재개방·동시 요청·중복 Worker 멱등 테스트
+- [ ] 실제 API sandbox 호출과 약관 재확인
+- [ ] 사용자 시나리오로 `FinalPlanRecord` 또는 정직한 차단 결과 관찰
 
-`infra/ec2/` 구성 파일은 배포 착수 시점에 추가한다(미결정 3번). 안정화되면 GitHub Actions에서 빌드·아티팩트 전송·무중단 재시작으로 옮긴다.
+## 10. 미결정
 
-### 7.3 프로세스 관리
-
-로컬과 동일한 Docker Compose를 쓴다. 개발 환경과 운영 환경의 구성 차이를 줄이는 것이 단일 인스턴스 운영에서 가장 값싼 안정성 확보 수단이다. 워커는 `WORKER_CONCURRENCY`로 동시 실행 방 수를 제한한다. 방 1개 실행이 최대 30분이고 LLM·API 실비가 발생하므로, 동시성을 올리기 전에 `llm_usage` 원장으로 방당 원가를 먼저 확인한다.
-
-### 7.4 데이터
-
-| 항목 | 초기 | 전환 조건 |
-| --- | --- | --- |
-| PostgreSQL | 동일 인스턴스 Docker + EBS 볼륨 | 실사용자 데이터가 쌓이면 RDS |
-| Redis | 동일 인스턴스 Docker | 잡 유실이 문제되면 ElastiCache |
-| 계획서 PDF·이미지 | 로컬 볼륨 | 공유 링크 트래픽이 늘면 S3 + CloudFront |
-| 백업 | `pg_dump` 일 1회 → S3 | — |
-
-설문에는 종교·건강 같은 민감정보가 들어간다(기획서 R12). EBS 암호화를 켜고, 방 종료 후 N일 파기 잡을 배포 전에 준비한다.
-
-### 7.5 시크릿 관리
-
-- 키를 이미지·리포지토리에 넣지 않는다. `/etc/moa/env`(권한 600) 또는 SSM Parameter Store에서 주입한다.
-- IMDSv2를 강제하고 인스턴스 IAM 역할은 최소 권한(S3 백업 버킷, SSM 읽기)만 부여한다.
-- 로컬 값은 `.env`, CI 값은 GitHub Actions Secrets. 저장소의 시크릿 스캔(`docs-quality.yml`)을 우회하지 않는다.
-
-### 7.6 보안 그룹·접근
-
-| 포트 | 소스 | 용도 |
-| --- | --- | --- |
-| 443, 80 | 0.0.0.0/0 | 웹 |
-| 22 | 담당자 IP만 | 배포·운영 |
-| 5432, 6379 | 차단 | 컨테이너 내부 통신만 |
-
-API는 인증이 붙기 전까지 외부에 노출하지 않는다. 방·설문 엔드포인트는 초대 링크로 접근하는 사용자 데이터를 다루므로, **카카오 OAuth와 세션이 붙기 전에 퍼블릭으로 열지 않는다.** 임시 확인이 필요하면 nginx basic auth 또는 보안 그룹으로 담당자 IP만 허용한다.
-
-### 7.7 관측
-
-- 애플리케이션 로그는 파일 로테이션 후 CloudWatch Agent로 수집(선택).
-- 최소 지표: run 성공률, 평균 실행 시간, 방당 LLM+API 원가, 디스패치 폴백률, fail-closed 차단 건수 (agent-architecture 12.2).
-- 잡 3회 실패는 DLQ로 보내고 운영 알림을 띄운다. 조용한 실패가 비동기 모델의 최대 리스크다(기획서 R4).
-
-### 7.8 지금 하지 않는 것
-
-ECS·EKS, 오토스케일링, Terraform·CDK, 멀티 AZ, 블루/그린 배포. 단일 인스턴스 + 수동 배포로 시작하고, 베타 사용자 규모가 확인된 뒤 재검토한다.
-
----
-
-## 8. 배포 전 체크리스트
-
-- [ ] 카카오 OAuth·세션 구현 완료 (API 퍼블릭 노출의 전제)
-- [ ] `RUN_COST_CAP_USD`·`WORKER_CONCURRENCY` 실측 기반 설정
-- [ ] 외부 API 키를 운영 키로 교체 (Amadeus 테스트 키 금지)
-- [ ] 민감정보 파기 잡·EBS 암호화 적용
-- [ ] `pg_dump` 백업 자동화 및 복구 1회 리허설
-- [ ] 실패 알림 경로(DLQ → 운영자) 검증
-- [ ] HTTPS 인증서 자동 갱신 확인
-
----
-
-## 9. 미결정 사항
-
-| # | 항목 | 결정 시점 |
-| --- | --- | --- |
-| 1 | ~~`apps/api` 프레임워크~~ **Fastify(ESM) 확정** (3장) | — |
-| 2 | ~~DB 접근 계층~~ **`pg` + raw SQL 확정.** 스키마가 흔들리는 값은 jsonb라 ORM 이점이 작고, 마이그레이션 러너는 63줄이다 | — |
-| 2-1 | RAG 검색 방식 — 메타+텍스트로 유지할지 pgvector로 올릴지. 후자는 `postgres:16-alpine` → `pgvector/pgvector:pg16` 이미지 교체가 필요하다 | `kb.retrieve` 품질 실측 후 |
-| 3 | `infra/ec2/` 구성 파일 (compose.prod, nginx.conf, 배포 스크립트) | 첫 배포 준비 시 |
-| 4 | EC2 인스턴스 타입·리전 | 첫 배포 준비 시 |
-| 5 | `packages/contracts`를 프론트가 import하는 시점 (설문 payload 단일화) | 백엔드 설문 엔드포인트 구현 시 |
-| 6 | 루트 `.env.example` 추가 | 백엔드 착수 시 (현재 `apps/web/.env.example`만 존재) |
+- Python 검증기의 프로세스/배포 형태
+- LLM 에이전트 구현 언어와 모델 배분
+- 한국 숙소와 한·일 식당 live inventory 공급자
+- 일본 대중교통 자동 검증 공급자
+- 동시 사용자 규모에 맞는 EC2 타입
