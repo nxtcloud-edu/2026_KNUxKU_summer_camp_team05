@@ -260,9 +260,58 @@ function loadDotEnv(): void {
   }
 }
 
+/**
+ * 나가는 공인 IP를 여러 번 확인한다.
+ *
+ * 한 번만 보면 안 된다. 회선이 둘 이상이면 호출마다 다른 IP로 나가고, 라쿠텐
+ * 서버앱은 등록되지 않은 쪽에서 온 요청을 CLIENT_IP_NOT_ALLOWED로 막는다.
+ * 하나만 등록해두면 절반이 성공하고 절반이 실패하는 형태로 나타나서
+ * "가끔 되는데?"라고 오진하기 쉽다.
+ */
+async function reportEgressIps(): Promise<void> {
+  // 한 호스트만 반복해서는 부족하다. 경로가 목적지별로 갈리면 같은 서비스에는
+  // 늘 같은 IP로 나가면서 다른 서비스에는 다른 IP로 나간다 — 실제로 그런 회선이 있다.
+  // 서로 다른 확인 서비스를 섞어야 회선 개수가 드러난다.
+  const endpoints = [
+    'https://api.ipify.org',
+    'https://ifconfig.me/ip',
+    'https://icanhazip.com',
+    'https://ipinfo.io/ip',
+  ];
+
+  const seen = new Set<string>();
+  for (let round = 0; round < 2; round += 1) {
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, { signal: AbortSignal.timeout(5000) });
+        const value = (await response.text()).trim();
+        // 응답이 IP 형태일 때만 받는다. 오류 페이지를 IP로 등록하면 안 된다.
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) seen.add(value);
+      } catch {
+        // 네트워크 확인 실패는 검증 자체의 실패가 아니다. 조용히 넘어간다.
+      }
+    }
+  }
+
+  if (seen.size === 0) {
+    console.log('  공인 IP를 확인하지 못했습니다');
+    return;
+  }
+  const list = [...seen].join(', ');
+  console.log(`  나가는 공인 IP: ${list}`);
+  if (seen.size > 1) {
+    console.log(`  ! 회선이 ${seen.size}개입니다 — 라쿠텐 서버앱을 쓴다면 이 IP를 모두 등록해야 합니다`);
+  }
+}
+
 async function main(): Promise<void> {
   loadDotEnv();
   const setup = providersFromEnv();
+
+  // 라쿠텐 서버앱 타입은 IP로 검사한다. 등록할 값을 먼저 보여준다.
+  if (process.env['RAKUTEN_APPLICATION_ID'] !== undefined && process.env['RAKUTEN_REFERER'] === undefined) {
+    await reportEgressIps();
+  }
   const byId = new Map(setup.adapters.map((adapter) => [adapter.id, adapter]));
 
   console.log('제공자 실호출 검증');
