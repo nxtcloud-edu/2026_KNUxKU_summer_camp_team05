@@ -51,6 +51,35 @@
 }
 ```
 
+## 1.1 2026-08-14 재조사 — 실제로 붙인 어댑터
+
+위 1절은 목표 배치다. 아래는 **키를 넣으면 지금 도는 코드**이며, `packages/data-agents/src/providers/`에 어댑터가 있다. 목표와 구현을 같은 표에 섞지 않는다.
+
+| 어댑터 | 담당 QueryClass | 무료 조건 | 이 공급자가 답하지 않는 것 |
+| --- | --- | --- | --- |
+| `rakuten_travel` | `hotel.search` · `hotel.vacancy_price` · `hotel.room_combination` · `hotel.all_in_price` | 무료 앱ID · **1 req/sec** | 취소 조건, 잔여 객실 수, 침대 타입 |
+| `hotpepper` | `dining.search` · `dining.hours` · `dining.diet_support` | 무료 · **크레딧 표시 의무** · 점포정보 재판매 금지 | 예약 슬롯, 실시간 공석 |
+| `tourapi` | `poi.search` · `dining.search` · `geo.place_details` · `hotel.search` · `hotel.room_combination` | 개발계정 1,000건/일 · 이용 제한 없음 | 날짜별 재고·가격 (시즌 밴드뿐) |
+| `kakao` | `poi.search` · `dining.search` · `geo.place_details` · `geo.geocode` | 각 100,000건/일 · 상업 이용 가능 | 영업시간, 가격, 정원 |
+| `odsay` | `transit.route` · `transit.airport_transfer` | 1,000건/일 · **비상업 목적 한정** | 계단·엘리베이터, 막차 |
+| `travelpayouts` | `flight.cheapest_date` | 무료 토큰 · 200 req/hour/IP | 좌석 수, 도착 시각, 예약 가능성 |
+| `demo-fixture` | 위 슬롯 + 공백 슬롯 전부 | — | **전부. 실제 데이터가 아니다** |
+
+### 왜 라쿠텐이 첫 수직 경로를 성립시키는가
+
+정원 검증의 계약은 "장소의 총 수용량이 아니라 정확한 날짜·시간·인원 요청의 응답"이다(5절). 라쿠텐 공실 검색은 `checkinDate`·`checkoutDate`·`adultNum`·`roomNum`을 **검색 조건으로** 받으므로, 돌아온 플랜은 그 인원이 그 날짜에 실제로 묵을 수 있는 플랜이다. 그래서 `roomCombinationVerified`를 **정확한 인원·객실 수로 물었을 때만** 올린다.
+
+반대로 취소 조건이 응답에 없으므로 `allInPriceVerified`는 항상 false이고, 오사카 숙소는 `VERIFIED`까지만 간다. **`BOOKABLE`은 이 공급자 조합으로 도달할 수 없다.**
+
+### 비상업 제약 — 배포 전 반드시 확인
+
+두 공급자의 무료 티어는 **비상업 목적 한정**이다. 캠프 산출물로는 문제없지만 서비스로 공개하면 약관 위반이다.
+
+- **Open-Meteo**: 비상업 한정. <10,000/일 · 300,000/월. **CC-BY 4.0 출처 표기 의무.**
+- **ODsay**: 비상업 한정. 개인·학생·5인 이하 스타트업만. 상업 전환 시 Standard(100,000/일) 유료 계약 필요.
+
+**HotPepper는 상업 이용이 가능하지만 크레딧 표시가 의무다.** 로고 또는 텍스트를 결과 화면에 넣어야 한다 — T1 화면 작업 항목이다. 점포 정보 자체의 재판매만 금지되고, API로 만든 서비스의 유료 제공은 허용된다.
+
 ## 2. 공급자별 사용 범위
 
 | 공급자 | MVP에서 맡길 사실 | 맡기지 않을 사실 | 주요 운영 경계 |
@@ -64,6 +93,33 @@
 | TAGO 열차 정보 | 서울↔부산 등 열차 운행 일정 | 잔여 좌석·예약 완료 | 조건부 MVP. 일정과 재고를 분리 |
 | Open-Meteo | 최대 16일 예보, 기온·강수·체감 | 장기 여행일의 확정 날씨 | 무료 비상업·상업 플랜 조건 구분 |
 | Frankfurter v2 | 일일 기준 환율 | 카드 청구·환전소 체결 환율 | 결제 금액이 아닌 추정 기준율로 표시 |
+
+## 2.1 종료·제외된 공급자 (2026-08-14 확인)
+
+계획 문서와 Pack에 이름이 남아 있던 공급자 중 **지금은 쓸 수 없는 것들**이다. 코드에서 제거했고 Pack의 `providers`에서도 뺐다. 죽은 엔드포인트로 폴백하면 "후보 0건"의 원인이 가려진다.
+
+| 공급자 | 상태 | 확인 근거 |
+| --- | --- | --- |
+| **Amadeus Self-Service** | **2026-07-17 완전 종료.** 신규 등록 중단, 기존 키 비활성화, 포털 접근 불가. Enterprise 포털만 존속 | 공식 사용자 공지 및 업계 보도 |
+| **ぐるなび(Gurunavi)** | 무료 API **2021-06-30 종료**. 현재 법인 전용 유료(3개월 트라이얼) | 공식 API 사이트 |
+| **NAVITIME** | 상용 유료. 무료 티어 없음 | 제품 페이지 |
+| **JNTO** | 공개 셀프서비스 API가 확인되지 않음 | 슬롯을 비우는 것이 정답 |
+| **Google Places / Routes** | 2025-03 개편으로 $200 통합 크레딧 폐지 → SKU별 무료(Essentials 10,000·Pro 5,000·Enterprise 1,000/월). **결제 계정(카드) 등록이 전제** | 공식 요금 문서 |
+| **Kiwi.com Tequila** | 초대제로 전환. 신규 셀프서비스 등록 불가 | 공식 파트너십 공지 |
+| **Duffel** | 무료 테스트 모드가 가상 항공사(Duffel Airways) 샌드박스라 실가격이 아님 | 공식 문서 |
+
+### 항공 슬롯은 무료로 채워지지 않는다
+
+Amadeus 종료 이후 **무료로 실제 운임을 주는 경로는 Travelpayouts 하나뿐**이고, 그것도 캐시된 과거 검색가다. 따라서:
+
+- `flight.cheapest_date` — Travelpayouts. `confidence`는 항상 `estimated`. 날짜 선택 신호로만 쓴다.
+- `flight.offers_search` · `flight.offer_price` · `flight.group_inventory` — **무료 공급자 없음.** 어댑터가 이 클래스를 지원한다고 선언하지 않는다. 3인 동시 좌석 확보 검증은 무료 범위 밖이다.
+
+발표를 위해서는 `demo-fixture`가 이 슬롯을 채우되, `demo_` id와 "(데모)" 이름과 `estimated` 배지로 가짜임을 드러낸다.
+
+### 일본 대중교통 슬롯도 비어 있다
+
+ODPT(公共交通オープンデータセンター)는 무료지만 **간사이 커버리지가 사실상 없다** — 오사카 검색 결과가 한큐페리 하나뿐이고 도쿄 중심이다. 국토교통성 GTFS-JP 리포지토리는 버스 중심이며 오사카메트로는 GTFS를 공개하지 않는다. 결제 계정을 여는 것 외에는 실경로 공급자가 없다.
 
 ## 3. 타베로그 판단
 
@@ -176,3 +232,16 @@ type EvidenceSnapshot = {
 - [Frankfurter v2](https://frankfurter.dev/)
 - [TourAPI 4.0](https://www.data.go.kr/data/15101578/openapi.do)
 - [TAGO 열차정보](https://www.data.go.kr/tcs/dss/selectApiDataDetailView.do?publicDataPk=15098552)
+
+2026-08-14 재조사에서 추가된 출처:
+
+- [Amadeus Self-Service 포털 종료 보도](https://www.phocuswire.com/amadeus-shut-down-self-service-apis-portal-developers)
+- [ぐるなびAPI 법인 유료 전환](https://solution.gnavi.co.jp/service/gnavi_api/)
+- [Kiwi.com 파트너십 전환](https://media.kiwi.com/articles-and-interviews/better-for-business-kiwi-com-takes-a-new-approach-to-partnerships/)
+- [Google Maps Platform 2025-03 요금 개편](https://developers.google.com/maps/billing-and-pricing/march-2025)
+- [Travelpayouts 데이터 API](https://travelpayouts.github.io/slate/)
+- [ODsay 운영정책 (무료 티어 비상업 한정)](https://lab.odsay.com/doc/totalPolicy)
+- [Open-Meteo 이용약관 (비상업·CC-BY 4.0)](https://open-meteo.com/en/terms)
+- [HotPepper 이용 안내 (크레딧 표시 의무)](https://webservice.recruit.co.jp/doc/hotpepper/guideline.html)
+- [카카오맵 API 무료 쿼터 정책 변경 (2026-07-21)](https://devtalk.kakao.com/t/api-notice-on-new-kakao-map-api-features-and-free-quota-policy/150222)
+- [公共交通オープンデータセンター 데이터 카탈로그](https://ckan.odpt.org/dataset)

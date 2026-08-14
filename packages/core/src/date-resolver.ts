@@ -43,7 +43,8 @@ export interface DateResolverInput {
   /** 탐색 범위(일). 기본 180 */
   horizonDays?: number;
   /**
-   * 출발일 → 항공료. Amadeus `flight.cheapest_date` 결과를 그대로 넣는다.
+   * 출발일 → 항공료. `flight.cheapest_date` 결과를 그대로 넣는다.
+   * 현재 공급자는 Travelpayouts이고 캐시된 최저가라 `estimated`다 (Amadeus는 2026-07-17 종료).
    * 없으면 항공료 가중치를 요일 적합도로 이관한다 (없는 값을 추정하지 않는다).
    */
   flightPrices?: Readonly<Record<string, number>>;

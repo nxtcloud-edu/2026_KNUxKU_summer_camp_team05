@@ -34,7 +34,19 @@ CategoryArbiterAgent
 | `providers/*.ts` | 외부 API 어댑터 | [공급자 정책](../../docs/provider-evidence-policy.md)의 allowlist와 빈 슬롯 준수 |
 | `prefetch.ts` | 후보 탐색 전 캐시 준비 | 성능 최적화로만 유지, 필수 live 검증을 대체하지 않음 |
 
-현재 존재하는 Amadeus·ODsay·TourAPI 어댑터나 fixture 테스트는 새 공급자 구성이 구현됐다는 뜻이 아니다. Google Places, Google Routes, HotPepper, Rakuten Travel, Kakao Maps, Open-Meteo, Frankfurter는 실제 어댑터·키·약관·sandbox 호출을 각각 확인해야 한다.
+### 어댑터 현황 (2026-08-14 재조사 반영)
+
+| 어댑터 | 상태 | 비고 |
+| --- | --- | --- |
+| `rakuten.ts` | 신규 | 일본 숙소. 인원·날짜 조건 검색이라 정원 하드 제약을 실제로 검사한다 |
+| `hotpepper.ts` | 신규 | 일본 식당. 크레딧 표시 의무 |
+| `travelpayouts.ts` | 신규 | 항공 최저가. 캐시가라 `flight.cheapest_date`만 |
+| `kakao.ts` | 신규 | 국내 장소 검색. 오퍼레이션당 100,000건/일 |
+| `tourapi.ts` | KorService2로 이관 | `detailInfo2`로 객실 정원 조회 추가 |
+| `odsay.ts` | 유지 | 무료 티어는 비상업 목적 한정 |
+| `amadeus.ts` | **삭제** | Self-Service 포털이 2026-07-17에 완전 종료 |
+
+어댑터가 존재한다는 것과 실제 키로 검증했다는 것은 다르다. 각 어댑터의 계약 테스트는 응답 형태를 고정한 스텁 위에서 돌며, **실호출 검증은 아직 하지 않았다.** 무료 공급자가 없는 슬롯(항공 좌석·확정 운임, 식당 예약 슬롯, 일본 대중교통, 영업시간)은 `demo.ts`가 가짜임을 드러낸 채 채운다. 상세는 [공급자 정책 1.1·2.1](../../docs/provider-evidence-policy.md)에 있다.
 
 ## 정규화 출력 최소 계약
 

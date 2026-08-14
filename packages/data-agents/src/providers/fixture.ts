@@ -6,7 +6,7 @@ import { ProviderError, type ProviderAdapter, type ProviderResult } from '../pro
  *
  * 외부 API 호출은 mock/fixture 계약 테스트로 기본 검증하고, 실제 호출은 비용 상한이 있는
  * sandbox 또는 nightly 작업으로 분리한다 (README 개발·협업 기준).
- * 실제 어댑터(amadeus, rakuten, odsay …)도 이 인터페이스만 만족하면 된다.
+ * 실제 어댑터(rakuten_travel, hotpepper, odsay …)도 이 인터페이스만 만족하면 된다.
  */
 export interface FixtureConfig {
   id: string;

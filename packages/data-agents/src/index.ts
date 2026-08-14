@@ -42,7 +42,14 @@ export {
   type SearchRequest,
 } from './prefetch.js';
 export { buildUrl, httpJson, isoDurationToMinutes, rawRefOf, requireEnv } from './providers/http.js';
-export { amadeusFromEnv, createAmadeusProvider, type AmadeusConfig } from './providers/amadeus.js';
+export { createHotPepperProvider, hotPepperFromEnv, type HotPepperConfig } from './providers/hotpepper.js';
+export { createKakaoProvider, kakaoFromEnv, type KakaoConfig } from './providers/kakao.js';
 export { createOdsayProvider, odsayFromEnv, type OdsayConfig } from './providers/odsay.js';
+export { createRakutenProvider, rakutenFromEnv, type RakutenConfig } from './providers/rakuten.js';
 export { createTourApiProvider, tourApiFromEnv, type TourApiConfig } from './providers/tourapi.js';
+export {
+  createTravelpayoutsProvider,
+  travelpayoutsFromEnv,
+  type TravelpayoutsConfig,
+} from './providers/travelpayouts.js';
 export { providersFromEnv, type ProviderSetup } from './providers/registry.js';

@@ -24,7 +24,7 @@ export interface ProviderResult<T = unknown> {
 }
 
 export interface ProviderAdapter {
-  /** 'amadeus' | 'rakuten_travel' | 'odsay' … Pack의 providers 배열과 같은 이름 */
+  /** 'rakuten_travel' | 'hotpepper' | 'odsay' … Pack의 providers 배열과 같은 이름 */
   readonly id: string;
   supports(queryClass: QueryClass): boolean;
   fetch(request: DataRequest): Promise<ProviderResult>;

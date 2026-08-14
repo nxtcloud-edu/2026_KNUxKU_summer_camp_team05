@@ -80,15 +80,26 @@
 
 MVP의 기본 공급자는 공개·셀프서비스 범위 안에서 사용합니다. 빈 공급자 슬롯은 사실처럼 메우지 않습니다.
 
+아래는 2026-08-14 재조사 기준으로 **키만 넣으면 도는 어댑터**입니다. 무료·셀프서비스 범위만 씁니다.
+
 | 범위 | 한국 | 일본 |
 | --- | --- | --- |
-| POI·장소 메타데이터 | TourAPI, Google Places | Google Places |
-| 식당 메타데이터 | Google Places, TourAPI | HotPepper, Google Places |
-| 숙소 메타데이터 | TourAPI, Google Places | Rakuten Travel, Google Places |
-| 숙소 날짜별 재고 | 미확보 | Rakuten Travel |
-| 현지 경로 | Kakao Maps, Google Routes | Google Routes 도보·자동차 |
-| 대중교통 | Kakao Maps | 미확보 |
+| POI·장소 메타데이터 | TourAPI, Kakao 로컬 | 미확보 |
+| 식당 메타데이터 | TourAPI, Kakao 로컬 | HotPepper |
+| 숙소 메타데이터 | TourAPI | Rakuten Travel |
+| 숙소 날짜별 재고 | 미확보 (시즌 밴드뿐) | Rakuten Travel |
+| 숙소 객실 정원 | TourAPI `detailInfo2` | Rakuten Travel (인원 조건 검색) |
+| 대중교통 | ODsay | 미확보 |
+| 항공 최저가 | Travelpayouts (캐시가) | Travelpayouts (캐시가) |
+| 항공 좌석·확정 운임 | 미확보 | 미확보 |
+| 식당 예약 슬롯 | 미확보 | 미확보 |
 | 날씨·환율 | Open-Meteo, Frankfurter | Open-Meteo, Frankfurter |
+
+종료·제외된 공급자와 그 근거는 [외부 데이터·검증 정책 2.1](docs/provider-evidence-policy.md)에 있습니다. 요약하면 **Amadeus Self-Service는 2026-07-17에 종료**됐고, ぐるなび 무료 API는 2021년에 끝났으며, NAVITIME은 유료고, Google Places·Routes는 무료 한도가 있어도 결제 계정이 전제입니다.
+
+미확보 슬롯은 발표를 위해 `demo-fixture`가 채웁니다. 후보 id가 `demo_`로 시작하고 이름에 "(데모)"가 붙고 배지가 `estimated`이며 예약 URL이 없으므로 실데이터와 구분됩니다.
+
+무료 티어의 제약 두 가지는 배포 전에 반드시 처리해야 합니다. **Open-Meteo와 ODsay의 무료 티어는 비상업 목적 한정**이고, **HotPepper는 결과 화면에 크레딧 표시가 의무**입니다.
 
 타베로그는 공개 셀프서비스 API가 확인되지 않았고 이용약관상 영리 목적 접근과 리뷰 무단 이용 제한이 있으므로 자동 수집·DB 적재 공급자에서 제외합니다. 사용자가 직접 여는 링크는 참고용일 뿐 검증 근거가 아닙니다. 세부 출처와 공급자별 한계는 [외부 데이터·검증 정책](docs/provider-evidence-policy.md)을 참고하세요.
 
