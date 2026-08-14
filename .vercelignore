@@ -1,0 +1,6 @@
+.mypy_cache
+**/.pytest_cache
+**/__pycache__
+**/*.egg-info
+apps/web/dist
+supabase/.temp

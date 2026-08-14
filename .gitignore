@@ -23,6 +23,7 @@ vite.config.d.ts
 .vscode/
 .idea/
 .vercel/
+.railway/
 .DS_Store
 tmp/
 

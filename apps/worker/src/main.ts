@@ -2,9 +2,8 @@ import { Worker } from 'bullmq';
 import { executionCaps } from '@tm/contracts';
 import { createRepositories, isDatabaseConfigured } from '@tm/db';
 import { jobPayloadSchema, QUEUE_NAME } from './queue.js';
-import { executeRun, sharedLegacyGeminiRuntime } from './run-once.js';
-import { executeCanonicalProductionRun } from './canonical-production-run.js';
-import { alreadyApplied, recordFailure } from './run-recorder.js';
+import { processJobPayload } from './process-job.js';
+import { recordFailure } from './run-recorder.js';
 
 /**
  * Debate Worker — 큐 어댑터.
@@ -31,31 +30,7 @@ const worker = new Worker(
   QUEUE_NAME,
   async (job) => {
     const payload = jobPayloadSchema.parse(job.data);
-
-    // 같은 objectionId로 잡이 두 번 들어와도 실행은 1회다 (objection-and-rerun.md O12).
-    const applied = await alreadyApplied(repos, payload);
-    if (applied !== null) {
-      console.log(`[worker] ${payload.runId} 이미 처리된 이의 — 건너뜁니다`);
-      return { skipped: true, completedRounds: [], fallbackCount: 0 };
-    }
-
-    if (payload.kind === 'full_run') {
-      const result = await executeCanonicalProductionRun(repos, payload);
-      return {
-        skipped: false,
-        canonical: true,
-        executionStatus: result.executionStatus,
-        resultStatus: result.resultStatus,
-      };
-    }
-
-    sharedLegacyGeminiRuntime();
-    const result = await executeRun(repos, payload);
-    return {
-      skipped: false,
-      completedRounds: result.completedRounds,
-      fallbackCount: result.fallbackCount,
-    };
+    return processJobPayload(repos, payload);
   },
   {
     connection: { url: redisUrl },

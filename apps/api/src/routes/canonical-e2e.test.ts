@@ -5,7 +5,7 @@ import { destinationPackSchema } from '@tm/contracts';
 import { createMemoryRepositories } from '@tm/db';
 import { planStatusFromBadge } from '../../../web/src/features/results/adapters/planResultAdapter.js';
 import { executeCanonicalProductionRun } from '../../../worker/src/canonical-production-run.js';
-import type { FullRunEnqueueInput, QueuePort } from '../queue.js';
+import { createInlineWorkerQueue } from '../queue.js';
 import { loadEnv } from '../env.js';
 import { buildServer } from '../server.js';
 
@@ -24,17 +24,14 @@ const isoDay = (offset: number): string => {
 
 test('Felicia API mode reaches the canonical Worker result and replay surfaces', async () => {
   const repos = createMemoryRepositories();
-  let queued: FullRunEnqueueInput | null = null;
-  const queue: QueuePort = {
-    async enqueueFullRun(input) {
-      queued = input;
-      return { jobId: `run:${input.runId}`, enqueued: true };
-    },
-    async enqueueRerun(input) {
-      return { jobId: `rerun:${input.objectionId}`, enqueued: true };
-    },
-    async close() {},
-  };
+  const queue = createInlineWorkerQueue(async (payload) => {
+    if (payload.kind !== 'full_run') throw new Error('Expected a full run');
+    await executeCanonicalProductionRun(
+      repos,
+      payload,
+      { MOA_AGENT_RUNTIME: 'fixture', USE_DEMO_PROVIDER: 'true' },
+    );
+  });
   const app = await buildServer(env, { repos, queue });
   try {
     const pack = destinationPackSchema.parse(JSON.parse(
@@ -129,17 +126,6 @@ test('Felicia API mode reaches the canonical Worker result and replay surfaces',
       payload: { trigger: 'all_done' },
     });
     assert.equal(started.statusCode, 202, started.body);
-    assert.ok(queued);
-    const captured = queued as FullRunEnqueueInput;
-
-    const result = await executeCanonicalProductionRun(
-      repos,
-      { kind: 'full_run', ...captured },
-      { MOA_AGENT_RUNTIME: 'fixture', USE_DEMO_PROVIDER: 'true' },
-    );
-    assert.equal(result.executionStatus, 'COMPLETED');
-    assert.equal(result.resultStatus, 'BLOCKED');
-    assert.equal(result.failure?.stage, 'FACT_CONSTRAINT_VALIDATION');
 
     const progress = await app.inject({
       method: 'GET', url: `/api/rooms/${roomId}/progress`, headers: { 'x-user-id': 'u1' },

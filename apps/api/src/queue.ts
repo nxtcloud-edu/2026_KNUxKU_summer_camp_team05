@@ -1,5 +1,7 @@
 import { Queue } from 'bullmq';
 import type { ObjectionImpact, ObjectionRequest } from '@tm/contracts';
+import { executeServerlessJob } from '@tm/worker/process-job';
+import type { JobPayload } from '@tm/worker/queue';
 
 /**
  * 재실행 잡 producer. 큐 이름과 페이로드는 apps/worker/src/queue.ts 와 같아야 한다.
@@ -19,7 +21,10 @@ export interface EnqueueResult {
   jobId: string;
   /** 실제로 큐에 들어갔는가. false면 이의 상태를 queued로 올리지 않는다 */
   enqueued: boolean;
+  completedInline?: boolean;
 }
+
+type ExecuteJob = (payload: JobPayload) => Promise<unknown>;
 
 export interface FullRunEnqueueInput {
   runId: string;
@@ -103,6 +108,31 @@ export function createQueue(redisUrl: string): QueuePort {
     },
     async close() {
       await queue.close();
+    },
+  };
+}
+
+export function createInlineWorkerQueue(execute: ExecuteJob = executeServerlessJob): QueuePort {
+  return {
+    async enqueueRerun(input) {
+      const jobId = `rerun:${input.objectionId}`;
+      await execute({
+        kind: 'rerun_from_objection',
+        roomId: input.request.roomId,
+        runId: input.runId,
+        objectionId: input.objectionId,
+        rerunRounds: input.impact.rerunRounds,
+        instruction: buildInstruction(input.request, input.failClosedRecheck),
+        failClosedRecheck: input.failClosedRecheck,
+      });
+      return { jobId, enqueued: true, completedInline: true };
+    },
+    async enqueueFullRun(input) {
+      const jobId = `run:${input.runId}`;
+      await execute({ kind: 'full_run', ...input });
+      return { jobId, enqueued: true, completedInline: true };
+    },
+    async close() {
     },
   };
 }

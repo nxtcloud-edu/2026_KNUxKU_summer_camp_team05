@@ -187,11 +187,11 @@ export async function registerRoomRoutes(
     }
 
     const runId = `run_${roomId}_${Date.now().toString(36)}`;
-    const { jobId, enqueued } = await queue.enqueueFullRun({ runId, roomId, trigger });
+    const { jobId, enqueued, completedInline } = await queue.enqueueFullRun({ runId, roomId, trigger });
 
     // 큐에 실제로 들어갔을 때만 QUEUED로 올린다. 실행되지 않은 방을 대기 중으로
     // 표시하면 사용자는 오지 않을 결과를 기다린다.
-    if (enqueued) await repos.rooms.updateStatus(roomId, 'QUEUED');
+    if (enqueued && completedInline !== true) await repos.rooms.updateStatus(roomId, 'QUEUED');
 
     app.log.info({ roomId, runId, jobId, enqueued, trigger }, enqueued ? 'run queued' : 'run not queued');
 

@@ -10,6 +10,9 @@
     "apps/*",
     "packages/*"
   ],
+  "dependencies": {
+    "fastify": "5.1.0"
+  },
   "scripts": {
     "dev": "npm run dev --workspace @tm/web",
     "dev:web": "npm run dev --workspace @tm/web",

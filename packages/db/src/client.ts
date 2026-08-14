@@ -15,7 +15,11 @@ export function getPool(databaseUrl = process.env['DATABASE_URL']): Pool {
   if (databaseUrl === undefined || databaseUrl.length === 0) {
     throw new Error('DATABASE_URL이 설정되지 않았습니다');
   }
-  pool ??= new Pool({ connectionString: databaseUrl, max: 10 });
+  const caBase64 = process.env['DATABASE_CA_CERT_BASE64'];
+  const ssl = caBase64 === undefined
+    ? undefined
+    : { ca: Buffer.from(caBase64, 'base64').toString('utf8'), rejectUnauthorized: true };
+  pool ??= new Pool({ connectionString: databaseUrl, max: 10, ssl });
   return pool;
 }
 

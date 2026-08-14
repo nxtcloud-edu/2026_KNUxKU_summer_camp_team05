@@ -12,6 +12,7 @@ import { currentUserId } from './routes/session.js';
 import { createNoopQueue, createQueue, type QueuePort } from './queue.js';
 
 export interface ServerDeps {
+  app?: FastifyInstance;
   repos?: Repositories;
   queue?: QueuePort;
 }
@@ -20,7 +21,7 @@ export async function buildServer(
   env: Env = loadEnv(),
   deps: ServerDeps = {},
 ): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: env.LOG_LEVEL } });
+  const app = deps.app ?? Fastify({ logger: { level: env.LOG_LEVEL } });
 
   const repos = deps.repos ?? createRepositories(env.DATABASE_URL);
   // 폴백을 조용히 하지 않는다. 인메모리로 돌고 있다는 사실이 로그에 남아야 한다.
