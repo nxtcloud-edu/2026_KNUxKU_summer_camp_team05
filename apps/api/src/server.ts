@@ -50,13 +50,15 @@ export async function buildServer(
     }
   });
 
-  app.get('/health', async () => ({
+  const health = async () => ({
     status: 'ok',
     env: env.NODE_ENV,
     storage: repos.kind,
     database: isDatabaseConfigured(env.DATABASE_URL),
     queue: env.ENABLE_QUEUE,
-  }));
+  });
+  app.get('/health', health);
+  app.get('/api/health', health);
 
   // 세션이 먼저다. onRequest 훅이 모든 라우트보다 앞서 userId를 채운다.
   await registerSession(app, env);

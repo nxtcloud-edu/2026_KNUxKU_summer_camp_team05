@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "types": ["node"],
+    "verbatimModuleSyntax": false
+  },
+  "include": ["server.ts", "api/**/*.ts"]
+}

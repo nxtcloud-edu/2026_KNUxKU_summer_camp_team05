@@ -1,1 +1,10 @@
-{}
+{
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 300
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api?__path=$1" }
+  ]
+}
