@@ -102,73 +102,19 @@ export const meetingRounds = [
   { code: 'R6', name: '예산', state: '대기' },
 ]
 
-export const itineraryDays = [
-  { day: 'DAY 1', title: '도착과 도톤보리', walk: '3.2km', travel: '78분', items: [['14:20', '간사이공항 도착', 'KE723'], ['16:00', '난바 이동', '라피트 특급 · ¥1,490'], ['17:00', '난바 호텔 체크인', 'H-03 · 3박'], ['19:00', '이자카야 B', '예약 필요 · 10/1까지'], ['21:00', '도톤보리 야경 산책', '자유롭게 1시간']] },
-  { day: 'DAY 2', title: '시장과 온천의 하루', walk: '4.0km', travel: '42분', items: [['09:30', '구로몬 시장', '아침 겸 먹거리 투어'], ['12:30', '오사카성 공원', '천수각은 선택 관람'], ['15:30', '스파월드 온천', '지훈 최우선 취향 반영'], ['19:00', '신세카이 쿠시카츠', '웨이팅 약 20분']] },
-  { day: 'DAY 3', title: '교토의 오래된 골목', walk: '5.1km', travel: '96분', items: [['08:30', '교토 이동', '한큐선 · ¥410'], ['10:00', '기요미즈데라', '오전 혼잡 피하기'], ['13:00', '니시키 시장', '점심 자유 선택'], ['15:30', '기온 산책', '짐은 호텔 보관'], ['19:30', '난바 복귀', '저녁 자유시간']] },
-  { day: 'DAY 4', title: '카페와 아쉬운 작별', walk: '2.4km', travel: '64분', items: [['09:30', '난바 카페', '서연 선호 반영'], ['11:00', '체크아웃', '짐 보관 서비스'], ['12:00', '다코야키 투어', '후보 3곳 중 현장 선택'], ['15:00', '간사이공항 이동', '라피트 특급'], ['18:10', '서울행 출발', 'KE724']] },
-]
-
-export const replayMessages = [
-  { round: 0, type: 'agent', speaker: '민지의 대리인', text: '숙소보다 음식과 경험에 예산을 조금 더 쓰고 싶어요.' },
-  { round: 0, type: 'agent', speaker: '수아의 대리인', text: '일정이 너무 빡빡하거나 숙소를 옮기는 계획은 피하고 싶어요.' },
-  { round: 0, type: 'conflict', speaker: '여기서 의견이 갈렸어요', text: '민지는 경험에, 서연은 숙소 위치와 품질에 돈을 더 쓰고 싶어 해요.' },
-  { round: 1, type: 'fact', speaker: '교통 심판', text: '6명이 움직일 때는 라피트 패스가 택시를 나눠 타는 것보다 1인당 약 2만 원 저렴해요.' },
-  { round: 1, type: 'verdict', speaker: '교통 심판의 결론', text: '공항에서는 라피트 특급, 시내에서는 대중교통을 타기로 했어요.' },
-  { round: 2, type: 'agent', speaker: '민지의 대리인', text: '숙소보다 맛집에 더 쓰고 싶어요.' },
-  { round: 2, type: 'agent', speaker: '서연의 대리인', text: '저는 위치가 더 중요해요.' },
-  { round: 2, type: 'agent', speaker: '지훈의 대리인', text: '저도 위치는 포기하기 어려워요.' },
-  { round: 2, type: 'conflict', speaker: '여기서 의견이 갈렸어요', text: '서연은 좋은 위치를, 민지는 숙소비를 아끼는 쪽을 더 중요하게 봐요.' },
-  { round: 2, type: 'fact', speaker: '숙소 심판', text: 'H-03은 6명이 함께 묵을 수 있고, 난바역에서 걸어서 7분이에요. 총 숙박비는 126만 원이에요.' },
-  { round: 2, type: 'agent', speaker: '민지의 대리인', text: '7분이면 괜찮네요. 대신 식사 예산은 줄이지 않았으면 좋겠어요.' },
-  { round: 2, type: 'agent', speaker: '서연의 대리인', text: '그럼 H-03으로 괜찮아요.' },
-  { round: 2, type: 'verdict', speaker: '숙소 심판의 결론', text: '숙소는 옮기지 않고 난바 H-03에서 3박하기로 했어요.' },
-  { round: 2, type: 'chief', speaker: 'Chief가 다시 봤어요', text: '수아가 진짜 안 된다고 한 숙소 이동과 모두의 예산을 다시 확인했어요. 결론은 그대로예요.' },
-  { round: 3, type: 'agent', speaker: '민재의 대리인', text: '여행 중 강한 액티비티가 하나는 꼭 필요해요. 유니버설도 고려해 주세요.' },
-  { round: 3, type: 'fact', speaker: '액티비티 심판', text: '유니버설은 3명에게는 좋지만, 수아와 지훈이 원하는 느긋한 속도와는 많이 달라요.' },
-  { round: 3, type: 'verdict', speaker: '액티비티 심판의 결론', text: '유니버설 대신 스파월드와 교토 당일치기를 넣기로 했어요.' },
-  { round: 4, type: 'verdict', speaker: '식사 심판의 결론', text: '민지와 예린의 맛집 취향, 지훈의 이자카야 취향을 함께 챙겨 이자카야 B로 정했어요.' },
-  { round: 5, type: 'chief', speaker: 'Chief가 다시 봤어요', text: '숙소는 옮기지 않고, 난바에서 오가는 동선으로 바꿨어요. 자유시간도 한 번 더 넣었어요.' },
-  { round: 6, type: 'fact', speaker: '예산 심판', text: '예상 비용은 1인 78만 원이에요. 누구의 최대 예산도 넘지 않아요.' },
-  { round: 6, type: 'verdict', speaker: '마지막 결론', text: '평균 7.7점, 가장 낮은 점수도 7.2점이에요. 이 계획으로 가기로 했어요.' },
-]
-
-export type ReservationItem = {
-  id: string
-  type: '항공' | '숙소' | '식당' | '티켓'
-  name: string
-  price: string
-  status: '완료' | '예약 필요' | '현장 구매'
-  verification: '확인 완료' | '확인 필요'
-  deadline: string
-  owner: string
-  externalUrl: string
-}
-
-export const reservations: ReservationItem[] = [
-  { id:'flight', type:'항공', name:'대한항공 KE723 / KE724', price:'₩310,000', status:'완료', verification:'확인 완료', deadline:'예약 완료', owner:'민지', externalUrl:'https://example.com/moa/flights' },
-  { id:'hotel', type:'숙소', name:'난바 호텔 H-03', price:'₩210,000', status:'예약 필요', verification:'확인 완료', deadline:'10월 1일까지', owner:'서연', externalUrl:'https://example.com/moa/hotel-h03' },
-  { id:'restaurant', type:'식당', name:'이자카야 B', price:'약 ₩38,000', status:'예약 필요', verification:'확인 필요', deadline:'10월 1일까지', owner:'지훈', externalUrl:'https://example.com/moa/izakaya-b' },
-  { id:'ticket', type:'티켓', name:'스파월드 온천', price:'약 ₩18,000', status:'현장 구매', verification:'확인 완료', deadline:'출발 전 확인', owner:'예린', externalUrl:'https://example.com/moa/spaworld' },
-]
-
-export const bookingChecklistItems = [
-  { id:'book-flight', label:'항공권 예약', reservationId:'flight', defaultDone:true },
-  { id:'book-hotel', label:'난바 호텔 예약', reservationId:'hotel', defaultDone:false },
-  { id:'book-restaurant', label:'이자카야 B 예약', reservationId:'restaurant', defaultDone:false },
-  { id:'buy-ticket', label:'스파월드 티켓 확인', reservationId:'ticket', defaultDone:false },
-  { id:'confirm-allergy', label:'갑각류 알레르기 대응 확인', reservationId:'restaurant', defaultDone:false },
+export const replayEpisodes = [
+  { redCorner: '여유 · 휴식', blueCorner: '경험 · 방문', conversation: [{ side: 'red', speaker: '민지의 대리인', text: '일정을 너무 빡빡하게 잡고 싶지 않아요.' }, { side: 'blue', speaker: '서연의 대리인', text: '짧아도 오사카를 많이 보고 싶어요.' }, { side: 'red', speaker: '지훈의 대리인', text: '저도 하루에 여유가 있었으면 해요.' }, { side: 'blue', speaker: '예린의 대리인', text: '핵심 장소는 놓치고 싶지 않아요.' }, { side: 'red', speaker: '수아의 대리인', text: '자유시간은 꼭 남겨주세요.' }] as const, score: '3 : 2', factTitle: '하루 3곳 일정', facts: ['평균 이동 54분', '자유시간 90분', '6명 모두 가능'], compromise: ['이 정도 여유면 괜찮아요.', '좋아요. 핵심 장소는 지켜주세요.'], resultTitle: '하루 3곳 일정', resultCopy: '핵심 장소는 챙기되\n매일 자유시간을 남기기로 했어요.', concession: '지훈이 방문 수에서 한 번 양보했어요.' },
+  { redCorner: '택시 · 편의', blueCorner: '패스 · 예산', conversation: [{ side: 'red', speaker: '민지의 대리인', text: '공항에서는 편하게 택시를 타고 싶어요.' }, { side: 'blue', speaker: '서연의 대리인', text: '교통비는 최대한 아끼고 싶어요.' }, { side: 'blue', speaker: '지훈의 대리인', text: '저도 예산을 아끼는 쪽이 좋아요.' }, { side: 'red', speaker: '예린의 대리인', text: '짐이 많아서 환승은 부담스러워요.' }, { side: 'blue', speaker: '수아의 대리인', text: '빠른 열차면 충분히 편할 것 같아요.' }] as const, score: '2 : 4', factTitle: '라피트 특급', facts: ['택시보다 -20,000원 / 인', '난바까지 38분', '6명 좌석 가능'], compromise: ['38분이면 충분히 편하네요.', '시내에서는 패스를 쓰면 좋아요.'], resultTitle: '라피트 + 대중교통', resultCopy: '공항에서는 라피트를 타고\n시내에서는 대중교통을 쓰기로 했어요.', concession: '민재가 이동 편의에서 한 번 양보했어요.' },
+  { redCorner: '맛집 · 경험', blueCorner: '위치 · 이동', conversation: [{ side: 'red', speaker: '민지의 대리인', text: '맛집에 더 쓰고 싶어요.' }, { side: 'blue', speaker: '서연의 대리인', text: '이동시간은 줄이고 싶어요.' }, { side: 'blue', speaker: '지훈의 대리인', text: '저도 위치는 포기하기 어려워요.' }, { side: 'red', speaker: '예린의 대리인', text: '여행에서는 먹는 경험이 더 중요해요.' }, { side: 'blue', speaker: '수아의 대리인', text: '매일 멀리 이동하는 건 힘들 것 같아요.' }] as const, score: '2 : 3', factTitle: '난바역 3분 호텔', facts: ['+28,000원 / 인', '이동시간 -64분', '6인 가능'], compromise: ['7분이면 괜찮네요.\n대신 식사 예산은 유지했으면 좋겠어요.', '좋아요.'], resultTitle: '난바역 3분 호텔', resultCopy: '숙소 위치를 우선하되\n식사 예산은 유지하기로 했어요.', concession: '민지가 이번 라운드에서 한 번 양보했어요.' },
+  { redCorner: '강한 경험', blueCorner: '느긋한 일정', conversation: [{ side: 'red', speaker: '민지의 대리인', text: '강한 액티비티가 하나는 꼭 필요해요.' }, { side: 'blue', speaker: '서연의 대리인', text: '하루 종일 줄 서는 건 피하고 싶어요.' }, { side: 'blue', speaker: '지훈의 대리인', text: '저도 이동이 너무 많으면 힘들어요.' }, { side: 'red', speaker: '예린의 대리인', text: '기억에 남을 경험은 하나 넣어요.' }, { side: 'blue', speaker: '수아의 대리인', text: '쉬는 시간도 충분히 필요해요.' }] as const, score: '2 : 3', factTitle: '스파월드 + 교토', facts: ['대기시간 -110분', '만족 조건 5명 충족', '예산 범위 내'], compromise: ['스파월드가 있으면 괜찮아요.', '교토 일정도 여유 있게 가요.'], resultTitle: '스파월드 + 교토', resultCopy: '강한 경험 하나를 남기고\n나머지는 느긋하게 구성했어요.', concession: '민재가 유니버설에서 한 번 양보했어요.' },
+  { redCorner: '로컬 맛집', blueCorner: '검증 · 예약', conversation: [{ side: 'red', speaker: '민지의 대리인', text: '현지인 맛집을 꼭 가보고 싶어요.' }, { side: 'blue', speaker: '서연의 대리인', text: '6명이 바로 앉을 수 있어야 해요.' }, { side: 'blue', speaker: '지훈의 대리인', text: '웨이팅이 짧은 곳이면 좋겠어요.' }, { side: 'red', speaker: '예린의 대리인', text: '관광객 식당은 피하고 싶어요.' }, { side: 'blue', speaker: '수아의 대리인', text: '예약 가능한 곳이 안전해요.' }] as const, score: '3 : 2', factTitle: '이자카야 B', facts: ['6인 예약 가능', '1인 ₩32,000', '숙소 도보 8분'], compromise: ['예약할 수 있으면 좋아요.', '도보 8분도 괜찮아요.'], resultTitle: '이자카야 B', resultCopy: '로컬 분위기는 살리고\n6인 예약 가능한 곳으로 정했어요.', concession: '서연이 식당 분위기에서 한 번 양보했어요.' },
+  { redCorner: '많이 보기', blueCorner: '이동 최소', conversation: [{ side: 'red', speaker: '민지의 대리인', text: '교토까지 하루에 같이 보고 싶어요.' }, { side: 'blue', speaker: '서연의 대리인', text: '숙소를 옮기는 일정은 싫어요.' }, { side: 'blue', speaker: '지훈의 대리인', text: '저도 짐을 다시 싸는 건 싫어요.' }, { side: 'red', speaker: '예린의 대리인', text: '온 김에 최대한 많이 보고 싶어요.' }, { side: 'blue', speaker: '수아의 대리인', text: '한 숙소에서 이동하는 게 편해요.' }] as const, score: '2 : 4', factTitle: '난바 고정 동선', facts: ['숙소 이동 0회', '짐 보관 가능', '총 이동 -42분'], compromise: ['숙소를 안 옮기면 괜찮아요.', '자유시간도 남겨주세요.'], resultTitle: '난바 숙소 유지', resultCopy: '난바에서 오가는 동선으로 바꾸고\n자유시간을 한 번 더 넣었어요.', concession: '예린이 방문 수에서 한 번 양보했어요.' },
+  { redCorner: '경험 예산', blueCorner: '전체 절약', conversation: [{ side: 'red', speaker: '민지의 대리인', text: '먹고 즐기는 예산은 지키고 싶어요.' }, { side: 'blue', speaker: '서연의 대리인', text: '1인 80만원은 넘기기 어려워요.' }, { side: 'blue', speaker: '지훈의 대리인', text: '예비비도 조금은 남겨두고 싶어요.' }, { side: 'red', speaker: '예린의 대리인', text: '기억에 남는 경험은 포기하지 말아요.' }, { side: 'blue', speaker: '수아의 대리인', text: '공동경비까지 포함해서 계산해요.' }] as const, score: '3 : 3', factTitle: '1인 예상 ₩780,000', facts: ['전원 최대 예산 충족', '공동경비 포함', '예비비 ₩40,000'], compromise: ['식사 예산이 유지되면 좋아요.', '80만원 아래면 괜찮아요.'], resultTitle: '1인 ₩780,000', resultCopy: '모두의 최대 예산 안에서\n식사와 경험 예산을 지켰어요.', concession: '전원이 한 가지씩 조정했어요.' },
 ] as const
 
-export const budget = [
-  ['항공', 310000], ['숙소', 210000], ['식비', 140000], ['교통', 60000], ['액티비티', 60000], ['예비비', 50000],
-]
+export type ReplayEpisode = typeof replayEpisodes[number]
 
-export const planReadiness = {
-  state: 'VERIFIED' as const,
-  label: '확인 완료',
-  explanation: '핵심 조건과 일정, 주요 예약 정보를 확인했어요.',
-}
+export const replaySceneDurations = [2400, 4200, 11000, 7200, 5600, 5600, 2800]
 
 export type MockTrip = {
   id: string
@@ -206,36 +152,3 @@ export const mockDateResolution = {
     { id:'deadline', label:'OPTION C', change:'친구들이 가능 날짜를 다시 입력할 수 있게 마감 시간을 늘려요.', action:'extend' as const },
   ],
 }
-
-export type DecisionCandidate = {
-  id: string
-  name: string
-  price: string
-  detail: string
-  groupFit: number
-}
-
-export type DecisionRound = {
-  id: 'R0' | 'R1' | 'R2' | 'R3' | 'R4' | 'R5' | 'R6'
-  name: string
-  summary: string
-  candidates: DecisionCandidate[]
-  positions: string[]
-  factCheck: string
-  winnerId: string
-  runnerUpId: string
-  reasons: string[]
-  minimumSatisfaction: number
-  constraints: string[]
-  uncertainty?: string
-}
-
-export const decisionRounds: DecisionRound[] = [
-  { id:'R0', name:'날짜 · 여행 방향', summary:'가장 많은 인원이 함께하고 3박을 유지하는 안을 비교했어요.', candidates:[{id:'D-01',name:'10월 15일 — 18일',price:'3박 4일',detail:'6명 모두 가능',groupFit:8.4},{id:'D-02',name:'11월 5일 — 7일',price:'2박 3일',detail:'일정은 짧지만 휴가 부담이 적음',groupFit:7.6}], positions:['민지 · 예린: 3박 유지','지훈 · 수아: 휴가 최소화'], factCheck:'최종 응답 기준으로 D-01은 전원 참석과 3박 조건을 함께 충족해요.', winnerId:'D-01',runnerUpId:'D-02',reasons:['전원이 참석할 수 있어요.','선호한 3박 일정을 유지해요.','항공 가격도 예산 범위예요.'],minimumSatisfaction:7.3,constraints:['전원 참석','최소 2박'],uncertainty:'항공 가격은 예약 시 달라질 수 있어요.' },
-  { id:'R1', name:'교통', summary:'공항 이동과 시내 이동을 비용·시간으로 비교했어요.', candidates:[{id:'T-01',name:'라피트 + 대중교통',price:'₩60,000 / 인',detail:'공항 38분 · 시내 이동 안정적',groupFit:8.1},{id:'T-02',name:'택시 분할 이용',price:'₩82,000 / 인',detail:'짐 이동 편함 · 교통 상황 영향',groupFit:7.4}],positions:['지훈: 비용 우선','서연 · 수아: 짐 이동 편의'],factCheck:'6명이 이동하면 라피트 조합이 1인당 약 2만 원 저렴해요.',winnerId:'T-01',runnerUpId:'T-02',reasons:['전체 교통 예산을 지켜요.','공항 이동시간 변동이 적어요.','난바 숙소와 바로 연결돼요.'],minimumSatisfaction:7.2,constraints:['총예산 상한'],uncertainty:'막차 시간은 출발 전에 다시 확인해야 해요.'},
-  { id:'R2', name:'숙소', summary:'위치와 가격이 다른 난바 숙소 두 곳을 비교했어요.',candidates:[{id:'H-03',name:'난바 호텔 H-03',price:'₩210,000 / 인',detail:'난바역 7분 · 6인 가능',groupFit:8.2},{id:'H-07',name:'난바 호텔 H-07',price:'₩180,000 / 인',detail:'난바역 15분 · 6인 가능',groupFit:7.6}],positions:['민지 · 예린: 식사 예산 우선','서연 · 지훈 · 수아: 숙소 위치 우선'],factCheck:'두 곳 모두 예산 안이지만 H-03은 매일 이동시간을 총 64분 줄여요.',winnerId:'H-03',runnerUpId:'H-07',reasons:['최저 만족도가 더 높아요.','야간 일정 후 이동이 편해요.','모두의 예산 안이에요.'],minimumSatisfaction:7.4,constraints:['6인 숙박','도미토리 제외','숙소 이동 없음'],uncertainty:'무료 취소 기한은 예약 페이지에서 확인해야 해요.'},
-  { id:'R3', name:'액티비티', summary:'강한 체험과 느긋한 휴식을 함께 넣을 방법을 비교했어요.',candidates:[{id:'A-02',name:'스파월드 + 교토',price:'₩52,000 / 인',detail:'휴식과 문화 일정 조합',groupFit:8.0},{id:'A-05',name:'유니버설 스튜디오',price:'₩89,000 / 인',detail:'하루 종일 테마파크',groupFit:7.1}],positions:['민재 · 예린: 유니버설','수아 · 지훈: 느긋한 일정'],factCheck:'유니버설은 두 명의 체력 선호와 예산 여유를 크게 낮춰요.',winnerId:'A-02',runnerUpId:'A-05',reasons:['활동 강도 차이를 줄여요.','예산 여유가 남아요.','문화와 휴식을 모두 반영해요.'],minimumSatisfaction:7.2,constraints:['장시간 대기 최소화'],uncertainty:'스파월드 운영시간은 방문 전 확인해야 해요.'},
-  { id:'R4', name:'식사', summary:'현지 분위기와 알레르기 대응 가능성을 함께 비교했어요.',candidates:[{id:'F-02',name:'이자카야 B',price:'₩38,000 / 인',detail:'6인석 문의 가능 · 해산물 제외 메뉴',groupFit:8.3},{id:'F-06',name:'오마카세 C',price:'₩82,000 / 인',detail:'예약금 필요 · 메뉴 변경 제한',groupFit:7.0}],positions:['민지 · 예린: 로컬 음식','수아: 알레르기 대응 우선'],factCheck:'이자카야 B는 갑각류 제외 주문이 가능하지만 6인석은 아직 미확정이에요.',winnerId:'F-02',runnerUpId:'F-06',reasons:['음식 취향을 가장 넓게 반영해요.','예산을 지켜요.','알레르기 대응 문의가 가능해요.'],minimumSatisfaction:7.5,constraints:['갑각류 제외'],uncertainty:'6인 예약 가능 여부를 직접 확인해야 해요.'},
-  { id:'R5', name:'동선', summary:'숙소를 옮길지 난바에서 매일 이동할지 비교했어요.',candidates:[{id:'S-01',name:'난바 중심 방사형',price:'이동 280분',detail:'한 숙소 유지 · 짐 이동 없음',groupFit:8.1},{id:'S-04',name:'오사카 + 교토 숙소 이동',price:'이동 238분',detail:'이동은 짧지만 체크인 2회',groupFit:7.2}],positions:['수아: 숙소 이동 불가','민재: 교토 체류 선호'],factCheck:'숙소를 옮기면 이동은 42분 줄지만 짐 이동과 체크인이 추가돼요.',winnerId:'S-01',runnerUpId:'S-04',reasons:['숙소 이동 불가 조건을 지켜요.','짐 보관이 쉬워요.','자유시간을 유지할 수 있어요.'],minimumSatisfaction:7.3,constraints:['숙소 이동 없음'],uncertainty:'교토 당일 교통 혼잡에 따라 복귀 시간이 달라질 수 있어요.'},
-  { id:'R6', name:'예산', summary:'앞선 결정을 모두 합쳐 개인별 최대 예산과 비교했어요.',candidates:[{id:'B-01',name:'현재 계획',price:'₩830,000 / 인',detail:'식사 예산 유지 · 예비비 5만원 포함',groupFit:8.0},{id:'B-03',name:'절약 계획',price:'₩762,000 / 인',detail:'숙소·식사 등급 조정 · 예비비 포함',groupFit:7.3}],positions:['민지: 식사 예산 유지','지훈: 총액 절감'],factCheck:'예비비를 포함한 현재 계획도 전원의 예산 상한 아래이고 최저 만족도도 7점 이상이에요.',winnerId:'B-01',runnerUpId:'B-03',reasons:['모든 개인 예산을 지켜요.','핵심 식사 경험을 유지해요.','가격 변동용 예비비를 남겨요.'],minimumSatisfaction:7.2,constraints:['개인별 예산 상한'],uncertainty:'항공·숙소 가격은 실제 예약 시 바뀔 수 있어요.'},
-]
