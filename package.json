@@ -14,6 +14,7 @@
     "fastify": "5.1.0"
   },
   "scripts": {
+    "build:vercel-api": "node scripts/build-vercel-api.mjs",
     "dev": "npm run dev --workspace @tm/web",
     "dev:web": "npm run dev --workspace @tm/web",
     "build": "npm run build --workspaces --if-present",
@@ -26,6 +27,7 @@
     "local:logs": "docker compose logs -f"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "tsx": "4.19.1",
     "typescript": "~5.8.3"
   }

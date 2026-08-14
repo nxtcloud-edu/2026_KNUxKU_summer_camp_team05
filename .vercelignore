@@ -4,3 +4,4 @@
 **/*.egg-info
 apps/web/dist
 supabase/.temp
+api/index.ts

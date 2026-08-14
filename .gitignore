@@ -26,6 +26,8 @@ vite.config.d.ts
 .railway/
 .DS_Store
 tmp/
+api/index.mjs
+api/index.mjs.map
 
 # Retired prototype artwork
 /495d543e-2ea9-4062-bace-9f9ac0ea8605.png
