@@ -1,4 +1,5 @@
 import { planDocumentSchema, type PlanDocument } from '@tm/contracts';
+import { resolveDates } from '@tm/core';
 import type { Repositories } from '@tm/db';
 import type {
   CanonicalLiveRunInput,
@@ -28,12 +29,33 @@ function canonicalResultFromReport(value: unknown): CanonicalLiveRunResult | nul
   return storedResult((value as Record<string, unknown>)['canonical']);
 }
 
-function planDocumentOf(result: CanonicalLiveRunResult): PlanDocument {
+function confirmedDateRangeOf(
+  input: CanonicalLiveRunInput | undefined,
+): { start: string; end: string } | null {
+  if (input === undefined) return null;
+
+  const resolution = resolveDates(input.dateResolverInput);
+  if (input.dateChoice !== undefined) {
+    const chosen = resolution.windows.find(
+      (window) => window.start === input.dateChoice?.start && window.end === input.dateChoice.end,
+    );
+    return chosen === undefined ? null : { start: chosen.start, end: chosen.end };
+  }
+
+  return resolution.status === 'confirmed' && resolution.chosen !== null
+    ? { start: resolution.chosen.start, end: resolution.chosen.end }
+    : null;
+}
+
+function planDocumentOf(
+  result: CanonicalLiveRunResult,
+  input?: CanonicalLiveRunInput,
+): PlanDocument {
   const artifacts = result.artifacts;
   if (artifacts === null) {
     return planDocumentSchema.parse({
       headline: result.failure?.message ?? '안전하게 확정할 수 있는 숙소 결과가 없습니다.',
-      dateRange: null,
+      dateRange: confirmedDateRangeOf(input),
       days: [],
       budget: {
         declaredTotalPerPersonKrw: 0,
@@ -159,7 +181,7 @@ export function createCanonicalRunPersistence(
       const itinerary = await repos.itineraries.save({
         roomId,
         runId: result.runId,
-        plan: planDocumentOf(result),
+        plan: planDocumentOf(result, input),
         validationReport: {
           canonical: { kind: RECORD_KIND, result } satisfies StoredCanonicalResult,
           canonicalResultStatus: result.resultStatus,

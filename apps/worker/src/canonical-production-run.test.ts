@@ -58,6 +58,8 @@ test('기본 full_run이 B1/B2/B4 canonical 경로를 사용하고 미검증 근
     assert.equal(result.failure?.stage, 'FACT_CONSTRAINT_VALIDATION');
     assert.equal(run?.status, 'COMPLETED');
     assert.ok(planDocumentSchema.safeParse(itinerary?.plan).success);
+    const plan = planDocumentSchema.parse(itinerary?.plan);
+    assert.deepEqual(plan.dateRange, { start: '2026-10-16', end: '2026-10-19' });
     assert.equal(itinerary?.publishedAt, null);
   } finally {
     await repos.close();
