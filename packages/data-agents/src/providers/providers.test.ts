@@ -370,6 +370,113 @@ test('라쿠텐: 날짜가 없으면 오늘로 채우지 않고 거절한다', a
   );
 });
 
+test('라쿠텐: 중립 어휘만 줘도 자기 방언으로 번역해 호출한다', async () => {
+  const stub = stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
+
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
+  await provider.fetch(
+    request({
+      queryClass: 'hotel.search',
+      roundId: 'r_2',
+      // 조달 계획이 아는 단어는 이것뿐이다. `adultNum`·`checkinDate`는 여기 없다.
+      params: {
+        checkIn: '2026-10-16',
+        checkOut: '2026-10-19',
+        guests: 3,
+        rooms: 1,
+        latitude: 34.6659,
+        longitude: 135.5017,
+        radiusKm: 2,
+        limit: 5,
+      },
+    }),
+  );
+
+  const url = new URL(stub.calls[0] ?? '');
+  assert.equal(url.searchParams.get('checkinDate'), '2026-10-16');
+  assert.equal(url.searchParams.get('checkoutDate'), '2026-10-19');
+  assert.equal(url.searchParams.get('adultNum'), '3');
+  assert.equal(url.searchParams.get('roomNum'), '1');
+  assert.equal(url.searchParams.get('searchRadius'), '2');
+  assert.equal(url.searchParams.get('hits'), '5');
+});
+
+test('라쿠텐: 중립 이름과 방언이 둘 다 오면 중립 값이 이긴다', async () => {
+  const stub = stubFetch([{ match: 'VacantHotelSearch', body: { hotels: [rakutenHotel] } }]);
+
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
+  await provider.fetch(
+    request({
+      queryClass: 'hotel.search',
+      roundId: 'r_2',
+      params: { ...rakutenParams, guests: 3, adultNum: 2 },
+    }),
+  );
+
+  // 인원이 갈리면 3인이 묵을 수 없는 방이 후보로 올라온다. 우선순위를 흔들지 않는다.
+  assert.equal(new URL(stub.calls[0] ?? '').searchParams.get('adultNum'), '3');
+});
+
+// ── 자격증명 유출 차단 ───────────────────────────────────────────────────────
+
+/**
+ * 제공자 오류 메시지는 여기서 끝나지 않는다. 게이트웨이가 `fallbackReason`으로
+ * `request_log`에 적고 프리페치 보고서에도 실린다 — 한 번 새면 로그에 영구히 남는다.
+ */
+const SECRET_APP_ID = 'super-secret-application-id';
+const SECRET_ACCESS_KEY = 'super-secret-access-key';
+
+test('제공자가 되돌려준 본문에 우리 키가 섞여 와도 오류 메시지에 남기지 않는다', async () => {
+  stubFetch([
+    {
+      match: 'VacantHotelSearch',
+      status: 500,
+      body: {
+        error: 'internal',
+        // 실제로 요청 쿼리를 그대로 되돌려주는 제공자가 있다.
+        request: `applicationId=${SECRET_APP_ID}&accessKey=${SECRET_ACCESS_KEY}`,
+      },
+    },
+  ]);
+
+  const provider = createRakutenProvider({
+    applicationId: SECRET_APP_ID,
+    accessKey: SECRET_ACCESS_KEY,
+  });
+  await assert.rejects(
+    provider.fetch(request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams })),
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderError);
+      assert.doesNotMatch(error.message, /super-secret/, 'API Key가 오류 메시지에 남았다');
+      assert.doesNotMatch(error.reason, /super-secret/);
+      // 무엇이 실패했는지는 여전히 알 수 있어야 한다.
+      assert.match(error.reason, /HTTP 500/);
+      return true;
+    },
+  );
+});
+
+test('네트워크 오류 메시지에 섞여 들어온 요청 URL의 키도 지운다', async () => {
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    // Node의 fetch는 실패 원인에 요청 URL을 함께 담는 경우가 있다.
+    throw new TypeError(`fetch failed: ${String(input)}`);
+  }) as typeof fetch;
+
+  const provider = createRakutenProvider({
+    applicationId: SECRET_APP_ID,
+    accessKey: SECRET_ACCESS_KEY,
+  });
+  await assert.rejects(
+    provider.fetch(request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams })),
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderError);
+      assert.doesNotMatch(error.message, /super-secret/, 'URL의 API Key가 그대로 노출됐다');
+      assert.equal(error.retryable, true, '네트워크 오류는 재시도 대상이다');
+      return true;
+    },
+  );
+});
+
 // ── HotPepper ────────────────────────────────────────────────────────────────
 
 const hotpepperShop = {

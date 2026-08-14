@@ -69,11 +69,14 @@ export function createDataAgent(deps: GatewayDeps): DataAgentGateway {
       request.providerOrder,
     );
     if (chain.length === 0) {
-      throw new ProviderError('none', `${request.queryClass}를 지원하는 제공자가 없습니다`, false);
+      throw new ProviderError('none', `${request.queryClass}를 지원하는 제공자가 없습니다`, false, []);
     }
 
     let lastReason = '';
+    // 어디까지 시도했는지 남긴다. 체인 전체가 실패했을 때 실패 영수증의 provenance가 된다.
+    const attempted: string[] = [];
     for (const [index, adapter] of chain.entries()) {
+      attempted.push(adapter.id);
       for (let attempt = 1; attempt <= BACKOFF_ATTEMPTS; attempt += 1) {
         try {
           const result = await adapter.fetch(request);
@@ -94,7 +97,7 @@ export function createDataAgent(deps: GatewayDeps): DataAgentGateway {
         }
       }
     }
-    throw new ProviderError('chain', lastReason || '모든 제공자 실패', false);
+    throw new ProviderError('chain', lastReason || '모든 제공자 실패', false, attempted);
   }
 
   return {

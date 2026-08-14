@@ -18,6 +18,7 @@ import { canonicalize } from './canonical.js';
 import type { DataAgentGateway } from './gateway.js';
 import { extractCandidates } from './prefetch.js';
 import { ProviderError } from './provider.js';
+import { NeutralParamViolationError, assertNeutralParams } from './provider-request.js';
 
 export type CandidateEvidenceExecutionFailureCode =
   | 'PROVIDER_UNAVAILABLE'
@@ -29,6 +30,16 @@ export interface CandidateEvidenceExecutionFailure {
   queryPlanIds: string[];
   code: CandidateEvidenceExecutionFailureCode;
   message: string;
+  /** QueryPlan이 요청한 Provider 순서 */
+  providerOrder: string[];
+  /**
+   * 폴백 체인에서 실제로 호출을 시도한 Provider.
+   *
+   * 성공 영수증에는 `providerId`가 남는데 실패 쪽만 비어 있으면 "왜 후보가 없었나"를
+   * 나중에 되짚을 수 없다. 시도 자체가 없었으면(쿼터 소진·지원 제공자 없음) 빈 배열이며,
+   * 그 빈 배열도 사실이다 — 호출한 적 없는 Provider 이름을 지어 넣지 않는다.
+   */
+  attemptedProviderIds: string[];
 }
 
 export interface CandidateEvidenceExecutionReceipt {
@@ -84,6 +95,7 @@ export type CandidateEvidenceExecutionErrorCode =
   | 'SENSITIVE_CONTEXT'
   | 'UNAPPROVED_RELAXATION'
   | 'HARD_CONTEXT_OVERRIDE'
+  | 'PROVIDER_DIALECT_PARAM'
   | 'UNSUPPORTED_QUERY_PLAN';
 
 export class CandidateEvidenceExecutionError extends Error {
@@ -285,28 +297,38 @@ function bindStayPlan(
   const type = typeof params['type'] === 'string' && params['type'].trim().length > 0
     ? params['type'].trim()
     : 'hotel';
-  return {
-    plan,
-    params: {
-      ...params,
-      packId: input.packId,
-      area,
-      type,
-      guests: charter.partySize,
-      pax: charter.partySize,
-      adultNum: charter.partySize,
-      rooms: input.roomCount,
-      roomNum: input.roomCount,
-      checkIn: charter.startDate,
-      checkinDate: charter.startDate,
-      checkOut: charter.endDate,
-      checkoutDate: charter.endDate,
-      latitude: input.center.lat,
-      longitude: input.center.lng,
-      searchRadius: input.searchRadiusKm,
-      limit: input.limit,
-    },
+  /**
+   * **중립 어휘만 실어 보낸다.**
+   *
+   * 예전에는 같은 값을 `guests`/`pax`/`adultNum`처럼 세 이름으로 함께 보냈다.
+   * 어댑터가 어느 이름을 읽는지 몰라서 전부 보내는 방식이었는데, 그러면 조달 계획이
+   * 라쿠텐의 필드 이름을 아는 계층이 되고 Provider를 바꿀 때 여기까지 따라 바뀐다.
+   * 번역은 어댑터의 일이다 (provider-request.ts).
+   */
+  const bound = {
+    ...params,
+    packId: input.packId,
+    area,
+    type,
+    guests: charter.partySize,
+    rooms: input.roomCount,
+    checkIn: charter.startDate,
+    checkOut: charter.endDate,
+    latitude: input.center.lat,
+    longitude: input.center.lng,
+    radiusKm: input.searchRadiusKm,
+    limit: input.limit,
   };
+  // QueryPlan이 통과시킨 잔여 파라미터에 방언이 섞였는지까지 여기서 잡는다.
+  // 이 port의 거부는 전부 CandidateEvidenceExecutionError다 — 호출자가 한 종류만 보면 되도록.
+  try {
+    assertNeutralParams(bound, `QueryPlan ${plan.queryPlanId}`);
+  } catch (error) {
+    if (!(error instanceof NeutralParamViolationError)) throw error;
+    throw new CandidateEvidenceExecutionError('PROVIDER_DIALECT_PARAM', error.message);
+  }
+
+  return { plan, params: bound };
 }
 
 function groupBoundPlans(boundPlans: readonly BoundPlan[]): BoundPlanGroup[] {
@@ -353,15 +375,28 @@ function sourceUrlOf(candidate: Record<string, unknown>): string | null {
   }
 }
 
+/**
+ * 실패를 영수증으로 바꾼다.
+ *
+ * **원본 오류 메시지를 그대로 싣지 않는다.** Provider 응답 본문·URL이 섞여 있을 수
+ * 있고 이 영수증은 회의록과 화면까지 간다. 사람이 고칠 수 있는 분류만 남긴다 —
+ * 원문은 게이트웨이가 `request_log`에 남긴다.
+ */
 function failureOf(
   queryPlanIds: string[],
+  providerOrder: string[],
   error: unknown,
 ): CandidateEvidenceExecutionFailure {
+  const attemptedProviderIds =
+    error instanceof ProviderError ? [...error.attemptedProviderIds] : [];
+
   if (error instanceof QuotaExceededError) {
     return {
       queryPlanIds,
       code: 'QUOTA_EXCEEDED',
       message: 'Provider 호출 예산을 초과해 남은 QueryPlan 실행을 중단했습니다.',
+      providerOrder,
+      attemptedProviderIds,
     };
   }
   if (error instanceof VerificationUnavailableError) {
@@ -369,6 +404,8 @@ function failureOf(
       queryPlanIds,
       code: 'VERIFICATION_UNAVAILABLE',
       message: '필수 검증 Provider 응답을 얻지 못했습니다.',
+      providerOrder,
+      attemptedProviderIds,
     };
   }
   if (error instanceof ProviderError) {
@@ -376,12 +413,16 @@ function failureOf(
       queryPlanIds,
       code: 'PROVIDER_UNAVAILABLE',
       message: '승인된 Provider에서 응답을 얻지 못했습니다.',
+      providerOrder,
+      attemptedProviderIds,
     };
   }
   return {
     queryPlanIds,
     code: 'GATEWAY_FAILED',
     message: 'Provider Gateway 실행에 실패했습니다.',
+    providerOrder,
+    attemptedProviderIds,
   };
 }
 
@@ -531,7 +572,9 @@ export function createCandidateEvidenceExecutionPort(
             cacheHit: response.evidence.cacheHit,
           });
         } catch (error) {
-          failures.push(failureOf(queryPlanIds, error));
+          // 한 그룹의 실패는 그 그룹에서 끝난다. 다음 Provider 그룹은 계속 실행한다.
+          failures.push(failureOf(queryPlanIds, [...group.providerOrder], error));
+          // 쿼터 소진만 예외다 — 남은 그룹을 불러도 같은 이유로 전부 실패한다.
           if (error instanceof QuotaExceededError) break;
         }
       }

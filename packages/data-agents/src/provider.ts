@@ -36,6 +36,14 @@ export class ProviderError extends Error {
     readonly providerId: string,
     readonly reason: string,
     readonly retryable: boolean,
+    /**
+     * 폴백 체인에서 **실제로 호출을 시도한** 제공자들.
+     *
+     * 체인 전체가 실패하면 `providerId`가 `chain`이라 어디가 죽었는지 알 수 없다.
+     * 성공한 후보에는 `providerId`가 남는데 실패한 쪽만 익명이면, 나중에 "왜 후보가
+     * 없었나"를 되짚을 근거가 사라진다. 실패 영수증도 provenance를 갖는다.
+     */
+    readonly attemptedProviderIds: readonly string[] = [],
   ) {
     super(`${providerId}: ${reason}`);
     this.name = 'ProviderError';
