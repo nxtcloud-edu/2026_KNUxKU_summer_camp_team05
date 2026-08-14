@@ -33,17 +33,19 @@ class FakeBackend:
         extra_evidence: bool = False,
         invalid_first: bool = False,
         auth_ready: bool = True,
+        auth_mode: str = "chatgpt",
     ) -> None:
         self.calls = 0
         self.extra_evidence = extra_evidence
         self.invalid_first = invalid_first
         self.auth_ready = auth_ready
+        self.auth_mode = auth_mode
 
     async def catalog(self) -> list[CatalogEntry]:
         return [CatalogEntry("fake-balanced", True, False, ("medium",))]
 
     async def auth(self) -> AuthSnapshot:
-        return AuthSnapshot("chatgpt", self.auth_ready)
+        return AuthSnapshot(self.auth_mode, self.auth_ready)
 
     async def run(self, **kwargs: Any) -> BackendResult:
         self.calls += 1
@@ -159,6 +161,20 @@ def test_model_profile_is_fail_closed(tmp_path: Path) -> None:
 
 def test_auth_is_fail_closed_without_model_call(tmp_path: Path) -> None:
     backend = FakeBackend(auth_ready=False)
+    config = settings(tmp_path)
+    service = GatewayService(config, backend, GatewayStore(config.database_path))
+    with TestClient(create_app(service=service)) as client:
+        response = client.post("/internal/v1/agent-runs", json=payload())
+    assert response.json()["status"] == "AUTH_REQUIRED"
+    assert backend.calls == 0
+
+
+@pytest.mark.parametrize("auth_mode", ["apiKey", "external"])
+def test_non_chatgpt_auth_never_falls_back_to_model_call(
+    tmp_path: Path,
+    auth_mode: str,
+) -> None:
+    backend = FakeBackend(auth_mode=auth_mode)
     config = settings(tmp_path)
     service = GatewayService(config, backend, GatewayStore(config.database_path))
     with TestClient(create_app(service=service)) as client:

@@ -35,6 +35,15 @@ const stringValue: JsonSchema = { type: 'string', minLength: 1 };
 const stringArray: JsonSchema = { type: 'array', items: stringValue };
 const integerValue: JsonSchema = { type: 'integer' };
 const basisPointsValue: JsonSchema = { type: 'integer', minimum: 0, maximum: 10_000 };
+const schemaVersionOne: JsonSchema = { type: 'integer', const: 1 };
+
+function stringConst(value: string): JsonSchema {
+  return { type: 'string', const: value };
+}
+
+function stringEnum(values: readonly string[]): JsonSchema {
+  return { type: 'string', enum: [...values] };
+}
 
 function strictObject(properties: Record<string, JsonSchema>): JsonSchema {
   return {
@@ -50,11 +59,11 @@ function arrayOf(items: JsonSchema): JsonSchema {
 }
 
 function nullable(value: JsonSchema): JsonSchema {
-  return { oneOf: [value, { type: 'null' }] };
+  return { anyOf: [value, { type: 'null' }] };
 }
 
 const evidenceChallengeJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
+  schemaVersion: schemaVersionOne,
   challengeId: stringValue,
   participantId: stringValue,
   proposalId: stringValue,
@@ -63,20 +72,20 @@ const evidenceChallengeJsonSchema = strictObject({
 });
 
 const candidateGapRequestJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
+  schemaVersion: schemaVersionOne,
   requestId: stringValue,
   participantId: stringValue,
-  category: { enum: ['long_distance', 'stay', 'activity', 'dining', 'schedule'] },
+  category: stringEnum(['long_distance', 'stay', 'activity', 'dining', 'schedule']),
   missingPreferenceRefs: stringArray,
   reason: stringValue,
   suggestedSearchTerms: stringArray,
 });
 
 const proxySearchBriefJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
+  schemaVersion: schemaVersionOne,
   briefId: stringValue,
   participantId: stringValue,
-  category: { enum: ['long_distance', 'stay', 'activity', 'dining', 'schedule'] },
+  category: stringEnum(['long_distance', 'stay', 'activity', 'dining', 'schedule']),
   profileVersion: stringValue,
   mustKeepRefs: stringArray,
   preferenceTargetRefs: stringArray,
@@ -86,46 +95,54 @@ const proxySearchBriefJsonSchema = strictObject({
   searchTerms: stringArray,
 });
 
-const proxyBallotJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
-  ballotId: stringValue,
-  participantId: stringValue,
-  category: { enum: ['long_distance', 'stay', 'activity', 'dining', 'schedule'] },
-  proposalSetVersion: integerValue,
-  rankedProposalIds: stringArray,
-  satisfactionByProposalBp: { type: 'object', additionalProperties: basisPointsValue },
-  stanceByProposal: {
-    type: 'object',
-    additionalProperties: { enum: ['support', 'conditional', 'oppose'] },
-  },
-  profileFactRefs: stringArray,
-  conditionalTerms: stringArray,
-  rationale: stringValue,
-  evidenceChallenges: arrayOf(evidenceChallengeJsonSchema),
-  candidateGapRequest: nullable(candidateGapRequestJsonSchema),
-});
+function proxyBallotJsonSchema(proposalIds: readonly string[]): JsonSchema {
+  return strictObject({
+    schemaVersion: schemaVersionOne,
+    ballotId: stringValue,
+    participantId: stringValue,
+    category: stringEnum(['long_distance', 'stay', 'activity', 'dining', 'schedule']),
+    proposalSetVersion: integerValue,
+    rankedProposalIds: stringArray,
+    satisfactionByProposalBp: strictObject(
+      Object.fromEntries(proposalIds.map((proposalId) => [proposalId, basisPointsValue])),
+    ),
+    stanceByProposal: strictObject(
+      Object.fromEntries(
+        proposalIds.map((proposalId) => [
+          proposalId,
+          stringEnum(['support', 'conditional', 'oppose']),
+        ]),
+      ),
+    ),
+    profileFactRefs: stringArray,
+    conditionalTerms: stringArray,
+    rationale: stringValue,
+    evidenceChallenges: arrayOf(evidenceChallengeJsonSchema),
+    candidateGapRequest: nullable(candidateGapRequestJsonSchema),
+  });
+}
 
 const queryPlanJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
+  schemaVersion: schemaVersionOne,
   queryPlanId: stringValue,
-  category: { enum: ['long_distance', 'stay', 'activity', 'dining', 'schedule'] },
+  category: stringEnum(['long_distance', 'stay', 'activity', 'dining', 'schedule']),
   sourceBriefIds: stringArray,
-  queryClass: { enum: [...queryClasses] },
+  queryClass: stringEnum(queryClasses),
   providerOrder: stringArray,
   searchTerms: stringArray,
-  params: { type: 'object' },
+  params: strictObject({}),
   relaxationChanges: stringArray,
   rationale: stringValue,
 });
 
 const categoryDecisionJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
+  schemaVersion: schemaVersionOne,
   contractId: stringValue,
   contractVersion: integerValue,
-  category: { enum: ['long_distance', 'stay', 'activity', 'dining', 'schedule'] },
+  category: stringEnum(['long_distance', 'stay', 'activity', 'dining', 'schedule']),
   charterVersion: stringValue,
   proposalSetVersion: integerValue,
-  outcome: { enum: ['CONCLUDED', 'CONTINUE', 'NO_SAFE_DECISION'] },
+  outcome: stringEnum(['CONCLUDED', 'CONTINUE', 'NO_SAFE_DECISION']),
   selectedProposalId: nullable(stringValue),
   deterministicSelectedProposalId: nullable(stringValue),
   rejectedProposalIds: stringArray,
@@ -139,15 +156,15 @@ const categoryDecisionJsonSchema = strictObject({
 
 const findingJsonSchema = strictObject({
   code: stringValue,
-  severity: { enum: ['info', 'warning', 'error'] },
+  severity: stringEnum(['info', 'warning', 'error']),
   message: stringValue,
   refs: stringArray,
 });
 
 const tripOrchestratorReportJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
+  schemaVersion: schemaVersionOne,
   reportId: stringValue,
-  guardStatus: { enum: ['CLEAR', 'RECHECK', 'HOLD'] },
+  guardStatus: stringEnum(['CLEAR', 'RECHECK', 'HOLD']),
   observedContractIds: stringArray,
   findings: arrayOf(findingJsonSchema),
   recheckTargets: stringArray,
@@ -156,12 +173,12 @@ const tripOrchestratorReportJsonSchema = strictObject({
 });
 
 const finalPlanJsonSchema = strictObject({
-  schemaVersion: { const: 1 },
+  schemaVersion: schemaVersionOne,
   finalPlanId: stringValue,
   finalPlanVersion: integerValue,
   tripId: stringValue,
-  status: { enum: ['PROVISIONAL', 'VERIFIED', 'NEEDS_USER_CHOICE', 'BLOCKED'] },
-  evidenceMode: { enum: ['LIVE', 'MIXED', 'FIXTURE'] },
+  status: stringEnum(['PROVISIONAL', 'VERIFIED', 'NEEDS_USER_CHOICE', 'BLOCKED']),
+  evidenceMode: stringEnum(['LIVE', 'MIXED', 'FIXTURE']),
   categoryDecisionContractIds: stringArray,
   orchestratorReportId: stringValue,
   evidenceIds: stringArray,
@@ -172,46 +189,48 @@ const finalPlanJsonSchema = strictObject({
 function outputJsonSchema(request: AgentRunRequest): JsonSchema {
   if (request.role === 'USER_PROXY' && request.task === 'CREATE_SEARCH_BRIEF') {
     return strictObject({
-      schemaVersion: { const: 1 },
-      role: { const: 'USER_PROXY' },
-      task: { const: 'CREATE_SEARCH_BRIEF' },
+      schemaVersion: schemaVersionOne,
+      role: stringConst('USER_PROXY'),
+      task: stringConst('CREATE_SEARCH_BRIEF'),
       brief: proxySearchBriefJsonSchema,
     });
   }
   if (request.role === 'USER_PROXY') {
     return strictObject({
-      schemaVersion: { const: 1 },
-      role: { const: 'USER_PROXY' },
-      task: { const: 'CREATE_BALLOT' },
-      ballot: proxyBallotJsonSchema,
+      schemaVersion: schemaVersionOne,
+      role: stringConst('USER_PROXY'),
+      task: stringConst('CREATE_BALLOT'),
+      ballot: proxyBallotJsonSchema(
+        request.proposalSet.proposals.map((proposal) => proposal.proposalId),
+      ),
     });
   }
   if (request.role === 'CANDIDATE_EVIDENCE') {
     return strictObject({
-      schemaVersion: { const: 1 },
-      role: { const: 'CANDIDATE_EVIDENCE' },
-      status: { enum: ['QUERY_PLAN_PROPOSED', 'NO_SAFE_QUERY'] },
+      schemaVersion: schemaVersionOne,
+      role: stringConst('CANDIDATE_EVIDENCE'),
+      status: stringEnum(['QUERY_PLAN_PROPOSED', 'NO_SAFE_QUERY']),
       queryPlans: arrayOf(queryPlanJsonSchema),
       warning: nullable(stringValue),
     });
   }
   if (request.role === 'CATEGORY_ARBITER') {
     return strictObject({
-      schemaVersion: { const: 1 },
-      role: { const: 'CATEGORY_ARBITER' },
+      schemaVersion: schemaVersionOne,
+      role: stringConst('CATEGORY_ARBITER'),
       contract: categoryDecisionJsonSchema,
     });
   }
   if (request.role === 'TRIP_ORCHESTRATOR') {
     return strictObject({
-      schemaVersion: { const: 1 },
-      role: { const: 'TRIP_ORCHESTRATOR' },
+      schemaVersion: schemaVersionOne,
+      role: stringConst('TRIP_ORCHESTRATOR'),
       report: tripOrchestratorReportJsonSchema,
     });
   }
   return strictObject({
-    schemaVersion: { const: 1 },
-    role: { const: 'PLAN_FINALIZER' },
+    schemaVersion: schemaVersionOne,
+    role: stringConst('PLAN_FINALIZER'),
     finalPlan: finalPlanJsonSchema,
   });
 }
@@ -354,6 +373,15 @@ function assertPlanFinalizerCeiling(
 
 function assertResultMatchesRequest(request: AgentRunRequest, result: AgentRunResult): void {
   if (request.role !== result.role) throw new Error('Agent Runtime 결과 role이 요청과 다릅니다.');
+  const allowedEvidenceIds = new Set(collectEvidenceIds(request));
+  const unexpectedEvidenceIds = collectEvidenceIds(result).filter(
+    (evidenceId) => !allowedEvidenceIds.has(evidenceId),
+  );
+  if (unexpectedEvidenceIds.length > 0) {
+    throw new Error(
+      `Agent Runtime 입력에 없는 Evidence ID가 출력에 포함되었습니다: ${unexpectedEvidenceIds.join(',')}`,
+    );
+  }
   if (
     request.role === 'USER_PROXY' &&
     result.role === 'USER_PROXY' &&
@@ -481,6 +509,10 @@ export class CodexGatewayAgentRuntime implements AgentRuntime {
     assertAgentContextSafe(request);
     const category = categoryOf(request);
     const participantId = participantIdOf(request);
+    const modelProfile =
+      this.options.modelProfiles?.[request.role] ?? defaultModelProfiles[request.role];
+    const reasoningEffort =
+      this.options.reasoningEfforts?.[request.role] ?? defaultReasoningEfforts[request.role];
     let response;
     try {
       response = await this.options.client.run({
@@ -498,13 +530,11 @@ export class CodexGatewayAgentRuntime implements AgentRuntime {
           outputContractVersion: 'agent-runtime.v1',
         },
         thread: { mode: 'NEW' },
-        modelProfile:
-          this.options.modelProfiles?.[request.role] ?? defaultModelProfiles[request.role],
-        reasoningEffort:
-          this.options.reasoningEfforts?.[request.role] ?? defaultReasoningEfforts[request.role],
+        modelProfile,
+        reasoningEffort,
         input: {
           instruction: roleInstructions[request.role],
-          context: request,
+          context: { ...request, planVersion: request.inputVersion },
           evidenceIds: collectEvidenceIds(request),
         },
         outputSchema: outputJsonSchema(request),
@@ -513,10 +543,34 @@ export class CodexGatewayAgentRuntime implements AgentRuntime {
     } catch {
       throw new AgentRuntimeError('GATEWAY_TRANSPORT_FAILED', 'Codex Gateway 호출에 실패했습니다.');
     }
+    if (response.runId !== request.runId) {
+      throw new AgentRuntimeError(
+        'GATEWAY_RUN_ID_MISMATCH',
+        'Codex Gateway 응답 runId가 요청과 일치하지 않습니다.',
+      );
+    }
     if (response.status !== 'SUCCEEDED' || response.output === null || response.output === undefined) {
       throw new AgentRuntimeError(
         response.error?.code ?? response.status,
         response.error?.safeMessage ?? 'Codex Gateway가 Agent 결과를 반환하지 않았습니다.',
+      );
+    }
+    if (response.authContext.loginMethod !== 'CHATGPT') {
+      throw new AgentRuntimeError(
+        'UNSUPPORTED_AUTH_METHOD',
+        'Canonical Agent Runtime은 로컬 ChatGPT Codex OAuth만 허용합니다.',
+      );
+    }
+    if (response.threadId === null || response.threadId === undefined) {
+      throw new AgentRuntimeError(
+        'GATEWAY_THREAD_MISSING',
+        'Codex Gateway 성공 응답에 격리된 threadId가 없습니다.',
+      );
+    }
+    if (response.modelContext?.reasoningEffort !== reasoningEffort) {
+      throw new AgentRuntimeError(
+        'GATEWAY_MODEL_CONTEXT_MISMATCH',
+        'Codex Gateway가 요청한 reasoning effort를 보존하지 않았습니다.',
       );
     }
     const result = agentRunResultSchema.parse(response.output);
