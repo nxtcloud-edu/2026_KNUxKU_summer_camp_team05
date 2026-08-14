@@ -14,7 +14,7 @@ import type { AgentExecutionReceipt } from './codex-runtime-gateway.js';
  * 설계 원칙 — 없는 것을 있는 것처럼 만들지 않는다.
  *   · 아직 만들어지지 않은 결과는 `availability`로 구분해 돌려준다. 빈 객체로 위장하지 않는다.
  *   · 확인하지 못한 항목은 `uncertainties`·`blockers`에 그대로 남는다.
- *   · 배지는 코드가 판정한 값이며, `PARTIAL`은 예약 행동을 유도하지 않는다.
+ *   · 상태는 코드가 판정하며 공개 MVP의 네 canonical 상태만 사용한다.
  *
  * 근거: docs/travel-mediation-plan.md 19.6 · README 신뢰할 수 있는 대리인 원칙
  */
@@ -218,18 +218,14 @@ export interface AgentExecutionView {
 /* ------------------------------------------------------------------ 계획서 */
 
 /**
- * 항목·계획서 배지. 코드가 판정하며 에이전트가 주장할 수 없다.
- * `PROVISIONAL`은 문서 검증을 통과했지만 LIVE 근거 영수증이 부족한 상태고,
- * `PARTIAL`은 문서 검증을 통과하지 못한 상태다. 둘 다 예약 행동을 유도하지 않는다.
+ * 항목·계획서 상태. 코드가 판정하며 에이전트가 주장할 수 없다.
+ * 공개 MVP는 예약 가능/완료를 주장하지 않고 canonical 네 상태만 노출한다.
  */
 export const resultBadges = [
-  'NONE',
-  'DRAFT',
-  'PARTIAL',
   'PROVISIONAL',
   'VERIFIED',
-  'BOOKABLE',
-  'BOOKED',
+  'NEEDS_USER_CHOICE',
+  'BLOCKED',
 ] as const;
 export type ResultBadge = (typeof resultBadges)[number];
 

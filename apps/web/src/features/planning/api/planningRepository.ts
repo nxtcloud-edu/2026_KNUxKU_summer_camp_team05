@@ -1,7 +1,5 @@
 import type {
   DateResolutionResponse,
-  PlanResultResponse,
-  ResultEnvelope,
   RoomProgressResponse,
   RoomStatus,
   RunStatus,
@@ -209,14 +207,6 @@ const formatIsoDate = (value: string | null): string => {
   const date = new Date(`${value.slice(0, 10)}T00:00:00`)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' }).format(date)
-}
-
-const nightsBetween = (start: string | null, end: string | null): number | null => {
-  if (!start || !end) return null
-  const from = new Date(`${start.slice(0, 10)}T00:00:00`).getTime()
-  const to = new Date(`${end.slice(0, 10)}T00:00:00`).getTime()
-  if (Number.isNaN(from) || Number.isNaN(to) || to < from) return null
-  return Math.round((to - from) / 86_400_000)
 }
 
 export function progressToSnapshot(progress: RoomProgressResponse): PlanningSnapshot {

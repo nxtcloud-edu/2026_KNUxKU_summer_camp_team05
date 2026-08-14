@@ -147,19 +147,11 @@ export type DateResolutionResponse = {
   } | null
 }
 
-/**
- * Item and plan badges as the backend declares them. `BOOKABLE` and `BOOKED`
- * stay in the wire type because the canonical contract still lists them, but no
- * screen renders them: `planStatusFromBadge` collapses them into MVP states.
- */
 export type ResultBadge =
-  | 'NONE'
-  | 'DRAFT'
-  | 'PARTIAL'
   | 'PROVISIONAL'
   | 'VERIFIED'
-  | 'BOOKABLE'
-  | 'BOOKED'
+  | 'NEEDS_USER_CHOICE'
+  | 'BLOCKED'
 
 export type PlanBlockerResponse = {
   kind: string

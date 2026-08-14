@@ -95,10 +95,7 @@ export async function registerRoomRoutes(
     }
 
     const userId = currentUserId(request);
-    const body = (request.body ?? {}) as { role?: string };
-    const role = body.role === 'host' ? 'host' : 'member';
-
-    return reply.status(201).send(await repos.members.join(roomId, userId, role));
+    return reply.status(201).send(await repos.members.join(roomId, userId, 'member'));
   });
 
   /**

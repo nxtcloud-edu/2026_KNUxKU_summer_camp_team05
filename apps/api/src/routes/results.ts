@@ -235,8 +235,8 @@ export async function registerResultRoutes(
   /**
    * 최종 계획서.
    *
-   * 배지는 코드가 판정한다. 발행되지 않은 계획서는 근거 상태에 따라 `PROVISIONAL` 또는
-   * `PARTIAL`이며 예약 행동을 유도하지 않는다.
+   * 상태는 코드가 판정한다. 발행되지 않은 계획서는 근거 상태에 따라
+   * `PROVISIONAL`, `NEEDS_USER_CHOICE`, `BLOCKED` 중 하나이며 예약 행동을 유도하지 않는다.
    */
   app.get('/api/rooms/:roomId/plan', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
@@ -267,13 +267,15 @@ export async function registerResultRoutes(
     );
     const published = itinerary.publishedAt !== null;
     const evidenceStatus = readEvidenceStatus(itinerary.validationReport);
-    const unpublishedBadge: ResultBadge = evidenceStatus === 'PROVISIONAL' ? 'PROVISIONAL' : 'PARTIAL';
+    const unpublishedBadge: ResultBadge = evidenceStatus === 'PROVISIONAL'
+      ? 'PROVISIONAL'
+      : blockers.length > 0 ? 'BLOCKED' : 'NEEDS_USER_CHOICE';
     /**
      * 항목 배지.
-     * BOOKABLE은 만들지 않는다 — 가격·재고·시간 슬롯 확인이 붙기 전에는 주장할 수 없다.
+     * 차단된 항목은 BLOCKED다. 예약 가능 상태는 이 MVP에서 만들지 않는다.
      */
     const badgeOf = (item: { itemId: string; nodeId: PlanItemView['nodeId'] }): ResultBadge => {
-      if (blockedItemIds.has(item.itemId)) return 'DRAFT';
+      if (blockedItemIds.has(item.itemId)) return 'BLOCKED';
       return published ? 'VERIFIED' : unpublishedBadge;
     };
 

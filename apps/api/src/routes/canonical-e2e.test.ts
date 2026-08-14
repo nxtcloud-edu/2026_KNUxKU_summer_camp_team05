@@ -53,9 +53,10 @@ test('Felicia API mode reaches the canonical Worker result and replay surfaces',
         method: 'POST',
         url: `/api/rooms/${roomId}/members`,
         headers: { 'x-user-id': userId },
-        payload: { role: index === 0 ? 'host' : 'member' },
+        payload: { role: 'host' },
       });
       assert.equal(joined.statusCode, 201, joined.body);
+      assert.equal(joined.json<{ role: string }>().role, index === 0 ? 'host' : 'member');
     }
 
     const planResponse = await app.inject({ method: 'GET', url: '/api/survey-plans/jp-osaka' });

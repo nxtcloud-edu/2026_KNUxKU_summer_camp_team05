@@ -27,18 +27,16 @@ import type {
  *   backend PlanResult + FairnessView -> adapter -> ProductResult -> ProductResults
  */
 
-/** Whole-plan readiness. `BOOKABLE`/`BOOKED` never reach the UI. */
 export function planStatusFromBadge(badge: ResultBadge, blockerCount: number): PlanStatus {
   if (blockerCount > 0) return 'BLOCKED'
   if (badge === 'VERIFIED') return 'VERIFIED'
-  if (badge === 'BOOKABLE' || badge === 'BOOKED') return 'BLOCKED'
   if (badge === 'PROVISIONAL') return 'PROVISIONAL'
-  return 'NEEDS_USER_CHOICE'
+  return badge
 }
 
 const decisionStatusFromBadge = (badge: ResultBadge): DecisionSummary['status'] => {
   if (badge === 'VERIFIED') return 'verified'
-  if (badge === 'PROVISIONAL' || badge === 'PARTIAL') return 'needs-check'
+  if (badge === 'PROVISIONAL') return 'needs-check'
   return 'choice-required'
 }
 
@@ -49,13 +47,10 @@ const evidenceStateFromBadge = (badge: ResultBadge): EvidenceSummary['state'] =>
 }
 
 const badgeStateLabels: Record<ResultBadge, string> = {
-  NONE: '근거 없음',
-  DRAFT: '확인 필요',
-  PARTIAL: '부분 확인',
   PROVISIONAL: '잠정 확인',
   VERIFIED: '확인됨',
-  BOOKABLE: '지원하지 않는 상태',
-  BOOKED: '지원하지 않는 상태',
+  NEEDS_USER_CHOICE: '사용자 선택 필요',
+  BLOCKED: '진행 차단',
 }
 
 const nodeCategories: Record<string, { category: DecisionCategory; label: string }> = {
