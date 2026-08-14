@@ -153,6 +153,20 @@ test('Felicia API mode reaches the canonical Worker result and replay surfaces',
     assert.equal(transcript.statusCode, 200, transcript.body);
     assert.equal(transcript.json<{ availability: string }>().availability, 'ready');
     assert.match(transcript.body, /canonical-worker/);
+
+    const agentExecution = await app.inject({
+      method: 'GET', url: `/api/rooms/${roomId}/agent-execution`, headers: { 'x-user-id': 'u1' },
+    });
+    assert.equal(agentExecution.statusCode, 200, agentExecution.body);
+    const executionBody = agentExecution.json<{
+      availability: string;
+      data: { executionMode: string; completeRoleSet: boolean; receipts: unknown[] } | null;
+    }>();
+    assert.equal(executionBody.availability, 'ready');
+    assert.equal(executionBody.data?.executionMode, 'FIXTURE');
+    assert.equal(executionBody.data?.completeRoleSet, false);
+    assert.equal(executionBody.data?.receipts.length, 4);
+    assert.doesNotMatch(agentExecution.body, /threadId|authFingerprint|instanceId/);
   } finally {
     await app.close();
   }

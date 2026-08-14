@@ -794,8 +794,80 @@ test('LIVE 표지만 있고 PASS 근거가 없으면 Finalizer도 VERIFIED로 �
       });
     },
   };
-  await assert.rejects(
-    () => new CodexGatewayAgentRuntime({ client }).run(request),
-    /LIVE PASS 근거가 모두 갖춰지지 않아 VERIFIED로 승격할 수 없습니다/,
+  const guardedResult = await new CodexGatewayAgentRuntime({ client }).run(request);
+  assert.equal(guardedResult.role, 'PLAN_FINALIZER');
+  if (guardedResult.role !== 'PLAN_FINALIZER') return;
+  assert.equal(guardedResult.finalPlan.status, 'PROVISIONAL');
+  assert.deepEqual(guardedResult.finalPlan.unresolvedIssues, ['EVIDENCE_NOT_VERIFIED']);
+});
+
+test('Codex Finalizer가 RECHECK 상태를 과대 승격해도 결정론 ceiling이 NEEDS_USER_CHOICE로 낮춘다', async () => {
+  const request = (await canonicalRoleRequests()).find(
+    (item): item is PlanFinalizerRequest => item.role === 'PLAN_FINALIZER',
   );
+  if (request === undefined) throw new Error('Finalizer request가 없습니다.');
+  const recheckRequest: PlanFinalizerRequest = {
+    ...request,
+    orchestratorReport: {
+      ...request.orchestratorReport,
+      guardStatus: 'RECHECK',
+      recheckTargets: ['availability'],
+    },
+  };
+  const fixture = await new FixtureAgentRuntime().run(recheckRequest);
+  if (fixture.role !== 'PLAN_FINALIZER') throw new Error('Finalizer fixture가 아닙니다.');
+  const runtime = runtimeReturning({
+    ...fixture,
+    finalPlan: {
+      ...fixture.finalPlan,
+      status: 'PROVISIONAL',
+      unresolvedIssues: [],
+    },
+  });
+
+  const result = await runtime.run(recheckRequest);
+  assert.equal(result.role, 'PLAN_FINALIZER');
+  if (result.role !== 'PLAN_FINALIZER') return;
+  assert.equal(result.finalPlan.status, 'NEEDS_USER_CHOICE');
+  assert.ok(result.finalPlan.unresolvedIssues.includes('ORCHESTRATOR_RECHECK'));
+});
+
+test('Codex Runtime은 OAuth model thread token 정보를 비식별 실행 영수증으로 보존한다', async () => {
+  const request = searchBriefRequest();
+  const output = await new FixtureAgentRuntime().run(request);
+  const runtime = runtimeReturning(output);
+
+  await runtime.run(request);
+
+  assert.equal('executionReceipts' in runtime, true);
+  if (!('executionReceipts' in runtime) || typeof runtime.executionReceipts !== 'function') return;
+  assert.deepEqual(runtime.executionReceipts(), [
+    {
+      schemaVersion: 1,
+      role: 'USER_PROXY',
+      instanceId: 'user_proxy.stay.u1',
+      promptVersion: 'canonical-v1',
+      executionMode: 'CODEX_OAUTH',
+      status: 'SUCCEEDED',
+      model: 'fixture-model',
+      reasoningEffort: 'low',
+      threadCreated: true,
+      usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 10 },
+      repairUsed: false,
+      errorCode: null,
+      contractValidation: 'ACCEPTED',
+    },
+  ]);
+});
+
+test('Gateway 성공이어도 canonical 출력 계약 거부는 영수증에 REJECTED로 남는다', async () => {
+  const request = searchBriefRequest();
+  const runtime = runtimeReturning({ schemaVersion: 1, role: 'USER_PROXY' });
+
+  await assert.rejects(() => runtime.run(request));
+
+  assert.equal('executionReceipts' in runtime, true);
+  if (!('executionReceipts' in runtime) || typeof runtime.executionReceipts !== 'function') return;
+  assert.equal(runtime.executionReceipts()[0]?.status, 'SUCCEEDED');
+  assert.equal(runtime.executionReceipts()[0]?.contractValidation, 'REJECTED');
 });

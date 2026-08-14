@@ -17,6 +17,39 @@ export const codexGatewayModelProfileSchema = z.enum([
 
 export const codexGatewayReasoningEffortSchema = z.enum(['low', 'medium', 'high']);
 
+export const agentExecutionReceiptSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    role: codexGatewayAgentRoleSchema,
+    instanceId: z.string().min(1),
+    promptVersion: z.string().min(1),
+    executionMode: z.enum(['CODEX_OAUTH', 'FIXTURE', 'UNKNOWN']),
+    status: z.enum([
+      'SUCCEEDED',
+      'AUTH_REQUIRED',
+      'MODEL_NOT_AVAILABLE',
+      'RATE_LIMITED',
+      'TIMED_OUT',
+      'INVALID_OUTPUT',
+      'FAILED',
+    ]),
+    model: z.string().min(1).nullable(),
+    reasoningEffort: codexGatewayReasoningEffortSchema.nullable(),
+    threadCreated: z.boolean(),
+    usage: z
+      .object({
+        inputTokens: z.number().int().nonnegative(),
+        cachedInputTokens: z.number().int().nonnegative(),
+        outputTokens: z.number().int().nonnegative(),
+      })
+      .strict()
+      .nullable(),
+    repairUsed: z.boolean(),
+    errorCode: z.string().min(1).nullable(),
+    contractValidation: z.enum(['ACCEPTED', 'REJECTED', 'NOT_VALIDATED']),
+  })
+  .strict();
+
 export const codexGatewayAgentRefSchema = z
   .object({
     role: codexGatewayAgentRoleSchema,
@@ -174,5 +207,6 @@ export type CodexGatewayAgentRole = z.infer<typeof codexGatewayAgentRoleSchema>;
 export type CodexGatewayModelProfile = z.infer<typeof codexGatewayModelProfileSchema>;
 export type CodexGatewayAgentRunRequest = z.infer<typeof codexGatewayAgentRunRequestSchema>;
 export type CodexGatewayAgentRunResult = z.infer<typeof codexGatewayAgentRunResultSchema>;
+export type AgentExecutionReceipt = z.infer<typeof agentExecutionReceiptSchema>;
 export type CodexGatewayModelList = z.infer<typeof codexGatewayModelListSchema>;
 export type CodexGatewayReady = z.infer<typeof codexGatewayReadySchema>;

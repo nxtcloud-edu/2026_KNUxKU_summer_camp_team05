@@ -1,6 +1,7 @@
 import type { AgentRuntime } from '@tm/agents';
 import type {
   AgentCategory,
+  AgentExecutionReceipt,
   CandidateEvidenceQueryPlan,
   CandidatePoolVersion,
   CandidateRecord,
@@ -201,6 +202,7 @@ export interface CanonicalLiveRunResult {
   resultStatus: CanonicalResultStatus;
   idempotent: boolean;
   trace: CanonicalStage[];
+  agentExecutionReceipts: AgentExecutionReceipt[];
   finalPlan: FinalPlanRecord | null;
   artifacts: CanonicalCompletedArtifacts | null;
   failure: { stage: CanonicalStage; code: string; message: string } | null;
@@ -297,6 +299,7 @@ function handledResult(
   stage: CanonicalStage,
   code: string,
   message: string,
+  agentExecutionReceipts: AgentExecutionReceipt[],
 ): CanonicalLiveRunResult {
   return {
     runId,
@@ -304,10 +307,18 @@ function handledResult(
     resultStatus,
     idempotent: false,
     trace,
+    agentExecutionReceipts,
     finalPlan: null,
     artifacts: null,
     failure: { stage, code, message },
   };
+}
+
+function agentExecutionReceiptsOf(runtime: AgentRuntime): AgentExecutionReceipt[] {
+  return runtime.executionReceipts?.().map((receipt) => ({
+    ...receipt,
+    usage: receipt.usage === null ? null : { ...receipt.usage },
+  })) ?? [];
 }
 
 function safeFailure(error: unknown, stage: CanonicalStage): CanonicalLiveRunResult['failure'] {
@@ -341,6 +352,7 @@ export async function runCanonicalLive(
       'DB_PERSISTENCE',
       'RUN_ALREADY_IN_PROGRESS',
       'The canonical run is already in progress.',
+      agentExecutionReceiptsOf(deps.agentRuntime),
     );
   }
 
@@ -371,6 +383,7 @@ export async function runCanonicalLive(
         activeStage,
         'DATES_UNRESOLVED',
         dateResolution.reason,
+        agentExecutionReceiptsOf(deps.agentRuntime),
       );
       trace.push('DB_PERSISTENCE');
       await deps.persistence.complete(result);
@@ -438,6 +451,7 @@ export async function runCanonicalLive(
         queryOutput.role === 'CANDIDATE_EVIDENCE'
           ? (queryOutput.warning ?? 'CandidateEvidence produced no safe query.')
           : 'Expected CandidateEvidence QueryPlan.',
+        agentExecutionReceiptsOf(deps.agentRuntime),
       );
       trace.push('DB_PERSISTENCE');
       await deps.persistence.complete(result);
@@ -475,6 +489,7 @@ export async function runCanonicalLive(
         activeStage,
         firstFailure?.code ?? 'NO_CANDIDATES',
         firstFailure?.message ?? 'Provider execution returned no candidates.',
+        agentExecutionReceiptsOf(deps.agentRuntime),
       );
       trace.push('DB_PERSISTENCE');
       await deps.persistence.complete(result);
@@ -499,6 +514,7 @@ export async function runCanonicalLive(
         activeStage,
         'FACT_CONSTRAINT_BLOCKED',
         validated.reason ?? 'FactConstraintValidator blocked the candidate pool.',
+        agentExecutionReceiptsOf(deps.agentRuntime),
       );
       trace.push('DB_PERSISTENCE');
       await deps.persistence.complete(result);
@@ -645,6 +661,7 @@ export async function runCanonicalLive(
       resultStatus: finalPlan.status,
       idempotent: false,
       trace,
+      agentExecutionReceipts: agentExecutionReceiptsOf(deps.agentRuntime),
       finalPlan,
       artifacts,
       failure: null,
@@ -660,6 +677,7 @@ export async function runCanonicalLive(
       resultStatus: 'BLOCKED',
       idempotent: false,
       trace,
+      agentExecutionReceipts: agentExecutionReceiptsOf(deps.agentRuntime),
       finalPlan: null,
       artifacts: null,
       failure: safeFailure(error, activeStage),

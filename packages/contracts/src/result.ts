@@ -3,6 +3,7 @@ import { planningNodeIds, type PlanningNodeId } from './planning.js';
 import type { RefereeCategory, RoundId, RoundPhase } from './rounds.js';
 import type { ObjectionRecord } from './objection.js';
 import type { Verdict } from './verdict.js';
+import type { AgentExecutionReceipt } from './codex-runtime-gateway.js';
 
 /**
  * 결과 조회 계약 — 프론트엔드가 화면을 그리는 데 필요한 읽기 전용 응답.
@@ -205,6 +206,13 @@ export interface RoomProgress {
   failureReason: string | null;
   /** 응답을 기다리는 승인 요청 수. 있으면 진행이 멈춰 있다 (INV-5) */
   pendingApprovals: number;
+}
+
+export interface AgentExecutionView {
+  runId: string;
+  executionMode: 'CODEX_OAUTH' | 'FIXTURE' | 'MIXED' | 'UNKNOWN';
+  completeRoleSet: boolean;
+  receipts: Array<Omit<AgentExecutionReceipt, 'instanceId'>>;
 }
 
 /* ------------------------------------------------------------------ 계획서 */

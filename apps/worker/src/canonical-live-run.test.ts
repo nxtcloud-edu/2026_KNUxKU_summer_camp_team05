@@ -327,6 +327,10 @@ test('canonical dependency fakes execute the complete composition in order', asy
     'PLAN_FINALIZER',
     'DB_PERSISTENCE',
   ]);
+  assert.equal('agentExecutionReceipts' in result, true);
+  if (!('agentExecutionReceipts' in result) || !Array.isArray(result.agentExecutionReceipts)) return;
+  assert.equal(result.agentExecutionReceipts.length, 8);
+  assert.ok(result.agentExecutionReceipts.every((receipt) => receipt.executionMode === 'FIXTURE'));
 });
 
 test('provider failure completes with a BLOCKED result ceiling', async () => {
@@ -460,6 +464,7 @@ test('repository adapter durably records and reloads the canonical result', asyn
     assert.equal(result.executionStatus, 'COMPLETED');
     assert.equal(stored?.executionStatus, 'COMPLETED');
     assert.equal(stored?.result?.finalPlan?.finalPlanId, result.finalPlan?.finalPlanId);
+    assert.deepEqual(stored?.result?.agentExecutionReceipts, result.agentExecutionReceipts);
     assert.equal(itinerary?.publishedAt, null);
   } finally {
     await repos.close();

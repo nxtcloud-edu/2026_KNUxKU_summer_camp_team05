@@ -10,6 +10,7 @@ import {
   userProxySearchBriefResultSchema,
   type AgentRole,
   type AgentCategory,
+  type AgentExecutionReceipt,
   type AgentRunRequest,
   type AgentRunResult,
   type CandidateEvidenceRequest,
@@ -317,10 +318,10 @@ function hasOneQueryPlanPerBrief(
   return expectedBriefIds.every((briefId) => countByBrief.get(briefId) === 1);
 }
 
-function assertPlanFinalizerCeiling(
+function applyPlanFinalizerCeiling(
   request: PlanFinalizerRequest,
   result: PlanFinalizerResult,
-): void {
+): PlanFinalizerResult {
   const finalPlan = result.finalPlan;
   if (
     finalPlan.tripId !== request.tripId ||
@@ -353,22 +354,43 @@ function assertPlanFinalizerCeiling(
     });
 
   if (blocked && finalPlan.status !== 'BLOCKED') {
-    throw new Error('차단 계약 또는 HOLD 감사 결과는 BLOCKED로 보존해야 합니다.');
+    return planFinalizerResultSchema.parse({
+      ...result,
+      finalPlan: {
+        ...finalPlan,
+        status: 'BLOCKED',
+        unresolvedIssues: unique([...finalPlan.unresolvedIssues, 'DETERMINISTIC_BLOCK']),
+      },
+    });
   }
-  if (
-    !blocked &&
-    needsUserChoice &&
-    finalPlan.status !== 'NEEDS_USER_CHOICE' &&
-    finalPlan.status !== 'BLOCKED'
-  ) {
-    throw new Error('미해결 계약 또는 RECHECK 감사 결과에는 사용자 선택이 필요합니다.');
+  if (!blocked && needsUserChoice && finalPlan.status !== 'BLOCKED') {
+    return planFinalizerResultSchema.parse({
+      ...result,
+      finalPlan: {
+        ...finalPlan,
+        status: 'NEEDS_USER_CHOICE',
+        unresolvedIssues: unique([
+          ...finalPlan.unresolvedIssues,
+          ...(request.orchestratorReport.guardStatus === 'RECHECK' ? ['ORCHESTRATOR_RECHECK'] : []),
+          ...(request.categoryContracts.some(
+            (contract) => contract.outcome === 'CONTINUE' || contract.unresolvedIssues.length > 0,
+          ) ? ['UNRESOLVED_CATEGORY_CONTRACT'] : []),
+        ]),
+      },
+    });
   }
-  if (
-    finalPlan.status === 'VERIFIED' &&
-    (request.evidenceMode !== 'LIVE' || !verifiedEvidenceComplete)
-  ) {
-    throw new Error('LIVE PASS 근거가 모두 갖춰지지 않아 VERIFIED로 승격할 수 없습니다.');
+  if (finalPlan.status === 'VERIFIED' &&
+    (request.evidenceMode !== 'LIVE' || !verifiedEvidenceComplete)) {
+    return planFinalizerResultSchema.parse({
+      ...result,
+      finalPlan: {
+        ...finalPlan,
+        status: 'PROVISIONAL',
+        unresolvedIssues: unique([...finalPlan.unresolvedIssues, 'EVIDENCE_NOT_VERIFIED']),
+      },
+    });
   }
+  return result;
 }
 
 function assertResultMatchesRequest(request: AgentRunRequest, result: AgentRunResult): void {
@@ -468,13 +490,11 @@ function assertResultMatchesRequest(request: AgentRunRequest, result: AgentRunRe
       throw new Error('TripOrchestratorAgent가 계약 범위 또는 실패한 guard를 변경했습니다.');
     }
   }
-  if (request.role === 'PLAN_FINALIZER' && result.role === 'PLAN_FINALIZER') {
-    assertPlanFinalizerCeiling(request, result);
-  }
 }
 
 export interface AgentRuntime {
   run(request: AgentRunRequest): Promise<AgentRunResult>;
+  executionReceipts?(): readonly AgentExecutionReceipt[];
 }
 
 export class AgentRuntimeError extends Error {
@@ -497,11 +517,19 @@ export class CodexGatewayAgentRuntime implements AgentRuntime {
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
+  private readonly receipts: AgentExecutionReceipt[] = [];
 
   constructor(private readonly options: CodexGatewayAgentRuntimeOptions) {
     this.promptVersion = options.promptVersion ?? 'canonical-v1';
     this.timeoutMs = options.timeoutMs ?? 60_000;
     this.maxOutputTokens = options.maxOutputTokens ?? 4_096;
+  }
+
+  executionReceipts(): readonly AgentExecutionReceipt[] {
+    return this.receipts.map((receipt) => ({
+      ...receipt,
+      usage: receipt.usage === null ? null : { ...receipt.usage },
+    }));
   }
 
   async run(rawRequest: AgentRunRequest): Promise<AgentRunResult> {
@@ -543,6 +571,22 @@ export class CodexGatewayAgentRuntime implements AgentRuntime {
     } catch {
       throw new AgentRuntimeError('GATEWAY_TRANSPORT_FAILED', 'Codex Gateway 호출에 실패했습니다.');
     }
+    const receiptIndex = this.receipts.length;
+    this.receipts.push({
+      schemaVersion: 1,
+      role: request.role,
+      instanceId: [request.role.toLowerCase(), category, participantId].filter(Boolean).join('.'),
+      promptVersion: this.promptVersion,
+      executionMode: response.authContext.loginMethod === 'CHATGPT' ? 'CODEX_OAUTH' : 'UNKNOWN',
+      status: response.status,
+      model: response.modelContext?.model ?? null,
+      reasoningEffort: response.modelContext?.reasoningEffort ?? null,
+      threadCreated: response.threadId !== null && response.threadId !== undefined,
+      usage: response.usage ?? null,
+      repairUsed: response.repairUsed,
+      errorCode: response.error?.code ?? null,
+      contractValidation: 'NOT_VALIDATED',
+    });
     if (response.runId !== request.runId) {
       throw new AgentRuntimeError(
         'GATEWAY_RUN_ID_MISMATCH',
@@ -573,10 +617,25 @@ export class CodexGatewayAgentRuntime implements AgentRuntime {
         'Codex Gateway가 요청한 reasoning effort를 보존하지 않았습니다.',
       );
     }
-    const result = agentRunResultSchema.parse(response.output);
-    assertResultMatchesRequest(request, result);
-    assertAgentContextSafe(result);
-    return result;
+    try {
+      const parsedResult = agentRunResultSchema.parse(response.output);
+      const result = request.role === 'PLAN_FINALIZER' && parsedResult.role === 'PLAN_FINALIZER'
+        ? applyPlanFinalizerCeiling(request, parsedResult)
+        : parsedResult;
+      assertResultMatchesRequest(request, result);
+      assertAgentContextSafe(result);
+      const receipt = this.receipts[receiptIndex];
+      if (receipt !== undefined) {
+        this.receipts[receiptIndex] = { ...receipt, contractValidation: 'ACCEPTED' };
+      }
+      return result;
+    } catch (error) {
+      const receipt = this.receipts[receiptIndex];
+      if (receipt !== undefined) {
+        this.receipts[receiptIndex] = { ...receipt, contractValidation: 'REJECTED' };
+      }
+      throw error;
+    }
   }
 }
 
@@ -807,6 +866,12 @@ function runPlanFinalizer(request: PlanFinalizerRequest): PlanFinalizerResult {
 }
 
 export class FixtureAgentRuntime implements AgentRuntime {
+  private readonly receipts: AgentExecutionReceipt[] = [];
+
+  executionReceipts(): readonly AgentExecutionReceipt[] {
+    return this.receipts.map((receipt) => ({ ...receipt }));
+  }
+
   async run(rawRequest: AgentRunRequest): Promise<AgentRunResult> {
     const request = agentRunRequestSchema.parse(rawRequest);
     assertAgentContextSafe(request);
@@ -824,6 +889,23 @@ export class FixtureAgentRuntime implements AgentRuntime {
     const parsed = agentRunResultSchema.parse(result);
     assertResultMatchesRequest(request, parsed);
     assertAgentContextSafe(parsed);
+    this.receipts.push({
+      schemaVersion: 1,
+      role: request.role,
+      instanceId: [request.role.toLowerCase(), categoryOf(request), participantIdOf(request)]
+        .filter(Boolean)
+        .join('.'),
+      promptVersion: 'fixture-v1',
+      executionMode: 'FIXTURE',
+      status: 'SUCCEEDED',
+      model: null,
+      reasoningEffort: null,
+      threadCreated: false,
+      usage: null,
+      repairUsed: false,
+      errorCode: null,
+      contractValidation: 'ACCEPTED',
+    });
     return parsed;
   }
 }

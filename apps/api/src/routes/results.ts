@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  agentExecutionReceiptSchema,
   planDocumentSchema,
   roundIdToCategory,
+  type AgentExecutionReceipt,
+  type AgentExecutionView,
   type FairnessView,
   type MemberFairnessView,
   type PlanBlockerView,
@@ -94,6 +97,39 @@ function readEvidenceStatus(report: unknown): 'PROVISIONAL' | 'VERIFIED' | null 
   return status === 'PROVISIONAL' || status === 'VERIFIED' ? status : null;
 }
 
+function readAgentExecutionReceipts(report: unknown): AgentExecutionReceipt[] {
+  if (typeof report !== 'object' || report === null) return [];
+  const canonical = (report as Record<string, unknown>)['canonical'];
+  if (typeof canonical !== 'object' || canonical === null) return [];
+  const result = (canonical as Record<string, unknown>)['result'];
+  if (typeof result !== 'object' || result === null) return [];
+  const receipts = (result as Record<string, unknown>)['agentExecutionReceipts'];
+  if (!Array.isArray(receipts)) return [];
+  return receipts.flatMap((receipt) => {
+    const parsed = agentExecutionReceiptSchema.safeParse(receipt);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+function publicAgentExecutionReceipt(
+  receipt: AgentExecutionReceipt,
+): AgentExecutionView['receipts'][number] {
+  return {
+    schemaVersion: receipt.schemaVersion,
+    role: receipt.role,
+    promptVersion: receipt.promptVersion,
+    executionMode: receipt.executionMode,
+    status: receipt.status,
+    model: receipt.model,
+    reasoningEffort: receipt.reasoningEffort,
+    threadCreated: receipt.threadCreated,
+    usage: receipt.usage,
+    repairUsed: receipt.repairUsed,
+    errorCode: receipt.errorCode,
+    contractValidation: receipt.contractValidation,
+  };
+}
+
 export async function registerResultRoutes(
   app: FastifyInstance,
   repos: Repositories,
@@ -154,6 +190,46 @@ export async function registerResultRoutes(
       pendingApprovals: (await repos.approvals.pending(roomId)).length,
     };
     return reply.send(progress);
+  });
+
+  app.get('/api/rooms/:roomId/agent-execution', async (request, reply) => {
+    const { roomId } = request.params as { roomId: string };
+    const loaded = await load(roomId);
+    if (loaded === undefined) return reply.status(404).send({ error: 'room_not_found' });
+    const { run, availability, reason } = loaded;
+    if (run === undefined) return reply.send(empty<AgentExecutionView>(availability, reason));
+
+    const itinerary = await repos.itineraries.latest(roomId);
+    const receipts = readAgentExecutionReceipts(itinerary?.validationReport);
+    if (receipts.length === 0) {
+      return reply.send(empty<AgentExecutionView>(
+        availability === 'failed' ? 'failed' : 'partial',
+        'Agent 실행 영수증이 없어 OAuth 또는 fixture 실행을 증명할 수 없습니다.',
+      ));
+    }
+    const modes = new Set(receipts.map((receipt) => receipt.executionMode));
+    const executionMode: AgentExecutionView['executionMode'] = modes.size === 1
+      ? (receipts[0]?.executionMode ?? 'UNKNOWN')
+      : 'MIXED';
+    const roles = new Set(
+      receipts
+        .filter((receipt) => receipt.status === 'SUCCEEDED' && receipt.contractValidation === 'ACCEPTED')
+        .map((receipt) => receipt.role),
+    );
+    const completeRoleSet = [
+      'USER_PROXY',
+      'CANDIDATE_EVIDENCE',
+      'CATEGORY_ARBITER',
+      'TRIP_ORCHESTRATOR',
+      'PLAN_FINALIZER',
+    ].every((role) => roles.has(role as typeof receipts[number]['role']));
+    const data: AgentExecutionView = {
+      runId: run.runId,
+      executionMode,
+      completeRoleSet,
+      receipts: receipts.map(publicAgentExecutionReceipt),
+    };
+    return reply.send({ availability: 'ready', reason: null, data } satisfies ResultEnvelope<AgentExecutionView>);
   });
 
   /**
