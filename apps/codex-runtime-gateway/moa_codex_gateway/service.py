@@ -235,7 +235,10 @@ class GatewayService:
 
     async def _safe_auth(self) -> AuthSnapshot:
         try:
-            return await self.backend.auth()
+            auth = await self.backend.auth()
+            if "chatgpt" not in auth.mode.lower():
+                return AuthSnapshot(mode=auth.mode, ready=False)
+            return auth
         except Exception as error:
             status, _, _, _ = _classify_runtime_error(error)
             if status == "AUTH_REQUIRED":
