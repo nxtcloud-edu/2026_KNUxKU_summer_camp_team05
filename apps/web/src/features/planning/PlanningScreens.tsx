@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { ArrowRight, Check, Clock, SpinnerGap, UsersThree, WarningCircle } from '@phosphor-icons/react'
 import { Page } from '../../components/ui'
 import type { DateResolutionOption, DateResolutionSnapshot, PlanningSnapshot } from './api/planningRepository'
@@ -26,15 +25,14 @@ function ResolvedDates({ label, detail, source, next }: { label: string; detail:
   </section></Page>
 }
 
-export function DateResolutionScreen({ snapshot, loading, error, next, back }: {
+export function DateResolutionScreen({ snapshot, loading, error, choose, next, back }: {
   snapshot: DateResolutionSnapshot | null
   loading: boolean
   error: string | null
+  choose: (option: DateResolutionOption) => Promise<void>
   next: () => void
   back: () => void
 }) {
-  const [selected, setSelected] = useState<DateResolutionOption | null>(null)
-
   if (loading && !snapshot) {
     return <Page narrow><section className="moa-survey-status" role="status"><strong>가능한 날짜를 확인하고 있어요.</strong></section></Page>
   }
@@ -45,10 +43,6 @@ export function DateResolutionScreen({ snapshot, loading, error, next, back }: {
       <p>{error ?? '잠시 후 다시 시도해 주세요.'}</p>
       <button type="button" onClick={back}>여행 방으로 돌아가기</button>
     </section></Page>
-  }
-
-  if (selected) {
-    return <ResolvedDates label={selected.rangeLabel} detail={`${selected.attendeeLabel} · ${selected.detail}`} source={snapshot.source} next={next} />
   }
 
   if (snapshot.status === 'resolved' && snapshot.resolved) {
@@ -78,7 +72,7 @@ export function DateResolutionScreen({ snapshot, loading, error, next, back }: {
       <p>가능한 날짜를 비교해 가장 현실적인 선택지만 정리했어요.</p>
     </div>
     <div className="moa-date-options">
-      {snapshot.options.map((option) => <button key={option.id} className={option.recommended ? 'recommended' : ''} onClick={() => setSelected(option)}>
+      {snapshot.options.map((option) => <button key={option.id} className={option.recommended ? 'recommended' : ''} disabled={loading} onClick={() => { void choose(option) }}>
         <b>{option.code}</b>
         <div><strong>{option.rangeLabel}</strong><span><UsersThree />{option.attendeeLabel}</span><small>{option.detail}</small></div>
         <ArrowRight />

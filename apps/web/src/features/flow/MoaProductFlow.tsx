@@ -320,7 +320,7 @@ export function MoaProductFlow() {
       case 'lobby': return <ProductLobby destination={state.destination} participants={room.participants} loading={room.loading} error={room.error} source={room.source} start={() => go('survey')} copy={() => { void copyInvite() }} />
       case 'survey': return <TripBuilderSurvey destination={state.destination} roomId={room.roomId} userId={room.userId} backToRoom={() => go('lobby')} complete={(criteria) => { void finishSurvey(criteria) }} />
       case 'persona': return <PersonaConfirmScreen destination={state.destination} criteria={personaCriteria} source={room.source} busy={personaBusy} error={personaError} confirm={() => { void confirmPersona() }} back={() => go('lobby')} />
-      case 'date-resolution': return <DateResolutionScreen snapshot={dateResolution.snapshot} loading={dateResolution.loading} error={dateResolution.error} back={() => go('lobby')} next={() => go('planning')} />
+      case 'date-resolution': return <DateResolutionScreen snapshot={dateResolution.snapshot} loading={dateResolution.loading} error={dateResolution.error} choose={dateResolution.chooseDate} back={() => go('lobby')} next={() => go('planning')} />
       case 'planning': return <PlanningScreen snapshot={planning.snapshot} loading={planning.loading} error={planning.error} leave={() => go('lobby')} next={() => go('result')} />
       case 'result': return resultsWorkspace
       case 'decision': return selectedDecision ? resultsWorkspace : missingDecision

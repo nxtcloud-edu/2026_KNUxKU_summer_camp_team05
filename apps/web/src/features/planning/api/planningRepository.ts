@@ -1,4 +1,5 @@
 import type {
+  DateResolutionResponse,
   PlanResultResponse,
   ResultEnvelope,
   RoomProgressResponse,
@@ -69,6 +70,7 @@ export type DateResolutionSnapshot = {
 
 export interface PlanningRepository {
   getDateResolution(roomId: string): Promise<DateResolutionSnapshot>
+  chooseDate(roomId: string, option: DateResolutionOption): Promise<DateResolutionSnapshot>
   /** Idempotent from the screen's point of view: returns the live run if one exists. */
   startRun(roomId: string, trigger?: StartTriggerId): Promise<PlanningSnapshot>
   getProgress(roomId: string): Promise<PlanningSnapshot | null>
@@ -172,6 +174,21 @@ export class MockPlanningRepository implements PlanningRepository {
     }
   }
 
+  async chooseDate(_roomId: string, option: DateResolutionOption): Promise<DateResolutionSnapshot> {
+    return {
+      source: 'fixture',
+      status: 'resolved',
+      reason: null,
+      resolved: {
+        start: option.start,
+        end: option.end,
+        label: option.rangeLabel,
+        detail: `${option.attendeeLabel} · ${option.detail}`,
+      },
+      options: [],
+    }
+  }
+
   async startRun(roomId: string): Promise<PlanningSnapshot> {
     const existing = readMockRun(roomId)
     const run = existing ?? { roomId, runId: `demo-run-${Date.now().toString(36)}`, startedAt: Date.now() }
@@ -253,38 +270,79 @@ const emptySnapshot = (): PlanningSnapshot => ({
 })
 
 export class ApiPlanningRepository implements PlanningRepository {
-  /**
-   * The backend has no date-candidate endpoint yet, so this reads the range the
-   * DateResolver already committed to (`plan.dateRange`). When there is none we
-   * say so instead of showing invented options.
-   */
-  async getDateResolution(roomId: string): Promise<DateResolutionSnapshot> {
-    const envelope = await requestJson<ResultEnvelope<PlanResultResponse>>(
-      `/api/rooms/${encodeURIComponent(roomId)}/plan`,
-    )
-    const range = envelope.data?.dateRange ?? null
-    if (!range) {
+  private toDateSnapshot(response: DateResolutionResponse): DateResolutionSnapshot {
+    if (response.data === null) {
       return {
         source: 'live',
         status: 'unavailable',
-        reason: envelope.reason ?? '아직 확정된 여행 날짜가 없어요.',
+        reason: response.reason ?? '아직 확정된 여행 날짜가 없어요.',
         resolved: null,
         options: [],
       }
     }
-    const nights = nightsBetween(range.start, range.end)
+
+    const chosen = response.data.chosen
+    if (response.status === 'VERIFIED' && chosen !== null) {
+      return {
+        source: 'live',
+        status: 'resolved',
+        reason: null,
+        resolved: {
+          start: chosen.start,
+          end: chosen.end,
+          label: `${formatIsoDate(chosen.start)} – ${formatIsoDate(chosen.end)}`,
+          detail: `${chosen.nights}박 ${chosen.nights + 1}일 · ${chosen.attendees.length}명 참여`,
+        },
+        options: [],
+      }
+    }
+
+    if (response.status !== 'NEEDS_USER_CHOICE') {
+      return {
+        source: 'live',
+        status: 'unavailable',
+        reason: response.reason ?? response.data.reason,
+        resolved: null,
+        options: [],
+      }
+    }
+
     return {
       source: 'live',
-      status: 'resolved',
-      reason: null,
-      resolved: {
-        start: range.start,
-        end: range.end,
-        label: `${formatIsoDate(range.start)} – ${formatIsoDate(range.end)}`,
-        detail: nights === null ? '확정된 여행 구간' : `${nights}박 ${nights + 1}일`,
-      },
-      options: [],
+      status: 'choice-required',
+      reason: response.reason ?? response.data.reason,
+      resolved: null,
+      options: response.data.windows.map((window, index) => ({
+        id: `${window.start}:${window.end}`,
+        code: String.fromCharCode(65 + index),
+        rangeLabel: `${formatIsoDate(window.start)} – ${formatIsoDate(window.end)}`,
+        start: window.start,
+        end: window.end,
+        attendeeLabel: `${window.attendees.length}명 참여 가능`,
+        detail: window.absentees.length === 0
+          ? `${window.nights}박 · 전원 참여`
+          : `${window.nights}박 · ${window.absentees.length}명 불참`,
+        recommended: index === 0,
+      })),
     }
+  }
+
+  async getDateResolution(roomId: string): Promise<DateResolutionSnapshot> {
+    const response = await requestJson<DateResolutionResponse>(
+      `/api/rooms/${encodeURIComponent(roomId)}/date-resolution`,
+    )
+    return this.toDateSnapshot(response)
+  }
+
+  async chooseDate(roomId: string, option: DateResolutionOption): Promise<DateResolutionSnapshot> {
+    if (option.start === null || option.end === null) {
+      throw new ApiError(400, 'invalid_date_choice', '선택한 날짜 범위를 확인해 주세요.', null)
+    }
+    const response = await requestJson<DateResolutionResponse>(
+      `/api/rooms/${encodeURIComponent(roomId)}/date-resolution/choice`,
+      { method: 'POST', body: { start: option.start, end: option.end } },
+    )
+    return this.toDateSnapshot(response)
   }
 
   /**

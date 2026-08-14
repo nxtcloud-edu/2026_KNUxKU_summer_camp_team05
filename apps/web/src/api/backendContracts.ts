@@ -124,6 +124,29 @@ export type RoomProgressResponse = {
   pendingApprovals: number
 }
 
+export type DateWindowResponse = {
+  start: string
+  end: string
+  nights: number
+  attendees: string[]
+  absentees: string[]
+  score: number
+  breakdown: Record<string, number>
+}
+
+export type DateResolutionResponse = {
+  status: 'PROVISIONAL' | 'VERIFIED' | 'NEEDS_USER_CHOICE' | 'BLOCKED'
+  reason: string | null
+  data: {
+    status: 'confirmed' | 'needs_discussion' | 'needs_host_choice' | 'impossible'
+    windows: DateWindowResponse[]
+    chosen: DateWindowResponse | null
+    relaxation: 'none' | 'fewer_nights' | 'partial_attendance'
+    nights: number
+    reason: string
+  } | null
+}
+
 /**
  * Item and plan badges as the backend declares them. `BOOKABLE` and `BOOKED`
  * stay in the wire type because the canonical contract still lists them, but no

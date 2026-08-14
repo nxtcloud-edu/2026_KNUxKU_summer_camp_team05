@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { planningRepository, type DateResolutionSnapshot } from '../api/planningRepository'
+import { planningRepository, type DateResolutionOption, type DateResolutionSnapshot } from '../api/planningRepository'
 
 /**
  * The trip dates. In `api` mode these are whatever the DateResolver committed
@@ -30,5 +30,18 @@ export function useDateResolution(roomId: string | null, active: boolean) {
     return () => { cancelled = true }
   }, [active, roomId])
 
-  return { snapshot, loading, error }
+  const chooseDate = async (option: DateResolutionOption) => {
+    if (!roomId) return
+    setLoading(true)
+    setError(null)
+    try {
+      setSnapshot(await planningRepository.chooseDate(roomId, option))
+    } catch (chooseError) {
+      setError(chooseError instanceof Error ? chooseError.message : '날짜를 확정하지 못했어요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return { snapshot, loading, error, chooseDate }
 }
