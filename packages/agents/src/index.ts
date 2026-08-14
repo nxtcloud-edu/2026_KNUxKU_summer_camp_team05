@@ -85,3 +85,5 @@ export {
   type SearchDeps,
   type SearchInput,
 } from './search.js';
+
+export { FixtureMvpAgentRuntime, type MvpAgentRuntime } from './mvp-runtime.js';

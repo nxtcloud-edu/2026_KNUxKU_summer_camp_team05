@@ -146,6 +146,8 @@ Accepted MVP 결정은 [ADR 목록](docs/adr/README.md)에 있습니다. 현재 
 
 `dawnkim`에서 [Codex Runtime Gateway](apps/codex-runtime-gateway/README.md)의 로컬 실행 경계만 선별 이식했습니다. Python Worker·AgentCore·Docker 구성은 가져오지 않았고, TypeScript 계약과 Worker HTTP 포트가 role·schema·version을 소유합니다. 가짜 Backend 기반 계약 검증은 실제 OAuth 모델 실행의 증거가 아닙니다.
 
+TypeScript Worker에는 `stay` 전용 `UserProxy → StayArbiter → TripSupervisor` fixture 경로가 연결돼 있습니다. Candidate Search 계약, 조건 ID 기반 안전 완화 거부, 본인 확정 프로필 projection, 코드 소유 만족도·maximin 선택, Arbiter 변경 감지, Supervisor guard를 한 번에 실행합니다. 이는 해당 fixture 경로의 로컬 증거이며 Survey v4, 화면, 실제 공급자, OAuth 모델 실행 또는 전체 MVP 완료 증거가 아닙니다.
+
 [Python 에이전트 초안](prototypes/python-agents/README.md)의 Proxy·중재자·감독관 계약과 오프라인 fixture는 참고할 수 있습니다. 그 안의 ECS·AgentCore 코드는 과거 실험이며 MVP 선택 경로가 아닙니다. 선택 런타임은 로컬 Codex OAuth Gateway이고, 기존 TypeScript Worker가 업무 오케스트레이터입니다.
 
 MVP 완결 기준은 다음 모두입니다.
@@ -169,6 +171,14 @@ npm run typecheck
 npm run test
 npm run build
 ```
+
+OAuth와 외부 API 없이 3역할 숙소 fixture 경로만 실행하려면 다음 명령을 사용합니다.
+
+```bash
+npm run mvp:fixture --workspace @tm/worker
+```
+
+정상 결과의 내부 실행 상태는 `FIXTURE_PATH_CLEAR`입니다. [출시 게이트](docs/operations/mvp-release-gates.md)의 모든 수동 시나리오를 통과하기 전에는 이를 `VALIDATED_LOCAL_FIXTURE_MVP`로 승격하지 않습니다.
 
 `VITE_API_BASE_URL`을 비워두면 기존 프론트 흐름이 `sessionStorage`에 저장됩니다. 이는 UI 목업 경로이며 새 백엔드 계약이 연결됐다는 뜻은 아닙니다.
 

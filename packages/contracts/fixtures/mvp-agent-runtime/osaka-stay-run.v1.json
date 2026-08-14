@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "runId": "fixture-osaka-stay-001",
+  "tripId": "trip-osaka-001",
+  "planVersion": 1,
+  "participantIds": ["user-1", "user-2", "user-3"],
+  "profileSource": {
+    "profiles": {
+      "user-1": {
+        "participantId": "user-1",
+        "confirmedFactIds": ["fact-u1-central", "fact-u1-quiet", "fact-u1-smoke", "fact-u1-access"],
+        "preferences": [
+          { "preferenceId": "central", "statement": "중심지 접근성을 선호한다", "weightBp": 6000, "factId": "fact-u1-central" },
+          { "preferenceId": "quiet", "statement": "조용한 숙소를 선호한다", "weightBp": 4000, "factId": "fact-u1-quiet" }
+        ],
+        "hardConstraints": [
+          { "constraintId": "hc.smoke-free", "statement": "금연 객실이어야 한다", "factId": "fact-u1-smoke" }
+        ],
+        "protectedObjectives": [
+          { "constraintId": "po.accessibility", "statement": "엘리베이터 접근이 가능해야 한다", "factId": "fact-u1-access" }
+        ],
+        "budgetMaxKrw": 350000
+      },
+      "user-2": {
+        "participantId": "user-2",
+        "confirmedFactIds": ["fact-u2-central", "fact-u2-quiet", "fact-u2-smoke", "fact-u2-access"],
+        "preferences": [
+          { "preferenceId": "central", "statement": "중심지 접근성을 선호한다", "weightBp": 2000, "factId": "fact-u2-central" },
+          { "preferenceId": "quiet", "statement": "조용한 숙소를 강하게 선호한다", "weightBp": 8000, "factId": "fact-u2-quiet" }
+        ],
+        "hardConstraints": [
+          { "constraintId": "hc.smoke-free", "statement": "금연 객실이어야 한다", "factId": "fact-u2-smoke" }
+        ],
+        "protectedObjectives": [
+          { "constraintId": "po.accessibility", "statement": "엘리베이터 접근이 가능해야 한다", "factId": "fact-u2-access" }
+        ],
+        "budgetMaxKrw": 350000
+      },
+      "user-3": {
+        "participantId": "user-3",
+        "confirmedFactIds": ["fact-u3-central", "fact-u3-quiet", "fact-u3-smoke", "fact-u3-access"],
+        "preferences": [
+          { "preferenceId": "central", "statement": "중심지 접근성을 선호한다", "weightBp": 5000, "factId": "fact-u3-central" },
+          { "preferenceId": "quiet", "statement": "조용한 숙소를 선호한다", "weightBp": 5000, "factId": "fact-u3-quiet" }
+        ],
+        "hardConstraints": [
+          { "constraintId": "hc.smoke-free", "statement": "금연 객실이어야 한다", "factId": "fact-u3-smoke" }
+        ],
+        "protectedObjectives": [
+          { "constraintId": "po.accessibility", "statement": "엘리베이터 접근이 가능해야 한다", "factId": "fact-u3-access" }
+        ],
+        "budgetMaxKrw": 350000
+      }
+    }
+  },
+  "search": {
+    "schemaVersion": 1,
+    "runId": "fixture-osaka-stay-001",
+    "tripId": "trip-osaka-001",
+    "planVersion": 1,
+    "category": "stay",
+    "shortageReason": "LOW_CONFIDENCE",
+    "unresolvedTerms": ["오사카", "3박", "금연", "엘리베이터"],
+    "canonicalConstraints": {
+      "hardConstraintIds": ["hc.smoke-free"],
+      "protectedObjectiveIds": ["po.accessibility"],
+      "filters": { "guests": 3, "nights": 3, "currency": "KRW" }
+    },
+    "allowedRelaxationIds": ["pref.distance"],
+    "requestedRelaxationIds": [],
+    "currentCandidateIds": []
+  },
+  "candidates": [
+    {
+      "proposalId": "stay-a",
+      "proposalSetVersion": 1,
+      "headline": "난바 중심 접근형 숙소",
+      "costPerPersonKrw": 280000,
+      "capacity": 3,
+      "attributesBp": { "central": 9500, "quiet": 4000 },
+      "violatedConstraintIds": [],
+      "evidenceIds": ["ev-stay-a"]
+    },
+    {
+      "proposalId": "stay-b",
+      "proposalSetVersion": 1,
+      "headline": "혼마치 균형형 숙소",
+      "costPerPersonKrw": 310000,
+      "capacity": 4,
+      "attributesBp": { "central": 7000, "quiet": 8500 },
+      "violatedConstraintIds": [],
+      "evidenceIds": ["ev-stay-b"]
+    }
+  ],
+  "evidence": [
+    { "evidenceId": "ev-stay-a", "status": "VERIFIED", "summary": "fixture 숙소 A의 가격·수용 인원·편의시설 확인" },
+    { "evidenceId": "ev-stay-b", "status": "VERIFIED", "summary": "fixture 숙소 B의 가격·수용 인원·편의시설 확인" }
+  ]
+}

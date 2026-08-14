@@ -35,6 +35,8 @@ docs/                     제품·아키텍처·공급자 계약
 
 `apps/codex-runtime-gateway/`에는 다른 브랜치의 OAuth·모델 카탈로그·구조화 출력 부분만 선별 이식돼 있다. Python Agent registry 의존성은 제거했고 `packages/contracts`의 TypeScript HTTP 계약과 golden JSON fixture, `apps/worker` 호출 포트가 입력을 소유한다. Python Worker나 별도 제품 상태머신은 추가하지 않았다.
 
+`stay` 한 카테고리에 한해 TypeScript `UserProxy → StayArbiter → TripSupervisor` fixture 경로가 추가됐다. `packages/contracts`가 strict Zod 계약과 golden fixture를, `packages/core`가 안전 완화 거부·개인정보 projection·만족도·maximin·guard를, `packages/agents`가 교체 가능한 runtime 인터페이스와 fixture 구현을, `apps/worker`가 호출 순서와 최종 차단을 소유한다. 기존 7개 카테고리 enum과 이전 Persona·Referee·Supervisor 흐름은 이 경로에 들어오지 않는다.
+
 ## 3. 런타임 결정
 
 | 영역 | 현재/권장 | 이유 |
@@ -92,6 +94,14 @@ npm run test
 npm run build
 ```
 
+OAuth와 공급자 API 없이 새 3역할 숙소 경로를 실행한다.
+
+```bash
+npm run mvp:fixture --workspace @tm/worker
+```
+
+`FIXTURE_PATH_CLEAR`는 오사카 3인 숙소 fixture 한 경로에서 검색 계획, 참여자별 projection·ballot, maximin 선택, Arbiter 정합성, Supervisor guard가 관찰됐다는 뜻이다. 화면과 나머지 수동 시나리오까지 확인한 `VALIDATED_LOCAL_FIXTURE_MVP`나 실제 모델을 확인한 `VALIDATED_LOCAL_OAUTH_MVP`와 같지 않다.
+
 DB 경로:
 
 ```bash
@@ -139,6 +149,8 @@ Open-Meteo와 Frankfurter의 무료/상업 조건은 배포 시 다시 확인한
 6. [MVP 출시 게이트](operations/mvp-release-gates.md)의 fixture와 OAuth 시나리오
 
 전체 0~6단계, 다른 도시·카테고리, 중앙 비교선, 자동 재토론, 예약은 후속 범위다.
+
+현재 4번은 fixture runtime으로만 종단 연결됐고, 2번의 정상·안전 완화 거부·Arbiter 변경 차단 일부를 자동 검증한다. Survey v4 입력, 결과 화면, 출시 게이트의 정원·근거 누락·객실 분리·공정성 수동 시나리오, 실제 Codex OAuth adapter 실행은 아직 남아 있다.
 
 ## 8. 실행 범위
 
