@@ -93,11 +93,17 @@ export const demoPlanB: PlanB[] = [
 ]
 
 export const demoResult: ProductResult = {
-  status:'VERIFIED_DRAFT', pace:tripPaces[1], destination:'오사카', destinationImage:featuredDestinations.find((item) => item.id === 'osaka')!.image, duration:'3박 4일', dateRange:'10.15 – 10.18', participantCount:5, budgetPerPerson:742000, stayArea:'난바', checksRequired:3,
+  status:'VERIFIED', source:'fixture', runId:null,
+  unverifiedItems:[
+    '난바 오코노미야키 식당 후보의 갑각류 교차 오염 대응 (매장 직접 확인 필요)',
+    '난바 소형 숙소 C의 5명 수용 여부와 가격',
+    '난바 비즈니스 호텔 B의 최종 금액과 재고',
+  ],
+  pace:tripPaces[1], destination:'오사카', destinationImage:featuredDestinations.find((item) => item.id === 'osaka')!.image, duration:'3박 4일', dateRange:'10.15 – 10.18', participantCount:5, budgetPerPerson:742000, stayArea:'난바', checksRequired:3,
   decisions:demoDecisions,
   bookingSummary:{attentionCount:2,readyCount:2,priorityBookingId:'book-hotel-unknown'},
   bookings:[
-    {id:'book-flight',category:'항공',title:'대한항공 KE721',state:'ready',stateLabel:'예약 준비 완료',detail:'09:10 인천 → 11:00 간사이',price:{type:'live',amount:328000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},note:'좌석과 운임을 확인했지만 결제 전 최종 조건을 확인해 주세요.',availabilityLabel:'좌석 확인됨',actionLabel:'예약처에서 확인',externalUrl:'https://www.koreanair.com',evidence:flightEvidence},
+    {id:'book-flight',category:'항공',title:'대한항공 KE721',state:'ready',stateLabel:'운임·좌석 확인됨',detail:'09:10 인천 → 11:00 간사이',price:{type:'live',amount:328000,currency:'KRW',unit:'person',checkedLabel:'8분 전 확인'},note:'좌석과 운임을 확인했지만 결제 전 최종 조건을 확인해 주세요.',availabilityLabel:'좌석 확인됨',actionLabel:'예약처에서 확인',externalUrl:'https://www.koreanair.com',evidence:flightEvidence},
     {id:'book-hotel',category:'숙소',title:'Hotel Resol Trinity Osaka',state:'ready',stateLabel:'객실 확인됨',detail:'트윈룸 2실 + 싱글룸 1실',price:{type:'live',amount:15200,currency:'JPY',convertedKRW:142000,unit:'night',exchangeRate:9.34,checkedAt:'오늘 05:40',checkedLabel:'12분 전 확인'},note:'선택한 객실 조합과 취소 기한을 결제 전에 확인해 주세요.',availabilityLabel:'객실 확인됨',actionLabel:'예약처에서 확인',externalUrl:'https://www.google.com/travel/hotels',evidence:hotelEvidence},
     {id:'book-hotel-estimated',category:'숙소',title:'난바 비즈니스 호텔 B',state:'needs-check',stateLabel:'예약 전 확인 필요',price:{type:'estimated',currency:'KRW',rangeMin:120000,rangeMax:180000,unit:'night',checkedLabel:'범위 추정'},note:'객실 조합에 따라 가격 차이가 커요.',followUpLabel:'출발 전 재고와 최종 금액 확인',freshness:'추정 정보'},
     {id:'book-hotel-unknown',category:'숙소',title:'난바 소형 숙소 C',state:'blocked',stateLabel:'가격 확인 필요',price:{type:'unknown'},note:'그룹 수용 가능 여부와 정확한 가격 정보가 아직 없어요.',checkItems:['객실 재고','5명 수용','가격']},
@@ -184,6 +190,7 @@ export function demoResultForDestination(destination: DestinationPack): ProductR
   return {
     ...demoResult,
     status:'NEEDS_USER_CHOICE',
+    unverifiedItems:[`${destination.name}의 상세 여행 데이터가 아직 준비되지 않았어요`],
     destination:destination.name,
     destinationImage:destination.image,
     stayArea:'중심 지역',

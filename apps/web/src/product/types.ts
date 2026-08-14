@@ -26,8 +26,17 @@ export type Participant = {
   preferencesRepresented: boolean
 }
 
-/** Whole-plan readiness. This is intentionally independent from individual fact confidence. */
-export type PlanStatus = 'VERIFIED_DRAFT' | 'BOOKABLE' | 'NEEDS_USER_CHOICE' | 'BLOCKED'
+/**
+ * Whole-plan readiness, intentionally independent from individual fact confidence.
+ *
+ * The MVP has four states and no booking states. `BOOKABLE`/`BOOKED` are gone on
+ * purpose: price, inventory and time-slot verification do not exist yet, so a
+ * screen that says "ready to book" would be making a claim nobody checked.
+ */
+export type PlanStatus = 'PROVISIONAL' | 'VERIFIED' | 'NEEDS_USER_CHOICE' | 'BLOCKED'
+
+/** Whether what is on screen came from fixtures or from the backend. */
+export type ResultSource = 'fixture' | 'live'
 export type DataConfidence = 'live' | 'verified' | 'estimated' | 'unknown' | 'stale'
 export type EvidenceState = DataConfidence
 export type SourceType = 'official' | 'provider' | 'web' | 'derived'
@@ -263,7 +272,8 @@ export type BookingReadiness = {
   id: string
   category: string
   title: string
-  state: 'ready' | 'needs-check' | 'blocked' | 'booked'
+  /** No `booked` state: MOA never executes a booking. */
+  state: 'ready' | 'needs-check' | 'blocked'
   stateLabel: string
   price?: PriceView
   priceLabel?: string
@@ -457,6 +467,14 @@ export type RerunDiff = {
 
 export type ProductResult = {
   status: PlanStatus
+  /** `fixture` is demo data, `live` came from the backend. Always shown to the user. */
+  source: ResultSource
+  /** Which meeting produced this. Null in fixture mode. */
+  runId?: string | null
+  /** Things nobody confirmed. Hiding these makes users book on false confidence. */
+  unverifiedItems: string[]
+  /** When the plan was published / last verified. */
+  checkedAt?: string
   pace: TripPace
   destination: string
   destinationImage?: string

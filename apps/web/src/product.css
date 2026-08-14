@@ -1809,3 +1809,25 @@
 .moa-booking-filter-empty{min-height:120px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:18px 2px;color:var(--result-muted)}
 .moa-booking-filter-empty strong{color:var(--result-ink);font-size:14px}
 .moa-booking-filter-empty button svg{width:14px}
+
+/* ---------------------------------------------------------------- 데이터 출처 표시
+   결과가 데모 고정 데이터인지 실데이터인지, 무엇이 확인되지 않았는지를
+   화면에서 감추지 않는다. 신뢰할 수 있는 대리인 원칙. */
+.moa-result-source{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.moa-result-source small{display:inline-flex;align-items:center;gap:4px;font-size:11px;opacity:.85}
+.moa-result-source small svg{width:12px;height:12px}
+.moa-result-source-tag{padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.02em}
+.moa-result-source-tag.live{background:#e3f1ec;color:#14614f}
+.moa-result-source-tag.fixture{background:#fbf1dd;color:#8a6a24}
+
+.moa-unverified-items{margin:0 0 18px;padding:16px 18px;border:1px solid #e6d8c4;border-radius:14px;background:#fdf8ef}
+.moa-unverified-items h3{display:flex;align-items:center;gap:7px;margin:0 0 10px;font-size:14px;color:#7a5f2a}
+.moa-unverified-items h3 svg{width:17px;height:17px}
+.moa-unverified-items ul{margin:0;padding-left:18px;display:grid;gap:6px}
+.moa-unverified-items li{font-size:13px;line-height:1.6;color:#5f5548}
+.moa-unverified-items p{margin:11px 0 0;font-size:12px;color:#8b7f6f}
+
+/* 페르소나 확인 게이트 — 사용자가 직접 고른 답변만 나열한다 */
+.moa-persona-criteria{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.moa-persona-criteria li{display:flex;align-items:flex-start;gap:8px;font-size:14px;line-height:1.55;color:#3a352d}
+.moa-persona-criteria li svg{flex:0 0 auto;width:16px;height:16px;margin-top:2px;color:#147d7a}

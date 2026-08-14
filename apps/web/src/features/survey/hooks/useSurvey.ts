@@ -15,9 +15,14 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 type UseSurveyOptions = {
   destinationId: CityId
   repository: SurveyRepository
+  /**
+   * Who is answering, and for which room. Without this the submission cannot be
+   * attributed and the backend has nothing to attach the mandate to.
+   */
+  context?: { tripRoomId: string | null; participantId: string | null }
 }
 
-export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
+export function useSurvey({ destinationId, repository, context }: UseSurveyOptions) {
   const [plan, setPlan] = useState<SurveyPlanV4 | null>(null)
   const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<string, SurveyAnswerV4>>({})
@@ -31,6 +36,8 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
   const currentQuestionIdRef = useRef<string | null>(null)
   const startedAtRef = useRef(startedAt)
   const navigationInFlightRef = useRef(false)
+  const contextRef = useRef(context)
+  contextRef.current = context
 
   useEffect(() => {
     let active = true
@@ -103,8 +110,8 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
       planId: activePlan.planId,
       planRevision: activePlan.revision,
       destinationId: activePlan.destinationId,
-      tripRoomId: null,
-      participantId: null,
+      tripRoomId: contextRef.current?.tripRoomId ?? null,
+      participantId: contextRef.current?.participantId ?? null,
       status,
       currentQuestionId: currentQuestionIdRef.current,
       answers: Object.values(answerState)

@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Check, Info, SpinnerGap, WarningCircle } from '@phosphor-icons/react'
-import { demoRerunFlow, demoRerunImpact, reopenOptions } from '../../product/mockData'
+import { demoRerunFlow, reopenOptions } from '../../product/mockData'
 import type { DecisionSummary, ReopenReason, RerunDiff } from '../../product/types'
 import { Page } from '../../components/ui'
+import type { PlanningSnapshot } from '../planning/api/planningRepository'
+import type { RerunImpactSnapshot } from './api/rerunRepository'
 
 const debugVisible = () => import.meta.env.DEV
   && typeof window !== 'undefined'
@@ -19,12 +21,14 @@ function ReDiscussionActions({ secondary, secondaryAction, primary, primaryActio
   </div>
 }
 
-export function ReopenFlow({ decision, reason, choice, applyFuture, setReason, setChoice, setApplyFuture, back, start }: { decision: DecisionSummary; reason: ReopenReason | null; choice: 'station' | 'room'; applyFuture: boolean; setReason: (reason: ReopenReason) => void; setChoice: (choice: 'station' | 'room') => void; setApplyFuture: (value: boolean) => void; back: () => void; start: () => void }) {
+export function ReopenFlow({ decision, reason, choice, applyFuture, impact, impactLoading, impactError, submitting, setReason, setChoice, setApplyFuture, requestImpact, back, start }: { decision: DecisionSummary; reason: ReopenReason | null; choice: 'station' | 'room'; applyFuture: boolean; impact: RerunImpactSnapshot | null; impactLoading: boolean; impactError: string | null; submitting: boolean; setReason: (reason: ReopenReason) => void; setChoice: (choice: 'station' | 'room') => void; setApplyFuture: (value: boolean) => void; requestImpact: () => void; back: () => void; start: () => void }) {
   const [step, setStep] = useState<'reason' | 'followup' | 'confirm' | 'impact'>('reason')
   const copy = demoRerunFlow.copy
   const selectedChoice = demoRerunFlow.followUp.choices.find((item) => item.id === choice) ?? demoRerunFlow.followUp.choices[0]
-  const impactItems = demoRerunImpact.affectedDecisionDetails
-    ?? demoRerunImpact.affectedDecisions.map((label) => ({ label, detail: undefined }))
+  const impactItems = impact?.affectedDecisions ?? []
+  // Impact is read once we reach the preview step: nothing reruns before the
+  // user has seen what it costs.
+  useEffect(() => { if (step === 'impact') requestImpact() }, [requestImpact, step])
   const goToStep = (next: typeof step) => {
     setStep(next)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -76,31 +80,39 @@ export function ReopenFlow({ decision, reason, choice, applyFuture, setReason, s
 
       {step === 'impact' && <>
         <FlowHeader label={copy.impact.label} title={copy.impact.title}><p><strong>{decision.categoryLabel}</strong> {copy.impact.descriptionSuffix}</p></FlowHeader>
-        <section className="moa-impact-preview">
+        {impactLoading && !impact && <section className="moa-impact-preview" role="status"><p><SpinnerGap /> 영향 범위를 확인하고 있어요.</p></section>}
+        {impactError && <aside className="moa-rediscussion-debug" role="alert">{impactError}</aside>}
+        {impact && <section className="moa-impact-preview">
           <div className="moa-impact-list">{impactItems.map((item) => <article key={item.label}><Check /><div><strong>{item.label}</strong>{item.detail && <span>{item.detail}</span>}</div></article>)}</div>
           <dl className="moa-impact-meta">
-            <div><dt>{copy.impact.countLabel}</dt><dd>{demoRerunImpact.decisionCount}{copy.impact.countSuffix}</dd></div>
-            {demoRerunImpact.estimatedTimeLabel && <div><dt>{copy.impact.durationLabel}</dt><dd>{demoRerunImpact.estimatedTimeLabel}</dd></div>}
-            {demoRerunImpact.bookingImpact && <div><dt>{copy.impact.bookingLabel}</dt><dd>{demoRerunImpact.bookingImpact}</dd></div>}
+            <div><dt>{copy.impact.countLabel}</dt><dd>{impact.decisionCount}{copy.impact.countSuffix}</dd></div>
+            {impact.estimatedTimeLabel && <div><dt>{copy.impact.durationLabel}</dt><dd>{impact.estimatedTimeLabel}</dd></div>}
+            {impact.bookingImpact && <div><dt>{copy.impact.bookingLabel}</dt><dd>{impact.bookingImpact}</dd></div>}
+            {impact.remainingAfterThis && <div><dt>이후 남는 횟수</dt><dd>방 {impact.remainingAfterThis.room}회 · 나 {impact.remainingAfterThis.user}회</dd></div>}
           </dl>
-        </section>
-        {debugVisible() && <aside className="moa-rediscussion-debug">{demoRerunFlow.debug.impactNote}</aside>}
-        <ReDiscussionActions primary={copy.impact.action} primaryAction={start} sticky />
+        </section>}
+        {impact && impact.approvalRequired.length > 0 && <aside className="moa-updated-booking-warning"><strong>방장 승인이 필요해요</strong><p>{impact.approvalRequired.join(' · ')} — 승인 전에는 다시 논의가 시작되지 않아요.</p></aside>}
+        {impact?.note && debugVisible() && <aside className="moa-rediscussion-debug">{impact.note}</aside>}
+        <ReDiscussionActions primary={copy.impact.action} primaryAction={start} disabled={submitting || impactLoading || impact === null} sticky />
       </>}
     </div>
   </Page>
 }
 
-export function RerunProcessing({ decision, next, leave }: { decision: DecisionSummary; next: () => void; leave: () => void }) {
+export function RerunProcessing({ decision, progress, waitingApproval, error, next, leave }: { decision: DecisionSummary; progress: PlanningSnapshot | null; waitingApproval: boolean; error: string | null; next: () => void; leave: () => void }) {
   const copy = demoRerunFlow.copy.processing
+  const finished = progress?.finished ?? false
+  const steps = progress?.steps ?? demoRerunFlow.processing.steps.map((label, index) => ({ id: `fallback-${index}`, label, state: index === 0 ? 'active' as const : 'pending' as const }))
   return <Page narrow><section className="moa-planning-screen moa-rediscussion-processing">
-    <div className="moa-status-mark loading"><SpinnerGap /></div>
+    <div className={`moa-status-mark ${finished ? 'success' : 'loading'}`}>{finished ? <Check weight="bold" /> : <SpinnerGap />}</div>
     <span className="moa-kicker">{copy.label}</span>
     <h1>{decision.categoryLabel} {copy.titleSuffix}</h1>
-    <p>{copy.criterionPrefix} · {demoRerunFlow.processing.criterion}</p>
-    <div className="moa-planning-list">{demoRerunFlow.processing.steps.map((item, index) => <div key={item} className={index === 0 ? 'active' : ''}><span>{index === 0 ? <SpinnerGap /> : index + 1}</span><strong>{item}</strong><small>{index === 0 ? copy.activeStatus : copy.pendingStatus}</small></div>)}</div>
-    {debugVisible() && <aside className="moa-rediscussion-debug">{demoRerunFlow.debug.processingNote}</aside>}
-    <ReDiscussionActions secondary={copy.leaveAction} secondaryAction={leave} primary={copy.resultAction} primaryAction={next} />
+    <p>{waitingApproval ? '방장 승인을 기다리고 있어 아직 시작되지 않았어요.' : `${copy.criterionPrefix} · ${progress ? `${progress.percent}% 진행` : demoRerunFlow.processing.criterion}`}</p>
+    <div className="moa-planning-list">{steps.map((step, index) => <div key={step.id} className={step.state === 'done' ? 'done' : step.state === 'active' ? 'active' : ''}><span>{step.state === 'done' ? <Check weight="bold" /> : step.state === 'active' ? <SpinnerGap /> : index + 1}</span><strong>{step.label}</strong><small>{step.state === 'done' ? '검토 완료' : step.state === 'active' ? copy.activeStatus : copy.pendingStatus}</small></div>)}</div>
+    {progress?.failureReason && <aside className="moa-rediscussion-debug" role="alert">멈춘 이유: {progress.failureReason}</aside>}
+    {error && <aside className="moa-rediscussion-debug" role="alert">{error}</aside>}
+    {progress === null && debugVisible() && <aside className="moa-rediscussion-debug">{demoRerunFlow.debug.processingNote}</aside>}
+    <ReDiscussionActions secondary={copy.leaveAction} secondaryAction={leave} primary={copy.resultAction} primaryAction={next} disabled={progress !== null && !finished} />
   </section></Page>
 }
 

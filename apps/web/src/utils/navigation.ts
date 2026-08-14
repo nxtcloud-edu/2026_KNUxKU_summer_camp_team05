@@ -10,6 +10,7 @@ type MoaHistoryState = {
   stage?: Stage
   mode?: ResultMode
   decisionId?: string
+  roomId?: string
   returnStage?: Stage
 }
 
@@ -36,6 +37,14 @@ export function readResultModeFromUrl(): ResultMode | null {
 
 export function readDecisionIdFromUrl(): string | undefined {
   return queryValue(new URLSearchParams(window.location.search), 'decisionId')
+}
+
+/**
+ * The room id is part of the address, not a demo detail: an invite link has to
+ * carry it, and reopening the tab has to land in the same room.
+ */
+export function readRoomIdFromUrl(): string | undefined {
+  return queryValue(new URLSearchParams(window.location.search), 'roomId')
 }
 
 export function readReplayNavigationState(): ReplayNavigationState | null {
@@ -82,6 +91,9 @@ export function writeNavigationState(
   const returnStage = action === 'push' ? previousStage ?? undefined : currentHistoryState?.returnStage
   const url = new URL(window.location.href)
   url.searchParams.set('stage', stage)
+  // The room id survives every stage change. Losing it mid-flow would turn a
+  // real room back into a demo.
+  const activeRoomId = readRoomIdFromUrl() ?? currentHistoryState?.roomId
 
   if (stage === 'result' || stage === 'replay' || isDecisionStage(stage)) url.searchParams.set('mode', mode)
   else url.searchParams.delete('mode')
@@ -101,13 +113,38 @@ export function writeNavigationState(
   if (activeDecisionId) url.searchParams.set('decisionId', activeDecisionId)
   else url.searchParams.delete('decisionId')
 
+  if (activeRoomId) url.searchParams.set('roomId', activeRoomId)
+  else url.searchParams.delete('roomId')
+
   const state: MoaHistoryState & { replay?: ReplayNavigationState } = {
     stage,
     mode,
     replay,
     decisionId: activeDecisionId,
+    roomId: activeRoomId,
     returnStage,
   }
   if (action === 'push') window.history.pushState(state, '', url)
   else window.history.replaceState(state, '', url)
+}
+
+/**
+ * Put a freshly created (or joined) room into the address bar without adding a
+ * history entry. Called once the backend hands us a room id.
+ */
+export function writeRoomIdToUrl(roomId: string | null): void {
+  const url = new URL(window.location.href)
+  if (roomId) url.searchParams.set('roomId', roomId)
+  else url.searchParams.delete('roomId')
+
+  const currentHistoryState = (window.history.state ?? {}) as MoaHistoryState
+  window.history.replaceState({ ...currentHistoryState, roomId: roomId ?? undefined }, '', url)
+}
+
+/** Invite link a participant can actually open. */
+export function buildInviteUrl(roomId: string | null): string {
+  const url = new URL(window.location.origin)
+  url.searchParams.set('stage', 'lobby')
+  if (roomId) url.searchParams.set('roomId', roomId)
+  return url.toString()
 }

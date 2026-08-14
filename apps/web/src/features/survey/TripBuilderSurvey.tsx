@@ -6,6 +6,7 @@ import { cityIdForDestination, surveyRepository } from './api/surveyRepository'
 import { getAnswerLabels } from './answerPresentation'
 import { QuestionRenderer } from './components/QuestionRenderer'
 import { useSurvey } from './hooks/useSurvey'
+import { surveyCriteriaLabels } from './surveySummary'
 import type { CityId, SurveyAnswerV4, SurveyPlanV4, SurveyQuestion } from './types/survey'
 
 function ChapterProgress({ plan, question }: { plan: SurveyPlanV4; question: SurveyQuestion }) {
@@ -36,7 +37,7 @@ function SurveyError({ message, back }: { message: string; back: () => void }) {
   return <section className="moa-survey-status" role="alert"><strong>설문을 열 수 없어요.</strong><p>{message}</p><button type="button" onClick={back}><ArrowLeft/>여행 방으로 돌아가기</button></section>
 }
 
-function SurveyExperience({ destination, cityId, backToRoom, complete }: { destination: DestinationPack; cityId: CityId; backToRoom: () => void; complete: () => void }) {
+function SurveyExperience({ destination, cityId, roomId, userId, backToRoom, complete }: { destination: DestinationPack; cityId: CityId; roomId: string | null; userId: string | null; backToRoom: () => void; complete: (criteria: string[]) => void }) {
   const reduceMotion = useReducedMotion()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const advanceTimer = useRef<number | undefined>(undefined)
@@ -45,7 +46,11 @@ function SurveyExperience({ destination, cityId, backToRoom, complete }: { desti
   const mobileProfileDialogRef = useRef<HTMLDivElement>(null)
   const [mobileProfile, setMobileProfile] = useState(false)
   const [feedback, setFeedback] = useState('')
-  const survey = useSurvey({ destinationId: cityId, repository: surveyRepository })
+  const surveyContext = useMemo(
+    () => ({ tripRoomId: roomId, participantId: userId }),
+    [roomId, userId],
+  )
+  const survey = useSurvey({ destinationId: cityId, repository: surveyRepository, context: surveyContext })
 
   const clearAutoAdvance = useCallback(() => {
     if (advanceTimer.current === undefined) return
@@ -123,7 +128,11 @@ function SurveyExperience({ destination, cityId, backToRoom, complete }: { desti
   const submit = async (value: Parameters<typeof survey.submit>[0]) => {
     clearAutoAdvance()
     const result = await survey.submit(value)
-    if (result) complete()
+    if (!result) return
+    // Hand the answers forward so the persona gate shows what was submitted.
+    const submission = survey.createSubmission('complete')
+    const plan = survey.plan
+    complete(plan ? surveyCriteriaLabels(plan, submission.answers) : [])
   }
 
   if (survey.loading) return <section className="moa-survey-status" role="status"><strong>여행 질문을 준비하고 있어요.</strong></section>
@@ -153,7 +162,7 @@ function SurveyExperience({ destination, cityId, backToRoom, complete }: { desti
   return <div className="moa-trip-builder"><div className="moa-builder-mobile-bar"><button ref={mobileProfileTriggerRef} type="button" aria-haspopup="dialog" aria-expanded={mobileProfile} aria-controls="moa-mobile-live-profile" onClick={() => setMobileProfile(true)}><span>내 여행 답변</span><strong>{Object.keys(survey.answers).length}개 저장</strong><CaretDown/></button></div><div className="moa-builder-shell"><main><ChapterProgress plan={survey.plan} question={survey.currentQuestion}/><AnimatePresence mode="wait" initial={false}><motion.div key={survey.currentQuestion.id} className="moa-builder-question" aria-busy={survey.isSaving} inert={survey.isSaving ? true : undefined} initial={reduceMotion ? { opacity: 1 } : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }} transition={{ duration: reduceMotion ? 0 : .26 }}>{renderer}{survey.error&&<p className="moa-builder-error" role="alert">{survey.error}</p>}</motion.div></AnimatePresence><div className="moa-builder-feedback" role="status" aria-live="polite">{feedback}</div></main><LiveProfile plan={survey.plan} answers={survey.answers} destination={destination}/></div><AnimatePresence>{mobileProfile&&<motion.div className="moa-live-profile-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) closeMobileProfile() }}><motion.div id="moa-mobile-live-profile" ref={mobileProfileDialogRef} role="dialog" aria-modal="true" aria-labelledby="moa-mobile-live-profile-title" tabIndex={-1} initial={reduceMotion ? { opacity: 1 } : { y: '100%' }} animate={{ y: 0 }} exit={reduceMotion ? { opacity: 0 } : { y: '100%' }}><LiveProfile mobile plan={survey.plan} answers={survey.answers} destination={destination} headingId="moa-mobile-live-profile-title" close={closeMobileProfile}/></motion.div></motion.div>}</AnimatePresence></div>
 }
 
-export function TripBuilderSurvey({ destination, backToRoom, complete }: { destination: DestinationPack; backToRoom: () => void; complete: () => void }) {
+export function TripBuilderSurvey({ destination, roomId, userId, backToRoom, complete }: { destination: DestinationPack; roomId: string | null; userId: string | null; backToRoom: () => void; complete: (criteria: string[]) => void }) {
   const cityId = useMemo(() => cityIdForDestination(destination.id), [destination.id])
-  return <SurveyExperience key={cityId} destination={destination} cityId={cityId} backToRoom={backToRoom} complete={complete}/>
+  return <SurveyExperience key={cityId} destination={destination} cityId={cityId} roomId={roomId} userId={userId} backToRoom={backToRoom} complete={complete}/>
 }

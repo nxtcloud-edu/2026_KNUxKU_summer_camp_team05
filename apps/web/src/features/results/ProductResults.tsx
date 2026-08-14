@@ -46,24 +46,27 @@ import { resultModes, type ResultMode } from '../../types'
 
 export { EvidenceBadge, FreshnessLabel } from '../../components/results/ResultDataPrimitives'
 
+/**
+ * Plan states in the MVP. There is no bookable or booked state: MOA never
+ * verifies inventory and never books, so claiming either would be a lie.
+ */
 const statusLabels: Record<PlanStatus, string> = {
-  VERIFIED_DRAFT: '계획 검증 완료',
-  BOOKABLE: '예약 준비 완료',
+  PROVISIONAL: '잠정 계획 · 근거 확인 진행 중',
+  VERIFIED: '계획 검증 완료',
   NEEDS_USER_CHOICE: '선택이 필요해요',
   BLOCKED: '진행할 수 없는 항목이 있어요',
 }
 
 const bookingStatusLabels: Record<BookingReadiness['state'], string> = {
-  ready: '예약 가능',
+  ready: '확인됨',
   'needs-check': '재확인',
   blocked: '확인 필요',
-  booked: '예약 완료',
 }
 
 const bookingGroups: Array<{ id: string; filter: 'attention' | 'ready'; label: string; states: BookingReadiness['state'][] }> = [
   { id: 'attention', filter: 'attention', label: '지금 확인 필요', states: ['blocked'] },
   { id: 'recheck', filter: 'attention', label: '출발 전 재확인', states: ['needs-check'] },
-  { id: 'ready', filter: 'ready', label: '예약 가능', states: ['ready', 'booked'] },
+  { id: 'ready', filter: 'ready', label: '확인된 항목', states: ['ready'] },
 ]
 const formatKrw = (value: number) => `₩${value.toLocaleString('ko-KR')}`
 const formatDuration = (minutes: number) => minutes < 60 ? `${minutes}분` : `${Math.floor(minutes / 60)}시간${minutes % 60 ? ` ${minutes % 60}분` : ''}`
@@ -588,7 +591,7 @@ export function BookingReadinessCard({ booking }: { booking: BookingReadiness })
 
 function BookingChecklist({ result }: { result: ProductResult }) {
   const attentionCount = result.bookings.filter((item) => item.state === 'blocked' || item.state === 'needs-check').length
-  const readyCount = result.bookings.filter((item) => item.state === 'ready' || item.state === 'booked').length
+  const readyCount = result.bookings.filter((item) => item.state === 'ready').length
   const preferredFilter: 'attention' | 'ready' = attentionCount > 0 || readyCount === 0 ? 'attention' : 'ready'
   const [activeFilter, setActiveFilter] = useState<'attention' | 'ready'>(preferredFilter)
   useEffect(() => setActiveFilter(preferredFilter), [preferredFilter])
@@ -602,9 +605,9 @@ function BookingChecklist({ result }: { result: ProductResult }) {
     <div className="moa-booking-checklist">
       <section className="moa-booking-totals" aria-label="예약 준비 요약">
         <button type="button" aria-pressed={activeFilter === 'attention'} onClick={() => setActiveFilter('attention')}><span>확인 필요</span></button>
-        <button type="button" aria-pressed={activeFilter === 'ready'} onClick={() => setActiveFilter('ready')}><span>예약 가능</span></button>
+        <button type="button" aria-pressed={activeFilter === 'ready'} onClick={() => setActiveFilter('ready')}><span>확인된 항목</span></button>
       </section>
-      <div className="moa-booking-filter-results" aria-live="polite">{visibleGroups.length > 0 ? visibleGroups.map((group) => <section className={`moa-booking-group group-${group.id}`} key={group.id}><header><h3>{group.label}</h3></header><div>{group.items.map((item) => <BookingReadinessCard key={item.id} booking={item} />)}</div></section>) : <div className="moa-booking-filter-empty"><strong>{result.bookings.length === 0 ? '예약 준비 항목이 아직 없어요.' : activeFilter === 'attention' ? '지금 확인이 필요한 항목이 없어요.' : '바로 예약 가능한 항목이 아직 없어요.'}</strong>{showOtherFilter && <button type="button" onClick={() => setActiveFilter(activeFilter === 'attention' ? 'ready' : 'attention')}>{activeFilter === 'attention' ? '예약 가능 보기' : '확인 필요 보기'} <ArrowRight /></button>}</div>}</div>
+      <div className="moa-booking-filter-results" aria-live="polite">{visibleGroups.length > 0 ? visibleGroups.map((group) => <section className={`moa-booking-group group-${group.id}`} key={group.id}><header><h3>{group.label}</h3></header><div>{group.items.map((item) => <BookingReadinessCard key={item.id} booking={item} />)}</div></section>) : <div className="moa-booking-filter-empty"><strong>{result.bookings.length === 0 ? '예약 준비 항목이 아직 없어요.' : activeFilter === 'attention' ? '지금 확인이 필요한 항목이 없어요.' : '확인이 끝난 항목이 아직 없어요.'}</strong>{showOtherFilter && <button type="button" onClick={() => setActiveFilter(activeFilter === 'attention' ? 'ready' : 'attention')}>{activeFilter === 'attention' ? '확인된 항목 보기' : '확인 필요 보기'} <ArrowRight /></button>}</div>}</div>
     </div>
   )
 }
@@ -747,6 +750,35 @@ function Overview({ result, pace, openBooking, openSchedule, openDecisions }: { 
   )
 }
 
+/**
+ * Where this plan came from, stated on the plan itself.
+ *
+ * A user has to be able to tell demo data from a real meeting result without
+ * reading the source, so the badge carries the data source, the run that
+ * produced it, when it was verified, and how many items nobody confirmed.
+ */
+function ResultSourceBadge({ result }: { result: ProductResult }) {
+  const checked = result.checkedAt
+    ? new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(result.checkedAt))
+    : null
+  return <div className="moa-result-source" aria-label="결과 데이터 출처">
+    <span className={`moa-result-source-tag ${result.source}`}>{result.source === 'live' ? '실데이터' : '데모 고정 데이터'}</span>
+    {result.runId && <small>회의 {result.runId}</small>}
+    {checked && <small><Clock />{checked} 확인</small>}
+    {result.unverifiedItems.length > 0 && <small>미확인 {result.unverifiedItems.length}건</small>}
+  </div>
+}
+
+/** Everything nobody confirmed. Never collapsed into a single number only. */
+export function UnverifiedItemList({ items }: { items: string[] }) {
+  if (items.length === 0) return null
+  return <section className="moa-unverified-items" aria-labelledby="moa-unverified-title">
+    <h3 id="moa-unverified-title"><WarningCircle />확인되지 않은 항목 {items.length}건</h3>
+    <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
+    <p>예약이나 결제 전에 직접 확인해 주세요. MOA는 예약을 대신 실행하지 않아요.</p>
+  </section>
+}
+
 function TripHeader({ result, mode, setMode, back }: { result: ProductResult; mode: ResultMode; setMode: (mode: ResultMode) => void; back: () => void }) {
   return (
     <>
@@ -761,6 +793,7 @@ function TripHeader({ result, mode, setMode, back }: { result: ProductResult; mo
               <h1 id="moa-result-destination">{result.destination}</h1>
               <p>{result.dateRange} · {result.duration} · {result.participantCount}명</p>
               <small>{statusLabels[result.status]}</small>
+              <ResultSourceBadge result={result} />
             </div>
             <div className="moa-trip-summary-card" aria-label="여행 핵심 정보">
               <dl>
@@ -784,7 +817,7 @@ export function ProductResults({ result, pace, mode, setMode, back, decision, se
       <div className="moa-product-result-content">
         {mode === 'overview' && <Overview result={result} pace={pace} openBooking={() => setMode('booking')} openSchedule={() => setMode('schedule')} openDecisions={() => setMode('decisions')} />}
         {mode === 'schedule' && <section className="moa-results-section first moa-schedule-section"><ResultSectionHeader title="일정" description="날짜별 동선과 이동을 빠르게 확인하세요." /><Itinerary result={result} /></section>}
-        {mode === 'booking' && <section className="moa-results-section first moa-booking-section"><ResultSectionHeader eyebrow="출발 전 할 일" title="예약 준비" description="지금 확인하거나 예약해야 할 항목만 모았어요." /><BookingChecklist result={result} /></section>}
+        {mode === 'booking' && <section className="moa-results-section first moa-booking-section"><ResultSectionHeader eyebrow="출발 전 할 일" title="예약 준비" description="지금 확인하거나 예약해야 할 항목만 모았어요." /><UnverifiedItemList items={result.unverifiedItems} /><BookingChecklist result={result} /></section>}
         {mode === 'decisions' && <section className="moa-results-section first moa-decisions-section"><ResultSectionHeader title="결정 과정" description="MOA가 어떤 선택을 했고 무엇이 영향을 줬는지 보여드려요." /><DecisionTimeline decisions={result.decisions} selectedDecisionId={selectedDecisionId} selectDecision={selectDecision} openDecision={decision} /></section>}
       </div>
     </div>

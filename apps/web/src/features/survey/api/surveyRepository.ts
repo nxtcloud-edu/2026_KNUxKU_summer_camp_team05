@@ -1,7 +1,11 @@
+import type { SurveyIntakeResponse } from '../../../api/backendContracts'
+import { resolveFeatureDataMode } from '../../../api/dataMode'
+import { requestJson } from '../../../api/httpClient'
 import { readStorage, writeStorage } from '../../../utils/storage'
 import type { CityId, SurveyPlanV4, SurveyProgressV4, SurveyQuestion, SurveySubmissionV4 } from '../types/survey'
 import { mockSurveyPlans, type MockCityId } from '../mocks/surveyPlans'
 import { assertSurveySubmissionV4, parseSurveyPlanV4 } from '../validation/surveySchema'
+import { toSurveyIntakePayload } from '../adapters/surveyIntakeAdapter'
 
 export type SurveySubmitResult = {
   submissionId?: string
@@ -23,6 +27,16 @@ export const destinationCityIds = {
 
 export function cityIdForDestination(destinationId: string): CityId {
   return destinationCityIds[destinationId as keyof typeof destinationCityIds] ?? destinationId
+}
+
+/**
+ * Back to the id the trip room was created with. The room's `destinationId` and
+ * the survey's `destinationId` have to agree or the backend pairs a submission
+ * with the wrong Pack.
+ */
+export function destinationIdForCity(cityId: CityId): string {
+  const match = Object.entries(destinationCityIds).find(([, value]) => value === cityId)
+  return match?.[0] ?? cityId
 }
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
@@ -189,12 +203,65 @@ export class ApiSurveyRepository implements SurveyRepository {
   }
 }
 
+/**
+ * Live survey.
+ *
+ * The question script is frontend-owned content: the backend has no
+ * survey-plan endpoint, so the plan comes from `planSource` (fixtures by
+ * default, or the configurable paths when `VITE_SURVEY_PLAN_PATH` is set) and
+ * only the **final submission** goes to the real intake endpoint.
+ *
+ * Submission carries the room through the `x-room-id` header, which is how
+ * `apps/api/src/routes/intake.ts` resolves the room, and the participant comes
+ * from the session cookie. A submission without a room id is refused here
+ * rather than silently landing nowhere.
+ */
+export class BackendSurveyRepository implements SurveyRepository {
+  constructor(private readonly planSource: SurveyRepository) {}
+
+  getPlan(destinationId: CityId): Promise<SurveyPlanV4> {
+    return this.planSource.getPlan(destinationId)
+  }
+
+  loadProgress(plan: SurveyPlanV4): Promise<SurveySubmissionV4 | null> {
+    return this.planSource.loadProgress(plan)
+  }
+
+  saveProgress(submission: SurveySubmissionV4): Promise<SurveyProgressV4> {
+    // Draft answers stay local: the backend accepts a completed mandate only.
+    return this.planSource.saveProgress(submission)
+  }
+
+  async submit(submission: SurveySubmissionV4): Promise<SurveySubmitResult> {
+    if (submission.status !== 'complete') throw new Error('Only a complete survey can be submitted.')
+    if (!submission.tripRoomId) {
+      throw new Error('여행 방 정보가 없어 설문을 보낼 수 없어요. 방을 다시 열어 주세요.')
+    }
+
+    const payload = toSurveyIntakePayload(submission, destinationIdForCity(submission.destinationId))
+    const response = await requestJson<SurveyIntakeResponse>('/api/survey-responses', {
+      method: 'POST',
+      body: payload,
+      roomId: submission.tripRoomId,
+    })
+    return { submissionId: response.surveyId }
+  }
+}
+
+const hasConfiguredSurveyPaths = (): boolean => Boolean(
+  import.meta.env.VITE_SURVEY_PLAN_PATH
+  && import.meta.env.VITE_SURVEY_PROGRESS_PATH
+  && import.meta.env.VITE_SURVEY_SUBMIT_PATH,
+)
+
 export function createSurveyRepository(): SurveyRepository {
-  const mockSetting = import.meta.env.VITE_USE_MOCK_SURVEY
-  if (mockSetting === 'true') return new MockSurveyRepository()
-  if (mockSetting === 'false') return new ApiSurveyRepository()
-  if (import.meta.env.DEV) return new MockSurveyRepository()
-  return new ApiSurveyRepository()
+  if (resolveFeatureDataMode(import.meta.env.VITE_USE_MOCK_SURVEY) === 'mock') {
+    return new MockSurveyRepository()
+  }
+  // Plans come from the API only when its paths are configured; otherwise the
+  // frontend fixtures provide the questions and the backend receives the result.
+  const planSource = hasConfiguredSurveyPaths() ? new ApiSurveyRepository() : new MockSurveyRepository()
+  return new BackendSurveyRepository(planSource)
 }
 
 export const surveyRepository = createSurveyRepository()
