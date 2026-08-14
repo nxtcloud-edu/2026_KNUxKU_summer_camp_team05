@@ -189,14 +189,11 @@ export async function registerResultRoutes(
     const published = itinerary.publishedAt !== null;
     const evidenceStatus = readEvidenceStatus(itinerary.validationReport);
     const unpublishedBadge: ResultBadge = evidenceStatus === 'PROVISIONAL' ? 'PROVISIONAL' : 'PARTIAL';
-    const bookedNodes = new Set(room.bookedNodes);
-
     /**
      * 항목 배지.
      * BOOKABLE은 만들지 않는다 — 가격·재고·시간 슬롯 확인이 붙기 전에는 주장할 수 없다.
      */
     const badgeOf = (item: { itemId: string; nodeId: PlanItemView['nodeId'] }): ResultBadge => {
-      if (bookedNodes.has(item.nodeId)) return 'BOOKED';
       if (blockedItemIds.has(item.itemId)) return 'DRAFT';
       return published ? 'VERIFIED' : unpublishedBadge;
     };

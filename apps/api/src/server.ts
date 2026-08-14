@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import { createRepositories, isDatabaseConfigured, type Repositories } from '@tm/db';
 import { loadEnv, type Env } from './env.js';
 import { registerIntakeRoutes } from './routes/intake.js';
+import { registerDateResolutionRoutes } from './routes/date-resolution.js';
 import { registerObjectionRoutes } from './routes/objections.js';
 import { registerResultRoutes } from './routes/results.js';
 import { registerRoomRoutes } from './routes/rooms.js';
@@ -50,6 +51,7 @@ export async function buildServer(
 
   await registerIntakeRoutes(app, repos);
   await registerRoomRoutes(app, repos, queue);
+  await registerDateResolutionRoutes(app, repos);
   await registerObjectionRoutes(app, env, repos, queue);
   await registerResultRoutes(app, repos);
 
