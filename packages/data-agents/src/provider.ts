@@ -61,18 +61,19 @@ export function createStaticRegistry(
   return {
     resolve(packId, queryClass) {
       const category = queryClass.split('.')[0] ?? '';
-      const preferred = packProviders[packId]?.[category] ?? [];
+      const packPolicy = packProviders[packId];
+      const preferred = packPolicy?.[category];
 
-      const ordered: ProviderAdapter[] = [];
-      for (const id of preferred) {
-        const adapter = byId.get(id);
-        if (adapter !== undefined && adapter.supports(queryClass)) ordered.push(adapter);
+      if (preferred !== undefined) {
+        const ordered: ProviderAdapter[] = [];
+        for (const id of preferred) {
+          const adapter = byId.get(id);
+          if (adapter !== undefined && adapter.supports(queryClass)) ordered.push(adapter);
+        }
+        return ordered;
       }
-      // Pack이 지정하지 않은 제공자도 뒤에 폴백으로 붙인다. 순서는 등록 순서.
-      for (const adapter of adapters) {
-        if (!ordered.includes(adapter) && adapter.supports(queryClass)) ordered.push(adapter);
-      }
-      return ordered;
+
+      return adapters.filter((adapter) => adapter.supports(queryClass));
     },
   };
 }

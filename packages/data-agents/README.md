@@ -46,7 +46,7 @@ CategoryArbiterAgent
 | `odsay.ts` | 유지 | 무료 티어는 비상업 목적 한정 |
 | `amadeus.ts` | **삭제** | Self-Service 포털이 2026-07-17에 완전 종료 |
 
-어댑터가 존재한다는 것과 실제 키로 검증했다는 것은 다르다. 각 어댑터의 계약 테스트는 응답 형태를 고정한 스텁 위에서 돌며, **실호출 검증은 아직 하지 않았다.** 무료 공급자가 없는 슬롯(항공 좌석·확정 운임, 식당 예약 슬롯, 일본 대중교통, 영업시간)은 `demo.ts`가 가짜임을 드러낸 채 채운다. 상세는 [공급자 정책 1.1·2.1](../../docs/provider-evidence-policy.md)에 있다.
+어댑터가 존재한다는 것과 실제 키로 검증했다는 것은 다르다. 각 어댑터의 계약 테스트는 응답 형태를 고정한 스텁 위에서 돈다. 2026-08-14의 과거 실호출 기록은 현재 프로세스의 Key 주입이나 인증 성공을 대신하지 않는다. 무료 공급자가 없는 슬롯(항공 좌석·확정 운임, 식당 예약 슬롯, 일본 대중교통, 영업시간)은 `demo.ts`가 가짜임을 드러낸 채 채운다. 상세는 [공급자 정책 1.1·2.1](../../docs/provider-evidence-policy.md)에 있다.
 
 ## 정규화 출력 최소 계약
 
@@ -99,6 +99,14 @@ type EvidenceSnapshot = {
 7. 실제 예약은 이 패키지가 아니라 별도 `ReservationRecord`가 소유한다.
 
 ## 검증
+
+Key 값이나 Network I/O 없이 현재 프로세스의 Key 주입과 Adapter 생성 상태만 확인한다.
+
+```bash
+npm run providers:status --workspace @tm/data-agents
+```
+
+이 명령의 `PRESENT_UNVERIFIED`와 `CREATED_UNVERIFIED`는 실제 Provider 인증, Candidate 자동 공급, `VERIFIED`, `BOOKABLE`을 뜻하지 않는다.
 
 ```bash
 npm run test --workspace @tm/data-agents

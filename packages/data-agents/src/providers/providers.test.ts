@@ -790,19 +790,25 @@ test('종료된 제공자는 레지스트리에 남아 있지 않다', () => {
 test('키가 있으면 레지스트리에 실린다', () => {
   const setup = providersFromEnv({
     ODSAY_API_KEY: 'key',
+    TOURAPI_SERVICE_KEY: 'tour-key',
     RAKUTEN_APPLICATION_ID: 'app',
     RAKUTEN_ACCESS_KEY: 'ak',
   } as NodeJS.ProcessEnv);
 
   assert.deepEqual(
     setup.adapters.map((adapter) => adapter.id),
-    ['odsay', 'rakuten_travel'],
+    ['odsay', 'tourapi', 'rakuten_travel'],
   );
 
   const chain = setup
     .registry({ 'jp-osaka': { hotel: ['rakuten_travel'] } })
     .resolve('jp-osaka', 'hotel.vacancy_price');
   assert.equal(chain[0]?.id, 'rakuten_travel');
+  assert.deepEqual(
+    chain.map((adapter) => adapter.id),
+    ['rakuten_travel'],
+    'Pack에 없는 TourAPI를 일본 숙소 fallback으로 붙이면 안 된다',
+  );
 });
 
 test('HTTP 5xx는 재시도 가능, 4xx는 아니다', async () => {

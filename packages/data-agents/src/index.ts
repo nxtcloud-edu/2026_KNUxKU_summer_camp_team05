@@ -53,3 +53,9 @@ export {
   type TravelpayoutsConfig,
 } from './providers/travelpayouts.js';
 export { providersFromEnv, type ProviderSetup } from './providers/registry.js';
+export {
+  providerStatuses,
+  providerStatusIds,
+  type ProviderStatus,
+  type ProviderStatusId,
+} from './providers/status.js';

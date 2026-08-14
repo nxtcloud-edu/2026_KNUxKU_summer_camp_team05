@@ -10,7 +10,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node --import tsx --test src/policy.test.ts src/canonical.test.ts src/gateway.test.ts src/prefetch.test.ts src/providers/providers.test.ts",
+    "test": "node --import tsx --test src/policy.test.ts src/canonical.test.ts src/gateway.test.ts src/prefetch.test.ts src/providers/providers.test.ts src/providers/status.test.ts",
+    "providers:status": "node --import tsx src/providers/status-cli.ts",
     "smoke:providers": "tsx src/providers/live-smoke.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
