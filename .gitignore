@@ -9,6 +9,9 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
+.mypy_cache/
 vite.config.js
 vite.config.d.ts
 
