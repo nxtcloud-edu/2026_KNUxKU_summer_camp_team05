@@ -129,28 +129,42 @@ function toHotelCandidate(
       if (maxCount === null) return null;
       // 비수기 주중 최저가를 기준으로 쓴다. 성수기·주말은 밴드의 상단이라
       // 그것으로 비교하면 모든 국내 숙소가 실제보다 비싸 보인다.
+      //
+      // 요금이 없으면 **null이다. 0이 아니다.** 실제로 TourAPI 숙박은 정원은
+      // 채워 보내면서 요금은 전부 0으로 주는 경우가 많다(2026-08-14 부산 표본
+      // 18객실 중 요금 있는 객실 0건). 0을 가격으로 쓰면 그 숙소가 집합의
+      // 최저가가 되어 예산 비교를 전부 이긴다.
       const fee =
         count(room.roomoffseasonminfee1) ??
         count(room.roomoffseasonminfee2) ??
-        count(room.roompeakseasonminfee1) ??
-        0;
+        count(room.roompeakseasonminfee1);
       return {
         config: room.roomtitle ?? room.roomcode ?? '객실',
         totalGuests: maxCount,
         pricePerNight: fee,
       };
     })
-    .filter((room): room is { config: string; totalGuests: number; pricePerNight: number } => room !== null);
+    .filter(
+      (room): room is { config: string; totalGuests: number; pricePerNight: number | null } =>
+        room !== null,
+    );
 
   // 정원을 아는 객실이 하나도 없으면 후보로 만들지 않는다.
   if (roomOptions.length === 0) return null;
 
   const maxGuests = roomOptions.reduce((best, room) => Math.max(best, room.totalGuests), 0);
-  const cheapest = roomOptions.reduce(
-    (best, room) => (best === null || room.pricePerNight < best.pricePerNight ? room : best),
-    null as { config: string; totalGuests: number; pricePerNight: number } | null,
+
+  // 요금을 아는 객실만 최저가 계산에 넣는다. 하나도 없으면 가격은 '모름'이다.
+  const pricedRooms = roomOptions.filter(
+    (room): room is { config: string; totalGuests: number; pricePerNight: number } =>
+      room.pricePerNight !== null,
   );
-  const perNight = cheapest?.pricePerNight ?? 0;
+  const cheapest = pricedRooms.reduce<number | null>(
+    (best, room) => (best === null || room.pricePerNight < best ? room.pricePerNight : best),
+    null,
+  );
+  const priceKnown = cheapest !== null;
+  const perNight = cheapest ?? 0;
   const total = perNight * nights;
 
   return {
@@ -171,8 +185,10 @@ function toHotelCandidate(
     price: {
       amount: total,
       currency: 'KRW',
-      // 날짜별 실가격이 아니라 시즌 밴드다. live라고 말할 수 없다.
-      confidence: 'estimated',
+      // 날짜별 실가격이 아니라 시즌 밴드라 live일 수 없고, 요금 자체가 안 오면
+      // 'unknown'이다. 스코어링은 unknown인 가격을 축에서 빼고 계산한다 —
+      // 0을 최저가로 읽어 공짜 숙소가 예산 비교를 이기는 것을 막는다.
+      confidence: priceKnown ? 'estimated' : 'unknown',
       perNightPerPerson: perNight,
       totalPerPerson: total,
       groupTotal: total * pax,

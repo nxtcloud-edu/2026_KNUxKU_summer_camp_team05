@@ -87,8 +87,21 @@ function hourOf(iso: string | null): number | null {
 
 const costOfFlight = (candidate: FlightCandidate): number =>
   candidate.effectiveTotal.perPerson;
-const costOfHotel = (candidate: HotelCandidate): number =>
-  candidate.meals.effectiveLodgingCost ?? candidate.price.totalPerPerson;
+/**
+ * 숙소 비교 비용. **가격을 모르면 0이 아니라 null이다.**
+ *
+ * 공급자가 요금을 주지 않는 경우가 실제로 있다 — TourAPI 숙박은 `roommaxcount`는
+ * 채워 보내면서 `roomoffseasonminfee1`은 전부 0으로 준다(2026-08-14 부산 표본
+ * 18객실 중 0건). 이때 0을 가격으로 쓰면 그 후보가 집합의 최저가가 되어
+ * `price_low` 축에서 1점을 받고, "공짜 숙소"가 예산 비교를 전부 이긴다.
+ *
+ * 모르는 축은 없는 축이다. null을 주면 relative()가 매칭을 만들지 않는다.
+ */
+const costOfHotel = (candidate: HotelCandidate): number | null => {
+  const effective = candidate.meals.effectiveLodgingCost;
+  if (effective !== null) return effective;
+  return candidate.price.confidence === 'unknown' ? null : candidate.price.totalPerPerson;
+};
 const costOfTransport = (candidate: TransportCandidate): number | null =>
   candidate.totals?.farePerPersonKrw ??
   candidate.policy?.estimatedDailyCostPerPersonKrw ??

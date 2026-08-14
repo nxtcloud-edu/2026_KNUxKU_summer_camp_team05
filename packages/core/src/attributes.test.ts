@@ -225,3 +225,36 @@ test('실격 후보는 스코어링 이전에 빠지고 사유가 남는다', ()
   assert.equal(board.disqualified.length, 1);
   assert.ok(board.disqualified[0]?.reason.includes('초과'));
 });
+
+test('가격이 unknown인 숙소는 최저가로 취급되지 않는다', () => {
+  // TourAPI 숙박은 정원은 주면서 요금은 0으로 준다. 그대로 쓰면 그 후보가
+  // 집합의 최저가가 되어 price_low에서 1점을 받고 예산 비교를 전부 이긴다.
+  const priceless = hotel('요금미상', 0, {
+    price: {
+      amount: 0,
+      currency: 'KRW',
+      confidence: 'unknown',
+      perNightPerPerson: 0,
+      totalPerPerson: 0,
+      groupTotal: 0,
+      taxesIncluded: false,
+    },
+    capacity: {
+      maxGuests: 3,
+      roomOptions: [{ config: '스탠다드', totalGuests: 3, pricePerNight: null }],
+    },
+  });
+  const assessed = assessCandidates([priceless, hotel('싼곳', 200_000), hotel('비싼곳', 500_000)], context());
+
+  // 모르는 축은 없는 축이다. 0점도 1점도 아니고 아예 매칭이 없다.
+  assert.equal(
+    'price_low' in (assessed[0]?.attributes.match ?? {}),
+    false,
+    '요금을 모르는 후보에 가격 점수를 주면 안 된다',
+  );
+  assert.equal(assessed[0]?.costPerPersonKrw, null);
+
+  // 가격을 아는 후보들끼리의 상대 위치는 0에 오염되지 않는다.
+  assert.equal(assessed[1]?.attributes.match['price_low'], 1, '아는 것 중 싼 쪽이 1점');
+  assert.equal(assessed[2]?.attributes.match['price_low'], 0);
+});

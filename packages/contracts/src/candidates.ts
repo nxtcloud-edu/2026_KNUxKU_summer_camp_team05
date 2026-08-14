@@ -84,7 +84,12 @@ export const hotelCandidateSchema = candidateBaseSchema.extend({
       z.object({
         config: z.string(),
         totalGuests: z.number().int().positive(),
-        pricePerNight: z.number(),
+        /**
+         * 요금을 모르면 null이다. 0이 아니다.
+         * 정원은 주면서 요금은 주지 않는 공급자가 실제로 있다(TourAPI 숙박).
+         * 0으로 채우면 그 후보가 집합의 최저가가 되어 예산 비교를 전부 이긴다.
+         */
+        pricePerNight: z.number().nullable(),
       }),
     ),
   }),
