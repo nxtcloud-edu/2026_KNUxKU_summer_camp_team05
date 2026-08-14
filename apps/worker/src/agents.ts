@@ -31,13 +31,13 @@ import type { Repositories, RoomRow, SurveyRow } from '@tm/db';
  * 회의가 정상처럼 끝난다.
  */
 
-export interface AgentRuntime {
+export interface LegacyGeminiRuntime {
   client: LlmClient;
   config: ModelConfig;
 }
 
 /** 키가 없으면 null. 무엇이 빠졌는지는 호출자가 로그로 남긴다 */
-export function createAgentRuntime(): { runtime: AgentRuntime } | { missing: string[] } {
+export function createLegacyGeminiRuntime(): { runtime: LegacyGeminiRuntime } | { missing: string[] } {
   const loaded = modelConfigFromEnv();
   if ('missing' in loaded) return loaded;
 
@@ -162,7 +162,7 @@ function nightsOf(value: string | null): number | null {
  */
 export async function prepareParticipants(
   repos: Repositories,
-  runtime: AgentRuntime,
+  runtime: LegacyGeminiRuntime,
   room: RoomRow,
   surveys: readonly SurveyRow[],
   onUsage: (usage: {
@@ -277,4 +277,3 @@ export function resolveRoomDates(
     range: chosen === null ? null : { start: chosen.start, end: chosen.end },
   };
 }
-

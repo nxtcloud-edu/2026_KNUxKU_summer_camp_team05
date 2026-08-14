@@ -2,15 +2,16 @@
   "name": "@tm/worker",
   "version": "0.0.0",
   "private": true,
-  "description": "Debate Worker — Orchestrator 루프, 심판·페르소나 실행, 이의 재실행",
+  "description": "RunController Worker — 5역할 호출 순서, 상태 상한, 계약 버전과 migration 실행 경로 관리",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "smoke": "tsx src/smoke.ts",
-    "mvp:fixture": "node --import tsx src/mvp-fixture-demo.ts",
-    "test": "node --import tsx --test src/orchestrator/finalize.test.ts src/codex-gateway.test.ts src/mvp-fixture-run.test.ts"
+    "mvp:fixture": "node --import tsx src/canonical-fixture-demo.ts",
+    "mvp:legacy-fixture": "node --import tsx src/mvp-fixture-demo.ts",
+    "test": "node --import tsx --test src/orchestrator/finalize.test.ts src/orchestrator/state-ceiling.test.ts src/codex-gateway.test.ts src/mvp-fixture-run.test.ts src/canonical-fixture-run.test.ts"
   },
   "dependencies": {
     "@tm/agents": "*",

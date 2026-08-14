@@ -7,7 +7,7 @@
 - `127.0.0.1` 전용 FastAPI 실행면
 - 기존 로컬 Codex OAuth 세션 재사용
 - 현재 모델 카탈로그와 운영 allowlist 교집합 확인
-- `USER_PROXY`, `STAY_ARBITER`, `TRIP_SUPERVISOR` 호출 계약
+- 공식 5역할 `USER_PROXY`, `CANDIDATE_EVIDENCE`, `CATEGORY_ARBITER`, `TRIP_ORCHESTRATOR`, `PLAN_FINALIZER` 호출 계약
 - JSON Schema 출력 검증과 최대 1회 복구
 - 입력에 없는 Evidence ID 거부
 - `runId` 멱등성과 Agent scope별 thread 격리

@@ -460,7 +460,7 @@ export interface ItineraryInput {
   runId: string;
   plan: unknown;
   budgetSummary?: unknown;
-  /** Validation Pass 결과. PARTIAL 발행 사유가 여기 남는다 */
+  /** 문서 Validation과 근거 상태. PROVISIONAL/PARTIAL 표시 사유가 여기 남는다 */
   validationReport?: unknown;
 }
 
@@ -474,7 +474,7 @@ export interface ItineraryRepository {
   /** 방마다 버전이 올라간다. 이전 계획서는 지우지 않는다 */
   save(input: ItineraryInput): Promise<ItineraryRow>;
   latest(roomId: string): Promise<ItineraryRow | undefined>;
-  /** 발행. 검증을 통과하지 못한 계획서는 PARTIAL 배지로만 나간다 */
+  /** 문서 검증과 LIVE 근거 영수증을 모두 통과한 계획서만 발행한다 */
   publish(itineraryId: string): Promise<void>;
 }
 

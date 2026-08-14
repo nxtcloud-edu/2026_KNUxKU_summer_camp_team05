@@ -17,4 +17,6 @@ export * from './preference-v3.js';
 export * from './result.js';
 export * from './persona.js';
 export * from './codex-runtime-gateway.js';
+export * from './agent-runtime.js';
+/** @deprecated 2026-08-14 이전 3역할 fixture 전용 계약. 신규 제품 코드는 agent-runtime을 사용한다. */
 export * from './mvp-agent-runtime.js';

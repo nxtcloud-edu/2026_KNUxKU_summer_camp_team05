@@ -1,9 +1,12 @@
 import { z } from 'zod';
+import { agentCategorySchema } from './agent-runtime.js';
 
 export const codexGatewayAgentRoleSchema = z.enum([
   'USER_PROXY',
-  'STAY_ARBITER',
-  'TRIP_SUPERVISOR',
+  'CANDIDATE_EVIDENCE',
+  'CATEGORY_ARBITER',
+  'TRIP_ORCHESTRATOR',
+  'PLAN_FINALIZER',
 ]);
 
 export const codexGatewayModelProfileSchema = z.enum([
@@ -19,7 +22,7 @@ export const codexGatewayAgentRefSchema = z
     role: codexGatewayAgentRoleSchema,
     instanceId: z.string().min(1),
     participantId: z.string().min(1).optional(),
-    category: z.literal('stay').optional(),
+    category: agentCategorySchema.optional(),
     promptVersion: z.string().min(1),
     inputContractVersion: z.string().min(1),
     outputContractVersion: z.string().min(1),
@@ -35,13 +38,21 @@ export const codexGatewayAgentRefSchema = z
         message: 'USER_PROXY 외 역할에는 participantId를 전달할 수 없습니다.',
       });
     }
-    if (value.role === 'STAY_ARBITER' && value.category !== 'stay') {
-      context.addIssue({ code: 'custom', message: 'STAY_ARBITER category는 stay여야 합니다.' });
-    }
-    if (value.role !== 'STAY_ARBITER' && value.category !== undefined) {
+    const categoryScoped = new Set([
+      'USER_PROXY',
+      'CANDIDATE_EVIDENCE',
+      'CATEGORY_ARBITER',
+    ]).has(value.role);
+    if (categoryScoped && value.category === undefined) {
       context.addIssue({
         code: 'custom',
-        message: 'STAY_ARBITER 외 역할에는 category를 전달할 수 없습니다.',
+        message: `${value.role}에는 category가 필요합니다.`,
+      });
+    }
+    if (!categoryScoped && value.category !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: '전역 Agent 역할에는 category를 전달할 수 없습니다.',
       });
     }
   });
@@ -160,6 +171,7 @@ export const codexGatewayReadySchema = z
   .strict();
 
 export type CodexGatewayAgentRole = z.infer<typeof codexGatewayAgentRoleSchema>;
+export type CodexGatewayModelProfile = z.infer<typeof codexGatewayModelProfileSchema>;
 export type CodexGatewayAgentRunRequest = z.infer<typeof codexGatewayAgentRunRequestSchema>;
 export type CodexGatewayAgentRunResult = z.infer<typeof codexGatewayAgentRunResultSchema>;
 export type CodexGatewayModelList = z.infer<typeof codexGatewayModelListSchema>;

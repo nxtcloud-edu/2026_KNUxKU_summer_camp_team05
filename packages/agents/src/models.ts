@@ -17,8 +17,8 @@ import { registerModelPricing } from '@tm/core';
  */
 
 /** 역할. 원장의 `purpose` 접두사와 같다 */
-export const agentRoles = ['supervisor', 'referee', 'persona', 'document'] as const;
-export type AgentRole = (typeof agentRoles)[number];
+export const legacyGeminiRoles = ['supervisor', 'referee', 'persona', 'document'] as const;
+export type LegacyGeminiRole = (typeof legacyGeminiRoles)[number];
 
 /**
  * 역할별 기본 모델.
@@ -29,7 +29,7 @@ export type AgentRole = (typeof agentRoles)[number];
  *
  * **확정이 아니다.** 품질이 부족하면 티어를 올리는 것이 먼저다 (llm-runtime-config 2장).
  */
-export const defaultModels: Record<AgentRole, string> = {
+export const defaultModels: Record<LegacyGeminiRole, string> = {
   supervisor: 'gemini-2.5-flash',
   referee: 'gemini-2.5-flash',
   persona: 'gemini-2.5-flash-lite',
@@ -88,7 +88,7 @@ export const conservativeRateLimits = {
 
 export interface ModelConfig {
   apiKey: string;
-  models: Record<AgentRole, string>;
+  models: Record<LegacyGeminiRole, string>;
   requestsPerMinute: number;
   requestsPerDay: number;
 }

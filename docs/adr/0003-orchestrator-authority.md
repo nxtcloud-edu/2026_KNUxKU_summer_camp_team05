@@ -21,7 +21,20 @@ Python Worker나 별도 오케스트레이터를 추가하지 않는다. 다른 
 ## 실행 순서
 
 ```text
-RunController -> Proxy 호출들 -> Validator/Leximin -> StayArbiter -> TripSupervisor -> 상태 봉인
+RunController
+  -> UserProxy.create_search_brief × N
+  -> CandidateEvidence QueryPlan
+  -> Provider Gateway
+  -> FactConstraintValidator
+  -> CandidatePoolVersion / CategoryProposalSet 봉인
+  -> UserProxy.create_ballot × N
+  -> deterministic leximin
+  -> CategoryArbiter
+  -> TripOrchestrator
+  -> PlanFinalizer
+  -> 상태·원장 적용
 ```
 
 각 단계는 `runId`, `inputVersion`, `proposalSetVersion`, `promptVersion`, `model`을 영수증으로 남긴다. 실패 후 암묵적으로 다음 단계로 넘어가지 않는다.
+
+추가 후보 탐색은 최대 1회다. 새 CandidatePool/ProposalSet 버전을 만들면 이전 Ballot은 무효화하고 전원이 새 버전에 다시 투표한다. 모델 Agent, Codex Gateway, Provider Gateway는 다음 Agent 선택이나 제품 상태를 적용하지 않는다.

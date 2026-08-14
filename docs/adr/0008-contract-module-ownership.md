@@ -10,10 +10,12 @@
 | 경계 | 소유권 |
 | --- | --- |
 | `apps/worker` | TypeScript RunController와 제품 상태 전이 |
-| `packages/contracts` | wire schema, enum, 버전, ID 형식 |
+| `packages/contracts/src/agent-runtime.ts` | 공식 5역할·5카테고리 wire schema, 버전, ID 형식 |
 | `packages/core` | 검증, 정규화, leximin, 상태 규칙 |
 | `apps/codex-runtime-gateway` | 로컬 OAuth, 모델 카탈로그·allowlist, thread·schema 호출 |
 | `prototypes/python-agents` | 오프라인 Agent 계약 실험, 제품 상태 권한 없음 |
+
+`packages/contracts/src/mvp-agent-runtime.ts`와 `packages/agents/src/mvp-runtime.ts`는 이전 3역할 fixture의 migration 호환 파일이다. 공식 제품 계약이나 신규 호출에서 사용하지 않으며 제거는 새 경로의 동등성 검증 뒤 별도 승인으로 진행한다.
 
 다른 브랜치의 Python `apps/worker`나 `packages/agents`를 통째로 병합하지 않는다. Gateway와 Agent 호출 계약만 파일별 차이표, 입력·출력 fixture, 실패 의미가 준비된 뒤 선별 이식한다.
 

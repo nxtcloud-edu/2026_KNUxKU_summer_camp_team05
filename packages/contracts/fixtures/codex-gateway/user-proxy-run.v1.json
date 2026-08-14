@@ -7,6 +7,7 @@
     "role": "USER_PROXY",
     "instanceId": "user-proxy.v1",
     "participantId": "alice",
+    "category": "stay",
     "promptVersion": "v1",
     "inputContractVersion": "v1",
     "outputContractVersion": "v1"

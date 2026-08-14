@@ -15,3 +15,4 @@ export * from './weights.js';
 export * from './grounded.js';
 export * from './attributes.js';
 export * from './mvp-agent-policy.js';
+export * from './agent-policy.js';

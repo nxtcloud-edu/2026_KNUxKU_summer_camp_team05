@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { executionCaps } from '@tm/contracts';
 import { createRepositories, isDatabaseConfigured } from '@tm/db';
 import { jobPayloadSchema, QUEUE_NAME } from './queue.js';
-import { executeRun, sharedRuntime } from './run-once.js';
+import { executeRun, sharedLegacyGeminiRuntime } from './run-once.js';
 import { alreadyApplied, recordFailure } from './run-recorder.js';
 
 /**
@@ -27,7 +27,7 @@ if (!isDatabaseConfigured()) {
 const repos = createRepositories();
 
 // 기동 시점에 LLM 준비 상태를 로그로 남긴다. 첫 잡이 올 때까지 모르면 늦다.
-sharedRuntime();
+sharedLegacyGeminiRuntime();
 
 const worker = new Worker(
   QUEUE_NAME,

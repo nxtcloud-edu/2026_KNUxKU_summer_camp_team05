@@ -7,13 +7,13 @@
  * `@tm/core`가 계산하고, 에이전트는 그 결과를 **서술**한다.
  */
 export {
-  agentRoles,
+  legacyGeminiRoles,
   conservativeRateLimits,
   defaultModels,
   freeTierModels,
   modelConfigFromEnv,
   registerFreeTierPricing,
-  type AgentRole,
+  type LegacyGeminiRole,
   type ModelConfig,
 } from './models.js';
 
@@ -54,6 +54,14 @@ export {
   type CodexGatewayClient,
   type CodexGatewayClientOptions,
 } from './codex-gateway.js';
+
+export {
+  AgentRuntimeError,
+  CodexGatewayAgentRuntime,
+  FixtureAgentRuntime,
+  type AgentRuntime,
+  type CodexGatewayAgentRuntimeOptions,
+} from './runtime.js';
 
 export {
   runRound,

@@ -5,7 +5,20 @@ from typing import Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-AgentRole: TypeAlias = Literal["USER_PROXY", "STAY_ARBITER", "TRIP_SUPERVISOR"]
+AgentRole: TypeAlias = Literal[
+    "USER_PROXY",
+    "CANDIDATE_EVIDENCE",
+    "CATEGORY_ARBITER",
+    "TRIP_ORCHESTRATOR",
+    "PLAN_FINALIZER",
+]
+AgentCategory: TypeAlias = Literal[
+    "long_distance",
+    "stay",
+    "activity",
+    "dining",
+    "schedule",
+]
 ModelProfile: TypeAlias = Literal["FAST", "BALANCED", "DEEP_REASONING"]
 ReasoningEffort: TypeAlias = Literal["low", "medium", "high"]
 RunStatus: TypeAlias = Literal[
@@ -27,7 +40,7 @@ class AgentRef(ApiModel):
     role: AgentRole
     instanceId: str = Field(min_length=1)
     participantId: str | None = None
-    category: Literal["stay"] | None = None
+    category: AgentCategory | None = None
     promptVersion: str = Field(min_length=1)
     inputContractVersion: str = Field(min_length=1)
     outputContractVersion: str = Field(min_length=1)
@@ -38,10 +51,15 @@ class AgentRef(ApiModel):
             raise ValueError("USER_PROXY에는 participantId가 필요합니다.")
         if self.role != "USER_PROXY" and self.participantId is not None:
             raise ValueError("USER_PROXY 외 역할에는 participantId를 전달할 수 없습니다.")
-        if self.role == "STAY_ARBITER" and self.category != "stay":
-            raise ValueError("STAY_ARBITER category는 stay여야 합니다.")
-        if self.role != "STAY_ARBITER" and self.category is not None:
-            raise ValueError("STAY_ARBITER 외 역할에는 category를 전달할 수 없습니다.")
+        category_scoped = self.role in {
+            "USER_PROXY",
+            "CANDIDATE_EVIDENCE",
+            "CATEGORY_ARBITER",
+        }
+        if category_scoped and self.category is None:
+            raise ValueError(f"{self.role}에는 category가 필요합니다.")
+        if not category_scoped and self.category is not None:
+            raise ValueError("전역 Agent 역할에는 category를 전달할 수 없습니다.")
         return self
 
 

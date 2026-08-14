@@ -13,15 +13,18 @@ MVP 시나리오는 **오사카, 성인 3명, 3박, 체류 거점·숙소 한 �
 
 ```text
 확정 입력과 TripCharter 스냅샷
-  -> 후보와 EvidenceSnapshot
-  -> 참여자별 ProxyBallot
+  -> 참여자별 ProxySearchBrief + 그룹 중립 Brief
+  -> CandidateEvidence QueryPlan
+  -> Provider Gateway와 CandidateRecord/EvidenceSnapshot
+  -> FactConstraintValidator와 고정 CandidatePoolVersion
+  -> CategoryProposalSet과 참여자별 ProxyBallot
   -> 하드 제약 검사와 결정론적 leximin 선택
-  -> StayArbiter 설명 초안
-  -> TripSupervisor 감사
-  -> CategoryContractView 또는 사용자 선택/차단
+  -> CategoryArbiter 계약
+  -> TripOrchestrator 감사
+  -> PlanFinalizer의 PROVISIONAL/VERIFIED/사용자 선택/차단 결과
 ```
 
-MVP 결과는 `CategoryDecisionDraft`와 `CategoryContractView` 수준이다. 전체 여행의 `FinalPlanRecord`, 예약, 결제, 다른 카테고리, 네 도시 확장은 만들지 않는다. `MULTI_PROXY`만 제품 경로에 사용하고 `CENTRAL_BASELINE` 비교 실험은 뒤로 미룬다.
+첫 수직 경로는 `stay`만 실행하지만 wire 계약과 역할 명칭은 다섯 공식 역할·다섯 카테고리를 기준으로 한다. 현재 fixture 결과는 실제 Provider 호출과 근거 영수증이 없으므로 `PROVISIONAL` 상한을 넘지 않는다. 예약, 결제, 네 도시 전체 공급자 완성은 만들지 않는다. `MULTI_PROXY`만 제품 경로에 사용하고 `CENTRAL_BASELINE` 비교 실험은 뒤로 미룬다.
 
 ## 완료 결과
 

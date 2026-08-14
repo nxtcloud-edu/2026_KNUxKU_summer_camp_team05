@@ -45,7 +45,7 @@
 | `TripOrchestratorAgent` | 날짜·페이스·개인별 예산·근거·전역 제약 이탈을 감사 |
 | `PlanFinalizerAgent` | 승인 계약들의 의미 연속성을 대조하고 사용자용 최종 초안을 구성 |
 
-이 다섯 역할은 목표 아키텍처다. MVP에서 실제 모델을 호출하는 역할은 참여자별 `UserProxyAgent`, 숙소 전용 `StayArbiterAgent`, 감사용 `TripSupervisorAgent` 세 종류다. 후보 조달과 최종 표시는 결정론적 데이터 게이트웨이와 렌더러가 담당한다.
+이 다섯 역할이 현재 공식 에이전트 계약이다. TypeScript에는 정확히 다섯 역할을 받는 `AgentRuntime`, 로컬 fixture 구현, Codex Gateway adapter와 Worker 생성 경계가 연결돼 있다. 다만 기존 운영 큐는 아직 이전 3역할 실행을 migration 경로로 사용하므로, 실제 OAuth 모델 호출이나 새 5역할 제품 실행이 완료됐다고 보지 않는다. `CandidateEvidenceAgent`는 `QueryPlan`을 논리적으로 소유하고 실제 Network I/O는 Provider Gateway가 수행한다.
 
 ### 결정론적 제어 3종
 
@@ -142,11 +142,11 @@ MVP는 `MULTI_PROXY`만 구현합니다. 참여자별 `UserProxyAgent`가 자기
 
 ## 현재 구현 상태
 
-Accepted MVP 결정은 [ADR 목록](docs/adr/README.md)에 있습니다. 현재 코드는 이전 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 포함하므로 문서 확정이 새 수직 경로의 구현·검증을 뜻하지 않습니다.
+Accepted MVP 결정은 [ADR 목록](docs/adr/README.md)에 있습니다. 공식 5역할 계약과 로컬 fixture가 추가됐지만 현재 코드에는 이전 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약도 migration 경로로 남아 있습니다. 두 구조를 공식 아키텍처로 병존시키지 않으며, 이전 경로의 삭제·운영 큐 전환은 동등성 검증 뒤 별도 승인으로 진행합니다.
 
 `dawnkim`에서 [Codex Runtime Gateway](apps/codex-runtime-gateway/README.md)의 로컬 실행 경계만 선별 이식했습니다. Python Worker·AgentCore·Docker 구성은 가져오지 않았고, TypeScript 계약과 Worker HTTP 포트가 role·schema·version을 소유합니다. 가짜 Backend 기반 계약 검증은 실제 OAuth 모델 실행의 증거가 아닙니다.
 
-TypeScript Worker에는 `stay` 전용 `UserProxy → StayArbiter → TripSupervisor` fixture 경로가 연결돼 있습니다. Candidate Search 계약, 조건 ID 기반 안전 완화 거부, 본인 확정 프로필 projection, 코드 소유 만족도·maximin 선택, Arbiter 변경 감지, Supervisor guard를 한 번에 실행합니다. 이는 해당 fixture 경로의 로컬 증거이며 Survey v4, 화면, 실제 공급자, OAuth 모델 실행 또는 전체 MVP 완료 증거가 아닙니다.
+TypeScript Worker의 기본 `mvp:fixture`는 `UserProxy × 3 → CandidateEvidence → UserProxy Ballot × 3 → 결정론적 leximin → CategoryArbiter → TripOrchestrator → PlanFinalizer` 순서를 종단 실행합니다. Proxy별 개인정보 projection, Proxy·중립 Brief의 QueryPlan 계보, 같은 `proposalSetVersion` 전체 투표, 선택안 불변성, 전역 guard와 비실데이터 상태 상한을 함께 검사합니다. Provider Network I/O와 실제 Evidence 검증이 없는 fixture이므로 결과는 `PROVISIONAL`이며, Survey v4 화면·실제 공급자·OAuth 모델 실행 또는 전체 MVP 완료의 증거가 아닙니다.
 
 [Python 에이전트 초안](prototypes/python-agents/README.md)의 Proxy·중재자·감독관 계약과 오프라인 fixture는 참고할 수 있습니다. 그 안의 ECS·AgentCore 코드는 과거 실험이며 MVP 선택 경로가 아닙니다. 선택 런타임은 로컬 Codex OAuth Gateway이고, 기존 TypeScript Worker가 업무 오케스트레이터입니다.
 
@@ -172,13 +172,13 @@ npm run test
 npm run build
 ```
 
-OAuth와 외부 API 없이 3역할 숙소 fixture 경로만 실행하려면 다음 명령을 사용합니다.
+OAuth와 외부 API 없이 공식 5역할 숙소 계약 fixture를 실행하려면 다음 명령을 사용합니다.
 
 ```bash
 npm run mvp:fixture --workspace @tm/worker
 ```
 
-정상 결과의 내부 실행 상태는 `FIXTURE_PATH_CLEAR`입니다. [출시 게이트](docs/operations/mvp-release-gates.md)의 모든 수동 시나리오를 통과하기 전에는 이를 `VALIDATED_LOCAL_FIXTURE_MVP`로 승격하지 않습니다.
+정상 결과의 내부 실행 상태는 `FIXTURE_CONTRACT_CLEAR`입니다. 이는 5역할 계약과 순서의 로컬 증거일 뿐입니다. [출시 게이트](docs/operations/mvp-release-gates.md)의 모든 수동 시나리오를 통과하기 전에는 이를 `VALIDATED_LOCAL_FIXTURE_MVP`로 승격하지 않습니다. 이전 3역할 fixture는 명시적으로 `mvp:legacy-fixture`를 실행할 때만 사용합니다.
 
 `VITE_API_BASE_URL`을 비워두면 기존 프론트 흐름이 `sessionStorage`에 저장됩니다. 이는 UI 목업 경로이며 새 백엔드 계약이 연결됐다는 뜻은 아닙니다.
 

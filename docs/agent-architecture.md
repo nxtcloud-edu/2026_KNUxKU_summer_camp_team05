@@ -216,11 +216,13 @@ API 원본 응답
 
 **카테고리 구성:**
 
-- `LongDistanceArbiter`: 오는 길·가는 길
-- `StayArbiter`: 거점·숙소
-- `ActivityArbiter`: 갈 곳·할 일
-- `DiningArbiter`: 식사
-- `ScheduleArbiter`: 날짜별 일정·현지 이동
+- `long_distance`: 오는 길·가는 길
+- `stay`: 거점·숙소
+- `activity`: 갈 곳·할 일
+- `dining`: 식사
+- `schedule`: 날짜별 일정·현지 이동
+
+위 값은 하나의 `CategoryArbiterAgent`에 전달하는 카테고리 context다. 별도 `AgentRole`이나 독립 중재관 종류를 추가하지 않는다.
 
 예산은 독립 취향 토론 하나로 마지막에 처리하지 않는다. 모든 중재관이 개인별 예산 한도와 남은 금액을 사용하고, 마지막에는 통합 정산만 한다.
 

@@ -211,12 +211,14 @@ export interface RoomProgress {
 
 /**
  * 항목·계획서 배지. 코드가 판정하며 에이전트가 주장할 수 없다.
- * `PARTIAL`은 검증을 통과하지 못한 상태이므로 예약 행동을 유도하지 않는다.
+ * `PROVISIONAL`은 문서 검증을 통과했지만 LIVE 근거 영수증이 부족한 상태고,
+ * `PARTIAL`은 문서 검증을 통과하지 못한 상태다. 둘 다 예약 행동을 유도하지 않는다.
  */
 export const resultBadges = [
   'NONE',
   'DRAFT',
   'PARTIAL',
+  'PROVISIONAL',
   'VERIFIED',
   'BOOKABLE',
   'BOOKED',

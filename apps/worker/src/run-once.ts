@@ -44,15 +44,16 @@ import {
 } from './orchestrator/prefetch-runner.js';
 import { defaultSearchPlan } from './orchestrator/search-plan.js';
 import { finalizeRun, type DocumentPort } from './orchestrator/finalize.js';
+import { stateCeilingForRound } from './orchestrator/state-ceiling.js';
 import {
-  createAgentRuntime,
+  createLegacyGeminiRuntime,
   createDocumentStore,
   createRefereeStore,
   createUsageRecorder,
   hardConstraintsOf,
   prepareParticipants,
   resolveRoomDates,
-  type AgentRuntime,
+  type LegacyGeminiRuntime,
 } from './agents.js';
 import { applyRerunOutcome, recordRoundSettled, startRun } from './run-recorder.js';
 
@@ -87,11 +88,11 @@ export function nullClient(): LlmClient {
 }
 
 /** 프로세스당 한 번만 만든다. 레이트리밋 창이 run마다 초기화되면 안 된다 */
-let cachedRuntime: AgentRuntime | null | undefined;
+let cachedRuntime: LegacyGeminiRuntime | null | undefined;
 
-export function sharedRuntime(): AgentRuntime | null {
+export function sharedLegacyGeminiRuntime(): LegacyGeminiRuntime | null {
   if (cachedRuntime !== undefined) return cachedRuntime;
-  const setup = createAgentRuntime();
+  const setup = createLegacyGeminiRuntime();
   if ('runtime' in setup) {
     const limits = setup.runtime.client.limiter.snapshot();
     console.log(
@@ -134,7 +135,7 @@ export async function executeRun(
   repos: Repositories,
   payload: JobPayload,
 ): Promise<RunOnceResult> {
-  const runtime = sharedRuntime();
+  const runtime = sharedLegacyGeminiRuntime();
 
     await startRun(repos, payload);
 
@@ -435,29 +436,18 @@ export async function executeRun(
         const lockedDescendants: PlanningNodeId[] = [];
         const outcome = roundOutcomes.get(roundId);
 
-        /**
-         * 노드 상태. **fail-closed는 여기서 막는 게이트가 아니다.**
-         *
-         * VERIFIED는 "이 라운드가 실제 조달된 후보로 판정을 마쳤다"는 뜻이지
-         * "이 항목의 모든 것이 확인됐다"는 뜻이 아니다. 확인하지 못한 항목은
-         * VERIFIED→BOOKABLE 승격과 finalize를 막는다 (V9) — 그 판정은 Validation
-         * Pass가 계획서 발행 직전에 한다.
-         *
-         * 여기서 BLOCKED로 내리면 확인 못 한 필드 하나가 뒤 라운드 전체를 멈춘다.
-         * 그러면 사용자는 부분 계획서조차 못 받는다.
-         */
-        const status =
-          outcome?.decided === true ? 'VERIFIED' : outcome?.blocked === true ? 'BLOCKED' : 'PROVISIONAL';
-
-        // 확인하지 못한 것이 있으면 confidence로 드러낸다. live라고 주장하지 않는다.
-        const confidence =
-          outcome?.decided === true && outcome.unverified.length === 0 ? 'live' : 'unknown';
+        const ceiling = stateCeilingForRound({
+          blocked: outcome?.blocked === true,
+          verificationReceiptsPassed: false,
+          unresolvedEvidenceCount: outcome?.unverified.length ?? 0,
+          evidenceMode: 'MIXED',
+        });
 
         for (const nodeId of nodesForRound(roundId)) {
           const result = await recordNodeUpdate(repos, payload.runId, graph, {
             nodeId,
-            status,
-            confidence: status === 'VERIFIED' ? (confidence === 'live' ? 'live' : 'estimated') : 'unknown',
+            status: ceiling.status,
+            confidence: ceiling.confidence,
           });
           graph = result.graph;
           staled.push(...result.staled);
@@ -518,6 +508,12 @@ export async function executeRun(
             runId: payload.runId,
             roomId: payload.roomId,
             draft,
+            evidenceState: {
+              blocked: false,
+              verificationReceiptsPassed: false,
+              unresolvedEvidenceCount: 1,
+              evidenceMode: 'MIXED',
+            },
           });
           console.log(
             result.itineraryId === null

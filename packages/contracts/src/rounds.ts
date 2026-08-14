@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const roundIds = ['r_0', 'r_1a', 'r_1b', 'r_2', 'r_3', 'r_4', 'r_5', 'r_6'] as const;
 export type RoundId = (typeof roundIds)[number];
 
-export const refereeCategories = [
+export const legacyRefereeCategories = [
   'flight',
   'transport',
   'accommodation',
@@ -13,7 +13,12 @@ export const refereeCategories = [
   'scheduler',
   'budget',
 ] as const;
-export type RefereeCategory = (typeof refereeCategories)[number];
+export type LegacyRefereeCategory = (typeof legacyRefereeCategories)[number];
+
+/** @deprecated 공식 카테고리는 agentCategories 다섯 종류다. 이 alias는 R0~R6 migration 전용이다. */
+export const refereeCategories = legacyRefereeCategories;
+/** @deprecated 공식 카테고리 타입은 AgentCategory다. */
+export type RefereeCategory = LegacyRefereeCategory;
 
 /** 라운드 내부 상태머신. VOTING은 없다(v1.1에서 REVIEW로 대체). */
 export const roundPhases = [

@@ -86,6 +86,14 @@ function readBlockers(report: unknown, key: 'blockers' | 'warnings'): PlanBlocke
   });
 }
 
+function readEvidenceStatus(report: unknown): 'PROVISIONAL' | 'VERIFIED' | null {
+  if (typeof report !== 'object' || report === null) return null;
+  const evidenceState = (report as Record<string, unknown>)['evidenceState'];
+  if (typeof evidenceState !== 'object' || evidenceState === null) return null;
+  const status = (evidenceState as Record<string, unknown>)['status'];
+  return status === 'PROVISIONAL' || status === 'VERIFIED' ? status : null;
+}
+
 export async function registerResultRoutes(
   app: FastifyInstance,
   repos: Repositories,
@@ -148,7 +156,8 @@ export async function registerResultRoutes(
   /**
    * 최종 계획서.
    *
-   * 배지는 코드가 판정한다. 발행되지 않은 계획서는 `PARTIAL`이며 예약 행동을 유도하지 않는다.
+   * 배지는 코드가 판정한다. 발행되지 않은 계획서는 근거 상태에 따라 `PROVISIONAL` 또는
+   * `PARTIAL`이며 예약 행동을 유도하지 않는다.
    */
   app.get('/api/rooms/:roomId/plan', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
@@ -178,6 +187,8 @@ export async function registerResultRoutes(
       blockers.map((blocker) => blocker.itemId).filter((id): id is string => id !== null),
     );
     const published = itinerary.publishedAt !== null;
+    const evidenceStatus = readEvidenceStatus(itinerary.validationReport);
+    const unpublishedBadge: ResultBadge = evidenceStatus === 'PROVISIONAL' ? 'PROVISIONAL' : 'PARTIAL';
     const bookedNodes = new Set(room.bookedNodes);
 
     /**
@@ -187,7 +198,7 @@ export async function registerResultRoutes(
     const badgeOf = (item: { itemId: string; nodeId: PlanItemView['nodeId'] }): ResultBadge => {
       if (bookedNodes.has(item.nodeId)) return 'BOOKED';
       if (blockedItemIds.has(item.itemId)) return 'DRAFT';
-      return published ? 'VERIFIED' : 'PARTIAL';
+      return published ? 'VERIFIED' : unpublishedBadge;
     };
 
     const days: PlanDayView[] = parsed.data.days.map((day) => {
@@ -220,7 +231,7 @@ export async function registerResultRoutes(
       itineraryId: itinerary.itineraryId,
       version: itinerary.version,
       publishedAt: itinerary.publishedAt,
-      badge: published ? 'VERIFIED' : 'PARTIAL',
+      badge: published ? 'VERIFIED' : unpublishedBadge,
       dateRange: parsed.data.dateRange,
       headline: parsed.data.headline,
       days,
@@ -232,7 +243,11 @@ export async function registerResultRoutes(
 
     return reply.send({
       availability: published ? 'ready' : 'partial',
-      reason: published ? null : (blockers[0]?.detail ?? '검증을 통과하지 못해 부분 계획서로 표시합니다.'),
+      reason: published
+        ? null
+        : evidenceStatus === 'PROVISIONAL'
+          ? '문서 검증은 통과했지만 LIVE 검증 영수증이 없어 잠정 결과로 표시합니다.'
+          : (blockers[0]?.detail ?? '검증을 통과하지 못해 부분 계획서로 표시합니다.'),
       data: plan,
     } satisfies ResultEnvelope<PlanResult>);
   });

@@ -1,5 +1,9 @@
 import { documentGate, runValidationPass, type ItineraryItem, type ValidationReport } from '@tm/core';
 import type { Repositories } from '@tm/db';
+import {
+  stateCeilingForRound,
+  type RoundStateEvidence,
+} from './state-ceiling.js';
 
 /**
  * 계획서 발행 — 마무리 에이전트가 붙는 자리.
@@ -34,7 +38,7 @@ export interface DocumentPort {
 export interface FinalizeResult {
   itineraryId: string | null;
   /** VERIFIED만 예약 행동을 유도할 수 있다. PARTIAL은 표기만 한다 */
-  badge: 'VERIFIED' | 'PARTIAL' | 'NONE';
+  badge: 'VERIFIED' | 'PROVISIONAL' | 'PARTIAL' | 'NONE';
   published: boolean;
   report: ValidationReport | null;
   reason: string | null;
@@ -49,7 +53,12 @@ export interface FinalizeResult {
  */
 export async function finalizeRun(
   repos: Repositories,
-  input: { runId: string; roomId: string; draft: PlanDraft | null },
+  input: {
+    runId: string;
+    roomId: string;
+    draft: PlanDraft | null;
+    evidenceState: RoundStateEvidence;
+  },
 ): Promise<FinalizeResult> {
   if (input.draft === null) {
     return {
@@ -69,22 +78,26 @@ export async function finalizeRun(
     budget: input.draft.budget,
   });
   const gate = documentGate(report);
+  const evidenceCeiling = stateCeilingForRound(input.evidenceState);
+  const publishAllowed = gate.allowed && evidenceCeiling.status === 'VERIFIED';
 
   const itinerary = await repos.itineraries.save({
     roomId: input.roomId,
     runId: input.runId,
     plan: input.draft.plan,
     ...(input.draft.budgetSummary === undefined ? {} : { budgetSummary: input.draft.budgetSummary }),
-    validationReport: report,
+    validationReport: { ...report, evidenceState: evidenceCeiling },
   });
 
-  if (gate.allowed) await repos.itineraries.publish(itinerary.itineraryId);
+  if (publishAllowed) await repos.itineraries.publish(itinerary.itineraryId);
 
   return {
     itineraryId: itinerary.itineraryId,
-    badge: gate.badge,
-    published: gate.allowed,
+    badge: gate.allowed ? (publishAllowed ? 'VERIFIED' : 'PROVISIONAL') : 'PARTIAL',
+    published: publishAllowed,
     report,
-    reason: gate.reason,
+    reason: gate.allowed && !publishAllowed
+      ? '문서 검증은 통과했지만 LIVE 검증 영수증이 없어 PROVISIONAL입니다.'
+      : gate.reason,
   };
 }

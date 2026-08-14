@@ -6,21 +6,24 @@
 
 ## 1. MVP에서 LLM을 쓰는 역할
 
-| MVP 역할 | LLM의 일 | 결정론적 코드가 소유하는 일 |
+| 공식 역할 | LLM의 일 | 결정론적 코드가 소유하는 일 |
 | --- | --- | --- |
-| `UserProxyAgent` | 확정 프로필 근거로 주장·양보안·명시 투표 생성 | 프로필 권위·필드 접근, 만족도 계산 |
-| `StayArbiterAgent` | 논점 조정, 선택·종료·차단 이유 작성 | leximin 계산, 하드 제약 검사, 상태 적용 |
-| `TripSupervisorAgent` | 날짜·예산·정원·근거 이탈의 의미 감사 | 가격·정원·근거 기계 판정과 상태 봉인 |
+| `UserProxyAgent` | 자기 프로필로 `ProxySearchBrief`, 주장·양보안·전체 순위 Ballot 생성 | 개인정보 projection, 만족도·상태 계산 |
+| `CandidateEvidenceAgent` | Brief를 Provider·query class가 명시된 QueryPlan으로 변환 | 실제 HTTP·Key·캐시·쿼터·정규화·검증 |
+| `CategoryArbiterAgent` | 논점 조정, 선택·종료·차단 이유 작성 | leximin, 하드 제약, 선택 불변성, 상태 적용 |
+| `TripOrchestratorAgent` | 날짜·예산·정원·근거 이탈의 의미 감사 | 실행 순서, 가드 계산, 제품 상태 봉인 |
+| `PlanFinalizerAgent` | 계약 연속성과 결과 설명 작성 | 상태 상한, 발행 가능성, 영속화 |
 
-후보 검색 계획과 결과 렌더링은 MVP에서 결정론적이다. `DateResolver`, `FactConstraintValidator`, `RunController`도 LLM 에이전트가 아니다. 목표 역할 5종과 MVP 활성 역할의 차이는 [Agent 역할 ADR](adr/0002-agent-roles.md)이 소유한다.
+Agent가 검색 의도·QueryPlan·설명을 제안해도 `DateResolver`, `FactConstraintValidator`, `LeximinSelector`, Provider Gateway, `RunController`는 결정론적 코드다. CandidateEvidence는 논리적 API 소유자지만 실제 Network I/O를 수행하지 않는다.
 
 ## 2. 구현 순서
 
 1. 모델 독립 JSON Schema와 parser
 2. LLM 사용량·프롬프트 버전·비용 원장
-3. `UserProxyAgent` + `StayArbiterAgent` 한 카테고리 수직 경로
-4. `TripSupervisorAgent` 가드
-5. 실제 OAuth 모델 1회 실행과 영수증 확인
+3. `UserProxyAgent → CandidateEvidenceAgent → CategoryArbiterAgent` 한 카테고리 수직 경로
+4. `TripOrchestratorAgent → PlanFinalizerAgent` 가드와 상태 상한
+5. QueryPlan→Provider Gateway→EvidenceSnapshot 제품 연결
+6. 실제 OAuth 모델 1회 실행과 영수증 확인
 
 첫 LLM 소비자를 이전 설계의 Supervisor로 두지 않는다. 가장 작은 검증 단위는 한 카테고리의 `프로필 → 명시 투표 → 계약 또는 차단`이다.
 
@@ -42,9 +45,10 @@ Python Gateway의 `MOA_GATEWAY_HOST`는 loopback만 허용하고 기본 저장�
 ## 4. 모델 배분 원칙
 
 - Proxy는 호출 수가 인원수와 토론 턴에 비례하므로 작은 출력과 구조화 투표를 우선한다.
+- CandidateEvidence는 검색 의도를 구조화하지만 API Key나 원본 응답을 보지 않는다.
 - Arbiter는 제안 구성·종료 판정 품질이 필요하지만 수치 계산은 하지 않는다.
-- Supervisor는 전체 맥락을 읽되 `VerificationReceipt`를 재해석해 통과시키지 않는다.
-- Proxy, Arbiter, Supervisor가 같은 모델을 사용해도 역할별 최소 입력과 출력 스키마는 분리한다.
+- Orchestrator와 Finalizer는 전체 맥락을 읽되 `VerificationReceipt`를 재해석해 통과시키지 않는다.
+- 같은 모델을 사용해도 역할별 최소 입력과 출력 스키마는 분리한다.
 - 자동 고가 티어 fallback은 두지 않으며 사용자가 허용한 모델만 쓴다.
 
 사용자에게서 얻지 않은 “주장형·조정형·실속형” 같은 성격을 Proxy에 강제하지 않는다. 첫 발언자, 반례 검토자 같은 절차 역할만 순환할 수 있다.
@@ -58,7 +62,7 @@ OAuth 구독 실행에서 USD 원가를 확정값으로 가정하지 않는다. 
 - 공급자 호출·실패·쿼터
 - 카테고리별 wall-clock
 - 구조화 출력 파싱 실패율
-- `CONCLUDED`, `NO_SAFE_DECISION`, `RECHECK`, `HOLD` 비율
+- `CONCLUDED`, `NO_SAFE_DECISION`, `RECHECK`, `HOLD`, `PROVISIONAL` 비율
 
 ### 비용 절감 순서
 
@@ -104,7 +108,8 @@ type LlmCallReceipt = {
 | 구조화 출력 파싱 실패 | 같은 입력으로 최대 1회 복구 후 차단 |
 | Proxy 응답 실패 | 해당 사용자를 찬성으로 추정하지 않고 투표 미확정 표시 |
 | Arbiter 실패 | 상태를 적용하지 않고 체크포인트 유지 |
-| Supervisor 실패 | `CLEAR` 추정 금지, 실행 보류 |
+| TripOrchestrator 실패 | `CLEAR` 추정 금지, 실행 보류 |
+| PlanFinalizer 실패 | 이전 상태를 승격하지 않고 체크포인트 유지 |
 | model/list 또는 allowlist 실패 | 다른 공급자로 전환하지 않고 실행 차단 |
 
 API key 공급자나 미허용 모델로 자동 fallback하지 않는다.
@@ -112,8 +117,9 @@ API key 공급자나 미허용 모델로 자동 fallback하지 않는다.
 ## 8. 평가
 
 - Proxy: 프로필 사실 재현, 범위·부정·예외 보존, 근거 없는 주장률
+- CandidateEvidence: Proxy·중립 Brief coverage, 금지된 직접 API·상태 승격 0건
 - Arbiter: 종료 적정성, 계약 필드 완전성, leximin trace와 설명 일치
-- Supervisor: 위반 recall/precision, 검증 실패 덮어쓰기 0건
+- Orchestrator/Finalizer: 위반 recall/precision, 검증 실패 덮어쓰기 0건
 
 LLM-as-judge는 보조 신호다. 계약·수치·상태·실제 사용자 선택과 기계 검사를 우선한다.
 

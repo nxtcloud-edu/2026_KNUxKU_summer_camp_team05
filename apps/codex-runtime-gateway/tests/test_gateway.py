@@ -6,10 +6,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from moa_codex_gateway.app import create_app
 from moa_codex_gateway.backend import AuthSnapshot, BackendResult, CatalogEntry
 from moa_codex_gateway.redaction import redact
+from moa_codex_gateway.models import AgentRef
 from moa_codex_gateway.service import GatewayService
 from moa_codex_gateway.settings import GatewaySettings
 from moa_codex_gateway.store import GatewayStore
@@ -84,6 +86,39 @@ def settings(tmp_path: Path, *, with_model: bool = True) -> GatewaySettings:
 
 def payload() -> dict[str, Any]:
     return json.loads(GOLDEN_REQUEST_PATH.read_text(encoding="utf-8"))
+
+
+def agent_ref(**overrides: object) -> dict[str, object]:
+    return {
+        "role": "USER_PROXY",
+        "instanceId": "agent.v1",
+        "participantId": "u1",
+        "category": "stay",
+        "promptVersion": "v1",
+        "inputContractVersion": "v1",
+        "outputContractVersion": "v1",
+        **overrides,
+    }
+
+
+def test_agent_ref_accepts_only_the_five_official_roles() -> None:
+    valid = [
+        agent_ref(),
+        agent_ref(role="CANDIDATE_EVIDENCE", participantId=None),
+        agent_ref(role="CATEGORY_ARBITER", participantId=None),
+        agent_ref(role="TRIP_ORCHESTRATOR", participantId=None, category=None),
+        agent_ref(role="PLAN_FINALIZER", participantId=None, category=None),
+    ]
+    assert [AgentRef.model_validate(value).role for value in valid] == [
+        "USER_PROXY",
+        "CANDIDATE_EVIDENCE",
+        "CATEGORY_ARBITER",
+        "TRIP_ORCHESTRATOR",
+        "PLAN_FINALIZER",
+    ]
+    for legacy_role in ["STAY_ARBITER", "TRIP_SUPERVISOR"]:
+        with pytest.raises(ValidationError):
+            AgentRef.model_validate(agent_ref(role=legacy_role))
 
 
 def test_agent_run_is_validated_and_idempotent(tmp_path: Path) -> None:
