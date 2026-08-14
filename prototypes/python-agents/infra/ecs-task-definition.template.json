@@ -1,0 +1,69 @@
+{
+  "family": "moa-python-agents",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "<ECS_EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<MOA_TASK_ROLE_ARN>",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "moa-python-agents",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/moa-python-agents:<IMAGE_TAG>",
+      "essential": true,
+      "readonlyRootFilesystem": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "<REGION>"
+        },
+        {
+          "name": "MOA_AGENTCORE_GATEWAY_URL",
+          "value": "https://<GATEWAY_ID>.gateway.bedrock-agentcore.<REGION>.amazonaws.com"
+        },
+        {
+          "name": "MOA_MODEL",
+          "value": "openai/gpt-5.4-mini"
+        },
+        {
+          "name": "MOA_REASONING_EFFORT",
+          "value": "low"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "MOA_SERVICE_TOKEN",
+          "valueFrom": "<MOA_SERVICE_TOKEN_SECRET_ARN>"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()\" || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/moa-python-agents",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "agent"
+        }
+      }
+    }
+  ]
+}

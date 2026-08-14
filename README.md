@@ -140,6 +140,8 @@ MVP의 기본 공급자는 공개·셀프서비스 범위 안에서 사용합니
 
 이 브랜치의 문서는 목표 설계를 갱신하지만 코드 마이그레이션을 주장하지 않습니다. 현재 코드는 이전 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 포함합니다. Planning Graph, DateResolver, 합의 점수, 데이터 게이트웨이, API·Worker 골격의 기존 테스트가 있더라도 새 `TripCharter → CategoryDecisionContract × 5 → FinalPlanRecord` 종단 흐름이나 Survey v4가 구현·검증됐다는 뜻은 아닙니다.
 
+[Python 에이전트 초안](prototypes/python-agents/README.md)은 사용자별 Proxy, 공통 베이스 기반 중재자 5개, 감독관의 권한과 구조화 출력을 독립 실행으로 검증하고 ECS·AgentCore Gateway inference 배포 경계를 제공합니다. 실제 AWS 배포, 현재 TypeScript Worker·여행 API·DB 원장 연결이 완료됐다는 뜻은 아닙니다.
+
 제품 완결 기준은 다음 모두입니다.
 
 1. 0단계 입력·날짜·헌장 생성

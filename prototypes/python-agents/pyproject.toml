@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moa-agent-draft"
+version = "0.1.0"
+description = "Runnable Python draft for MOA user proxies, five category arbiters, and trip supervisor"
+requires-python = ">=3.11"
+dependencies = ["botocore>=1.40,<2"]
+
+[project.optional-dependencies]
+deploy = ["boto3>=1.40,<2"]
+
+[project.scripts]
+moa-agent-server = "moa_agents.service:serve"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
