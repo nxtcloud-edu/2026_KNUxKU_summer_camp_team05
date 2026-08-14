@@ -24,6 +24,8 @@ import {
   selectCategoryProposalLeximin,
   type DateResolution,
   type DateResolverInput,
+  type StayCandidateValidationResult,
+  type StayHardConstraint,
 } from '@tm/core';
 
 export type CanonicalExecutionStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
@@ -91,6 +93,9 @@ export interface StructuredSearchContext {
   neutralBrief: NeutralSearchBrief;
   availableProviderIds: string[];
   providerExecution: ProviderExecutionContext;
+  hardConstraints: readonly StayHardConstraint[];
+  allowedRoomSplitAuthorityRefs: readonly string[];
+  representativeBriefIdByParticipantId: Readonly<Record<string, string>>;
 }
 
 /** B1 integration point: assemble provider-safe, structured search context. */
@@ -100,6 +105,7 @@ export interface StructuredSearchPort {
     room: CanonicalRoomContext;
     charter: TripCharter;
     briefs: readonly ProxySearchBrief[];
+    profiles: readonly UserProxyProfileView[];
   }): Promise<StructuredSearchContext>;
 }
 
@@ -139,6 +145,7 @@ export interface CandidateValidationResult {
   candidates: CandidateRecord[];
   evidence: EvidenceSnapshot[];
   receipts: VerificationReceipt[];
+  validations: StayCandidateValidationResult[];
   reason: string | null;
 }
 
@@ -150,6 +157,7 @@ export interface CandidateValidationPort {
     charter: TripCharter;
     profiles: readonly UserProxyProfileView[];
     execution: CandidateEvidenceExecutionResult;
+    searchContext: StructuredSearchContext;
   }): Promise<CandidateValidationResult>;
 }
 
@@ -169,6 +177,7 @@ export interface ProposalSetPort {
     candidates: readonly CandidateRecord[];
     evidence: readonly EvidenceSnapshot[];
     receipts: readonly VerificationReceipt[];
+    validations: readonly StayCandidateValidationResult[];
   }): Promise<ProposalSetResult>;
 }
 
@@ -392,6 +401,7 @@ export async function runCanonicalLive(
       room: input.room,
       charter,
       briefs: searchBriefs,
+      profiles: input.profiles,
     });
 
     activeStage = 'CANDIDATE_EVIDENCE_QUERY_PLAN';
@@ -470,6 +480,7 @@ export async function runCanonicalLive(
       charter,
       profiles: input.profiles,
       execution,
+      searchContext,
     });
     if (validated.status === 'BLOCKED' || validated.candidatePool === null) {
       const result = handledResult(
@@ -500,6 +511,7 @@ export async function runCanonicalLive(
       candidates: validated.candidates,
       evidence: validated.evidence,
       receipts: validated.receipts,
+      validations: validated.validations,
     });
 
     activeStage = 'USER_PROXY_BALLOTS';

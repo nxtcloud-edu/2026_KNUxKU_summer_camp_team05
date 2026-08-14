@@ -258,6 +258,12 @@ function dependencies(
             searchRadiusKm: 2,
             queryBudget: 4,
           },
+          hardConstraints: [],
+          allowedRoomSplitAuthorityRefs: [],
+          representativeBriefIdByParticipantId: {
+            u1: 'brief:u1:stay:1',
+            u2: 'brief:u2:stay:1',
+          },
         };
       },
     },
@@ -274,6 +280,7 @@ function dependencies(
           candidates,
           evidence,
           receipts,
+          validations: [],
           reason: null,
         };
       },
@@ -353,6 +360,7 @@ test('FactConstraintValidator BLOCKED result stops before proposal creation', as
           candidates: [],
           evidence,
           receipts: [],
+          validations: [],
           reason: 'capacity constraint failed',
         };
       },
