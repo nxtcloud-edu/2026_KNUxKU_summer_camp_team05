@@ -390,6 +390,19 @@ test('Codex CandidateEvidence 결과는 같은 Brief를 여러 QueryPlan에 재�
   );
 });
 
+test('Codex CandidateEvidence가 stay query class를 바꿔도 deterministic ceiling이 hotel.search로 복원한다', async () => {
+  const request = candidateEvidenceRequest();
+  const output = await new FixtureAgentRuntime().run(request);
+  if (output.role !== 'CANDIDATE_EVIDENCE') throw new Error('CandidateEvidence fixture가 아닙니다.');
+  const result = await runtimeReturning({
+    ...output,
+    queryPlans: output.queryPlans.map((plan) => ({ ...plan, queryClass: 'hotel.vacancy_price' })),
+  }).run(request);
+  assert.equal(result.role, 'CANDIDATE_EVIDENCE');
+  if (result.role !== 'CANDIDATE_EVIDENCE') return;
+  assert.ok(result.queryPlans.every((plan) => plan.queryClass === 'hotel.search'));
+});
+
 test('Codex Runtime은 공식 role과 최소 투영을 Gateway 계약으로 보낸다', async () => {
   let captured: CodexGatewayAgentRunRequest | undefined;
   const request = searchBriefRequest();
@@ -555,6 +568,26 @@ test('Codex UserProxy는 fake Gateway 응답에서도 다른 참가자 profile p
     }).run(request),
     /자기 참가자·카테고리·프로필 경계/,
   );
+});
+
+test('Codex UserProxy가 만든 미등록 fact ref는 deterministic projection ceiling이 제거한다', async () => {
+  const request = searchBriefRequest();
+  const output = await new FixtureAgentRuntime().run(request);
+  if (output.role !== 'USER_PROXY' || output.task !== 'CREATE_SEARCH_BRIEF') {
+    throw new Error('UserProxy fixture가 아닙니다.');
+  }
+  const result = await runtimeReturning({
+    ...output,
+    brief: {
+      ...output.brief,
+      mustKeepRefs: ['fact:u1:invented'],
+      preferenceTargetRefs: [...output.brief.preferenceTargetRefs, 'fact:u1:invented'],
+    },
+  }).run(request);
+  assert.equal(result.role, 'USER_PROXY');
+  if (result.role !== 'USER_PROXY' || result.task !== 'CREATE_SEARCH_BRIEF') return;
+  assert.deepEqual(result.brief.mustKeepRefs, []);
+  assert.deepEqual(result.brief.preferenceTargetRefs, ['fact:u1:preference']);
 });
 
 test('Codex Runtime은 CategoryArbiter가 결정론 선택을 바꾼 응답을 거부한다', async () => {

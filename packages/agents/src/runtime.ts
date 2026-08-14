@@ -393,6 +393,41 @@ function applyPlanFinalizerCeiling(
   return result;
 }
 
+function applyUserProxySearchBriefCeiling(
+  request: AgentRunRequest,
+  result: AgentRunResult,
+): AgentRunResult {
+  if (
+    request.role !== 'USER_PROXY' ||
+    request.task !== 'CREATE_SEARCH_BRIEF' ||
+    result.role !== 'USER_PROXY' ||
+    result.task !== 'CREATE_SEARCH_BRIEF'
+  ) return result;
+  const allowedFactIds = new Set(request.participant.facts.map((fact) => fact.factId));
+  return userProxySearchBriefResultSchema.parse({
+    ...result,
+    brief: {
+      ...result.brief,
+      mustKeepRefs: result.brief.mustKeepRefs.filter((factId) => allowedFactIds.has(factId)),
+      preferenceTargetRefs: result.brief.preferenceTargetRefs.filter(
+        (factId) => allowedFactIds.has(factId),
+      ),
+    },
+  });
+}
+
+function applyCandidateEvidenceQueryClassCeiling(
+  request: AgentRunRequest,
+  result: AgentRunResult,
+): AgentRunResult {
+  if (request.role !== 'CANDIDATE_EVIDENCE' || result.role !== 'CANDIDATE_EVIDENCE') return result;
+  const queryClass = queryClassByCategory[request.category];
+  return candidateEvidenceResultSchema.parse({
+    ...result,
+    queryPlans: result.queryPlans.map((plan) => ({ ...plan, queryClass })),
+  });
+}
+
 function assertResultMatchesRequest(request: AgentRunRequest, result: AgentRunResult): void {
   if (request.role !== result.role) throw new Error('Agent Runtime 결과 role이 요청과 다릅니다.');
   const allowedEvidenceIds = new Set(collectEvidenceIds(request));
@@ -619,9 +654,14 @@ export class CodexGatewayAgentRuntime implements AgentRuntime {
     }
     try {
       const parsedResult = agentRunResultSchema.parse(response.output);
-      const result = request.role === 'PLAN_FINALIZER' && parsedResult.role === 'PLAN_FINALIZER'
-        ? applyPlanFinalizerCeiling(request, parsedResult)
-        : parsedResult;
+      const projectionSafeResult = applyUserProxySearchBriefCeiling(request, parsedResult);
+      const providerBoundarySafeResult = applyCandidateEvidenceQueryClassCeiling(
+        request,
+        projectionSafeResult,
+      );
+      const result = request.role === 'PLAN_FINALIZER' && providerBoundarySafeResult.role === 'PLAN_FINALIZER'
+        ? applyPlanFinalizerCeiling(request, providerBoundarySafeResult)
+        : providerBoundarySafeResult;
       assertResultMatchesRequest(request, result);
       assertAgentContextSafe(result);
       const receipt = this.receipts[receiptIndex];

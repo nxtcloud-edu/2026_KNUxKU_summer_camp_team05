@@ -25,10 +25,12 @@ test('Worker 기본 Gateway는 localhost 모델 카탈로그만 호출한다', a
 
 test('Worker 공식 AgentRuntime은 5역할 요청을 localhost Codex Gateway로 보낸다', async () => {
   let requestedUrl = '';
+  let requestedTimeoutMs: number | undefined;
   const runtime = createWorkerAgentRuntime(
-    {},
-    (async (url: string | URL | Request) => {
+    { MOA_CODEX_AGENT_TIMEOUT_MS: '180000' },
+    (async (url: string | URL | Request, init?: RequestInit) => {
       requestedUrl = String(url);
+      requestedTimeoutMs = JSON.parse(String(init?.body)).limits.timeoutMs as number;
       return new Response(
         JSON.stringify({
           runId: 'run:1',
@@ -102,4 +104,12 @@ test('Worker 공식 AgentRuntime은 5역할 요청을 localhost Codex Gateway로
   });
   assert.equal(result.role, 'USER_PROXY');
   assert.equal(requestedUrl, 'http://127.0.0.1:4600/internal/v1/agent-runs');
+  assert.equal(requestedTimeoutMs, 180_000);
+});
+
+test('Worker는 Gateway 계약 밖 Agent timeout을 거부한다', () => {
+  assert.throws(
+    () => createWorkerAgentRuntime({ MOA_CODEX_AGENT_TIMEOUT_MS: '300001' }),
+    /MOA_CODEX_AGENT_TIMEOUT_MS/,
+  );
 });
