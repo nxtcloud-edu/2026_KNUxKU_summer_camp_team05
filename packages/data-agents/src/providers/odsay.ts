@@ -159,7 +159,8 @@ export function createOdsayProvider(config: OdsayConfig): ProviderAdapter {
       return {
         payload: { candidates },
         confidence: 'live',
-        termsRef: 'odsay:api-terms',
+        // 무료 티어의 제약을 근거에 박아둔다. 배포 시점에 이걸 놓치면 약관 위반이다.
+        termsRef: 'odsay:api-terms (무료 1,000건/일 · **비상업 목적 한정** · 개인·학생·5인 이하)',
         rawRef: rawRefOf(raw),
       };
     },

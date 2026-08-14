@@ -203,12 +203,25 @@ export async function executeRun(
     const nights = dates.range === null ? recommendedNights : dates.resolution?.nights ?? recommendedNights;
 
     // 쿼터 카운터는 run 단위다. 게이트웨이는 캐시·정책·상한을 여기서만 강제한다.
-    // 키가 없으면 데모 제공자가 들어간다 — 실제 키가 있으면 자동으로 빠진다.
     const realProviders = providersFromEnv();
     const useDemo = shouldUseDemoProvider(process.env, realProviders.adapters.length);
+
+    // 어느 슬롯이 실데이터이고 어느 슬롯이 데모인지 매 실행마다 남긴다.
+    // 이걸 뭉뚱그리면 "실키를 넣었는데 왜 데모가 나오지"를 아무도 추적하지 못한다.
+    const realIds = realProviders.adapters.map((adapter) => adapter.id);
+    console.log(
+      realIds.length === 0
+        ? '[worker] 실제 제공자 키가 없습니다.'
+        : `[worker] 실제 제공자: ${realIds.join(', ')}`,
+    );
+    if (realProviders.missing.length > 0) {
+      console.log(`[worker] 키가 없어 빠진 제공자: ${realProviders.missing.map((row) => row.id).join(', ')}`);
+    }
     if (useDemo) {
       console.warn(
-        '[worker] 실제 제공자 키가 없어 데모 제공자를 씁니다. 후보는 confidence=estimated로 표시되고 예약 링크가 없습니다.',
+        realIds.length === 0
+          ? '[worker] 데모 제공자로 돕니다. 후보는 confidence=estimated이고 예약 링크가 없습니다.'
+          : '[worker] 데모 제공자를 함께 씁니다(USE_DEMO_PROVIDER). 실제 제공자가 있는 슬롯은 실데이터가 이기고, 빈 슬롯만 데모가 채웁니다.',
       );
     }
     const gateway = createWorkerGateway(
@@ -229,6 +242,9 @@ export async function executeRun(
       destinationAirport: pack?.pack.airports[0] ?? null,
       nights,
       areas: pack?.pack.areas ?? [],
+      // 지역명만으로는 숙소를 못 찾는 공급자가 있다(라쿠텐은 좌표 또는 자체 지역코드를
+      // 받는다). Pack의 중심 좌표가 지역명을 좌표로 바꾸는 유일한 원본이다.
+      center: pack?.pack.center ?? null,
     };
 
     /**

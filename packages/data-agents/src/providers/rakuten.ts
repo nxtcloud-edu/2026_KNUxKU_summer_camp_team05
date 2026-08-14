@@ -159,6 +159,23 @@ const degrees = (value: number | undefined): number | null => {
   return value;
 };
 
+/** 좌표 파라미터. 숫자가 아니면 보내지 않는다 */
+const coord = (value: unknown): number | undefined => {
+  if (value === undefined || value === null) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+/**
+ * 검색 반경. 라쿠텐이 받는 범위는 0.1~3.0km이고 벗어나면 wrong_parameter다.
+ * 조달 계획이 더 넓은 값을 줘도 여기서 상한으로 눌러 요청 자체는 성립시킨다.
+ */
+const radius = (value: unknown): number | undefined => {
+  const parsed = coord(value);
+  if (parsed === undefined) return undefined;
+  return Math.min(Math.max(parsed, 0.1), 3.0);
+};
+
 /** 숙박일수. checkout - checkin. 계산할 수 없으면 null이며 1박으로 추정하지 않는다 */
 function nightsBetween(checkin: string, checkout: string): number | null {
   const start = Date.parse(`${checkin}T00:00:00Z`);
@@ -312,8 +329,14 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
 
     async fetch(request: DataRequest): Promise<ProviderResult> {
       const params = request.params;
-      const checkinDate = params['checkinDate'];
-      const checkoutDate = params['checkoutDate'];
+      /**
+       * 파이프라인의 용어를 받는다. 어댑터의 일은 호출과 정규화이고, 조달 계획이
+       * 라쿠텐의 파라미터 이름을 알아야 할 이유가 없다. 이 별칭이 없으면 매 요청이
+       * "필수 파라미터 누락"으로 떨어져 조용히 다음 제공자(데모)로 폴백한다 —
+       * 실키를 넣고도 실데이터가 한 건도 안 들어오는 형태로 나타난다.
+       */
+      const checkinDate = params['checkinDate'] ?? params['checkIn'];
+      const checkoutDate = params['checkoutDate'] ?? params['checkOut'];
 
       // 날짜 없이는 공실을 물을 수 없다. 오늘로 대체하지 않는다 — 값을 지어내는 것이다.
       if (typeof checkinDate !== 'string' || typeof checkoutDate !== 'string') {
@@ -325,8 +348,8 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
         throw new ProviderError('rakuten_travel', `숙박일수를 계산할 수 없습니다: ${checkinDate}~${checkoutDate}`, false);
       }
 
-      const adultNum = params['adultNum'] ?? params['pax'];
-      const roomNumParam = params['roomNum'];
+      const adultNum = params['adultNum'] ?? params['pax'] ?? params['guests'];
+      const roomNumParam = params['roomNum'] ?? params['rooms'];
       const exactParty = adultNum !== undefined && roomNumParam !== undefined;
       const pax = Number(adultNum ?? 2);
       const roomNum = Number(roomNumParam ?? 1);
@@ -357,9 +380,10 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
             middleClassCode: params['middleClassCode'] === undefined ? undefined : String(params['middleClassCode']),
             smallClassCode: params['smallClassCode'] === undefined ? undefined : String(params['smallClassCode']),
             // datumType=1에서는 십진 도 그대로다. 3600을 곱하면 거절당한다.
-            latitude: params['latitude'] === undefined ? undefined : Number(params['latitude']),
-            longitude: params['longitude'] === undefined ? undefined : Number(params['longitude']),
-            searchRadius: params['searchRadius'] === undefined ? undefined : Number(params['searchRadius']),
+            latitude: coord(params['latitude'] ?? params['lat']),
+            longitude: coord(params['longitude'] ?? params['lng']),
+            // 반경은 0.1~3.0km만 받는다. 벗어나면 wrong_parameter다.
+            searchRadius: radius(params['searchRadius'] ?? params['radiusKm']),
             maxCharge: params['maxCharge'] === undefined ? undefined : Number(params['maxCharge']),
           },
         });

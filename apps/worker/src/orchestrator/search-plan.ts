@@ -21,6 +21,12 @@ export interface SearchFacts {
   nights: number;
   /** Pack이 정한 지역 목록. 조달 조건의 필수 키다 */
   areas: readonly string[];
+  /**
+   * Pack의 중심 좌표. 지역명을 좌표로 받는 공급자(라쿠텐)를 위한 것이다.
+   * 지역별 좌표는 Pack에 없으므로 도시 중심 + 반경으로 대신한다 — 값을 지어내는
+   * 것이 아니라 "이 도시 안에서 찾는다"는 사실 그대로다.
+   */
+  center: { lat: number; lng: number } | null;
 }
 
 export interface PlannedSearch {
@@ -91,6 +97,17 @@ export function defaultSearchPlan(roundId: RoundId, facts: SearchFacts): Planned
           checkOut: facts.dateRange?.end,
           nights: facts.nights,
           pax: facts.groupSize,
+          /**
+           * 인원 전원이 한 객실에 들어가는지부터 묻는다. 라쿠텐은 이 조건을
+           * 검색에 걸어주므로, 결과가 비면 "그 인원이 한 방에 못 들어간다"는
+           * 사실이 된다 — 추정이 아니라 공급자가 답한 것이다. 객실을 나누는
+           * 조합 탐색은 그 사실을 받은 뒤 에이전트가 할 판단이다.
+           */
+          rooms: 1,
+          // 좌표를 받는 공급자용. 지역별 좌표가 없으므로 도시 중심 + 반경이다.
+          ...(facts.center === null
+            ? {}
+            : { lat: facts.center.lat, lng: facts.center.lng, radiusKm: 3 }),
         },
         note: `기본 조달 — ${area} 숙소`,
       }));

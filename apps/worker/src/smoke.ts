@@ -2,7 +2,22 @@ import type { SurveySubmission } from '@tm/contracts';
 import { createRepositories, isDatabaseConfigured } from '@tm/db';
 
 /**
- * 워커 E2E 실행 검증 — **API 키 없이** 한 방이 끝까지 도는지 확인한다.
+ * 저장소 루트의 `.env`를 읽는다. 이걸 하지 않으면 실제 공급자 키가 있어도
+ * 워커가 못 보고 조용히 데모로만 돈다 — "실데이터로 돌렸다"고 착각하기 쉽다.
+ * 파일이 없어도 그냥 진행한다 (환경변수로 넣었을 수 있다).
+ */
+try {
+  process.loadEnvFile(new URL('../../../.env', import.meta.url));
+} catch {
+  // .env가 없으면 환경변수를 그대로 쓴다.
+}
+
+/**
+ * 워커 E2E 실행 검증 — 한 방이 끝까지 도는지 확인한다.
+ *
+ * 키가 없으면 데모 제공자만으로 돌고, `.env`에 실키가 있으면 실제 제공자가 섞인다.
+ * **어느 모드로 통과했는지 출력에 남긴다** — "통과"만 보고 실데이터로 돌았다고
+ * 착각하면, 파라미터 이름이 어긋나 전부 데모로 폴백하는 상황을 놓친다.
  *
  * 이 스크립트가 통과한다는 것은 다음이 전부 실제로 동작한다는 뜻이다:
  *   설문 → 가중치 → 날짜 확정 → 조달(데모 제공자) → 속성 산출 → 만족도·승자
@@ -112,11 +127,31 @@ async function main(): Promise<void> {
 
     const candidates = await repos.candidates.sourcedExternalIds(runId);
     check('후보가 실제로 조달됐다', candidates.length > 0, candidates.length);
-    check(
-      '조달된 후보가 데모 제공자 것이다',
-      candidates.length > 0 && candidates.every((id) => id.startsWith('demo_')),
-      candidates.slice(0, 3),
-    );
+
+    /**
+     * 실키 유무에 따라 기대가 달라진다. 한쪽만 검사하면 다른 쪽에서 거짓 신호가 난다 —
+     * 키를 넣었는데 전부 데모로 도는 상황(파라미터 이름이 어긋난 경우)을 놓치거나,
+     * 반대로 키 없는 CI에서 실패한다.
+     */
+    const demoIds = candidates.filter((id) => id.startsWith('demo_'));
+    const realIds = candidates.filter((id) => !id.startsWith('demo_'));
+
+    if (process.env['RAKUTEN_APPLICATION_ID'] === undefined) {
+      check(
+        '키가 없으므로 조달된 후보가 전부 데모 제공자 것이다',
+        demoIds.length === candidates.length,
+        candidates.slice(0, 3),
+      );
+    } else {
+      // 라쿠텐 키가 있으면 R2(숙소)는 실데이터여야 한다. 전부 데모면 배선이 끊긴 것이다.
+      check(
+        '라쿠텐 키가 있으므로 실제 제공자 후보가 섞여 있다',
+        realIds.length > 0,
+        candidates.slice(0, 3),
+      );
+      console.log(`  ·    실데이터 ${realIds.length}건 · 데모 ${demoIds.length}건`);
+      console.log(`  ·    실데이터 예: ${realIds.slice(0, 2).join(', ')}`);
+    }
 
     const verdicts = await repos.verdicts.listByRun(runId);
     check('판결이 저장됐다', verdicts.length > 0, verdicts.length);
@@ -184,7 +219,9 @@ async function main(): Promise<void> {
 
 try {
   await main();
-  console.log(failures === 0 ? '\n워커 E2E 검증 통과 (키 없이)' : `\n실패 ${failures}건`);
+  // 어느 모드로 통과했는지 남긴다. "통과"만 보고 실데이터로 돌았다고 오해하지 않도록.
+  const mode = process.env['RAKUTEN_APPLICATION_ID'] === undefined ? '키 없이 · 데모만' : '실제 제공자 + 데모 혼합';
+  console.log(failures === 0 ? `\n워커 E2E 검증 통과 (${mode})` : `\n실패 ${failures}건`);
   if (failures > 0) process.exitCode = 1;
 } catch (error) {
   console.error(`\n중단: ${(error as Error).message}`);
