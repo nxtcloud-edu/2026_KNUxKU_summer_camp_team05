@@ -238,7 +238,60 @@ test('라쿠텐: 2026 개편 엔드포인트와 accessKey를 쓴다', async () =
   assert.match(url, /accessKey=ak/, '앱 ID만으로는 호출되지 않는다');
 });
 
-test('라쿠텐: Webアプリ로 등록했을 때의 403을 사람이 고칠 수 있게 설명한다', async () => {
+test('라쿠텐: Web 앱 타입이면 등록 도메인과 같은 Referer를 보낸다', async () => {
+  let sentReferer: string | undefined;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    sentReferer = (init?.headers as Record<string, string> | undefined)?.['referer'];
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return { hotels: [rakutenHotel] };
+      },
+      async text() {
+        return '';
+      },
+    } as Response;
+  }) as typeof fetch;
+
+  const provider = createRakutenProvider({
+    applicationId: 'app',
+    accessKey: 'ak',
+    referer: 'http://localhost/',
+  });
+  await provider.fetch(
+    request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
+  );
+
+  // Referer는 브라우저 전용이 아니다. 서버에서도 붙일 수 있어 Web 앱 타입을 쓸 수 있다.
+  assert.equal(sentReferer, 'http://localhost/');
+});
+
+test('라쿠텐: 서버 앱 타입이면 Referer를 붙이지 않는다', async () => {
+  let hadReferer = true;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    hadReferer = 'referer' in ((init?.headers as Record<string, string> | undefined) ?? {});
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return { hotels: [] };
+      },
+      async text() {
+        return '';
+      },
+    } as Response;
+  }) as typeof fetch;
+
+  const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak', referer: null });
+  await provider.fetch(
+    request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams }),
+  );
+
+  assert.equal(hadReferer, false, '서버 앱 타입은 IP로 검사한다');
+});
+
+test('라쿠텐: Referer 없이 Webアプリ 403이 오면 무엇을 넣어야 하는지 알려준다', async () => {
   stubFetch([
     {
       match: 'VacantHotelSearch',
@@ -250,7 +303,7 @@ test('라쿠텐: Webアプリ로 등록했을 때의 403을 사람이 고칠 수
   const provider = createRakutenProvider({ applicationId: 'app', accessKey: 'ak' });
   await assert.rejects(
     provider.fetch(request({ queryClass: 'hotel.vacancy_price', roundId: 'r_2', params: rakutenParams })),
-    /サーバーアプリ/,
+    /RAKUTEN_REFERER/,
   );
 });
 

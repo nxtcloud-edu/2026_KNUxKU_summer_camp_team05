@@ -55,9 +55,12 @@ const TERMS = 'rakuten:webservice-terms (무료 · 1 req/sec · 서버앱 IP 제
  * 2026 개편으로 생긴 403 두 종류를 사람이 고칠 수 있는 문장으로 바꾼다.
  * 원문만 보면 키가 틀린 줄 알고 엉뚱한 곳을 고치게 된다.
  */
-function explain403(reason: string): string {
-  if (reason.includes('HTTP_REFERRER_MISSING') || reason.includes('HTTP_REFERRER_NOT_ALLOWED')) {
-    return `${reason} — 앱이 「Webアプリケーション」으로 등록됐습니다. 이 어댑터는 서버에서 호출하므로 Referer 헤더가 없습니다. 라쿠텐 콘솔에서 앱 종류를 「サーバーアプリ(백엔드)」로 바꾸고 허용 IP를 등록하세요.`;
+function explain403(reason: string, referer: string | null): string {
+  if (reason.includes('HTTP_REFERRER_MISSING')) {
+    return `${reason} — 앱이 「Webアプリケーション」으로 등록됐는데 Referer를 보내지 않았습니다. RAKUTEN_REFERER에 등록한 許可されたWebサイト와 같은 도메인을 넣으세요 (예: http://localhost/). 또는 앱 종류를 「サーバーアプリ」로 바꾸고 허용 IP를 등록하세요.`;
+  }
+  if (reason.includes('HTTP_REFERRER_NOT_ALLOWED')) {
+    return `${reason} — 보낸 Referer(${referer ?? '(없음)'})가 앱에 등록된 許可されたWebサイト와 다릅니다. 라쿠텐 콘솔의 등록 도메인과 RAKUTEN_REFERER를 맞추세요.`;
   }
   if (reason.includes('CLIENT_IP_NOT_ALLOWED')) {
     return `${reason} — 호출한 IP가 앱에 등록되어 있지 않습니다. 'curl -s https://api.ipify.org'로 현재 공인 IP를 확인해 라쿠텐 콘솔의 허용 IP에 추가하세요 (공인 IP는 바뀔 수 있습니다).`;
@@ -250,6 +253,17 @@ export interface RakutenConfig {
   applicationId: string;
   /** 2026 개편으로 추가된 필수 자격증명. 구 "Application Secret"이 이 이름으로 바뀌었다 */
   accessKey: string;
+  /**
+   * 「Webアプリケーション」으로 등록했을 때 보낼 `Referer`.
+   * 등록한 `許可されたWebサイト`와 같은 도메인이어야 한다 (예: `http://localhost/`).
+   *
+   * `Referer`는 브라우저 전용 헤더가 아니라 HTTP 클라이언트가 직접 설정할 수 있다.
+   * 그래서 서버에서 호출해도 Web 앱 타입을 쓸 수 있고, 오히려 그편이 안정적이다 —
+   * 서버 앱 타입은 공인 IP를 등록하는데 가정용 회선은 IP가 바뀌어 데모 중에 죽는다.
+   *
+   * 「サーバーアプリ」로 등록했으면 비워둔다. 그때는 IP로 검사한다.
+   */
+  referer?: string | null;
   baseUrl?: string;
   now?: () => number;
 }
@@ -291,6 +305,11 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
       let raw: VacantHotelResponse;
       try {
         raw = await httpJson<VacantHotelResponse>('rakuten_travel', baseUrl, {
+          // Web 앱 타입으로 등록했으면 등록 도메인과 같은 Referer가 있어야 통과한다.
+          // 서버 앱 타입이면 referer가 null이고 라쿠텐은 IP로 검사한다.
+          ...(config.referer === undefined || config.referer === null
+            ? {}
+            : { headers: { referer: config.referer } }),
           query: {
             applicationId: config.applicationId,
             // 2026 개편으로 필수가 됐다. 헤더로도 보낼 수 있다고 하나 헤더 이름이
@@ -327,7 +346,11 @@ export function createRakutenProvider(config: RakutenConfig): ProviderAdapter {
           }
           // 2026 개편의 403 두 종류는 원인이 분명하다. 그대로 알려준다 —
           // "HTTP 403"만 보면 키가 틀린 줄 알고 엉뚱한 곳을 고치게 된다.
-          throw new ProviderError('rakuten_travel', explain403(error.reason), error.retryable);
+          throw new ProviderError(
+            'rakuten_travel',
+            explain403(error.reason, config.referer ?? null),
+            error.retryable,
+          );
         }
         throw error;
       }
@@ -361,6 +384,8 @@ export function rakutenFromEnv(env: NodeJS.ProcessEnv = process.env): ProviderAd
       applicationId: requireEnv('RAKUTEN_APPLICATION_ID', env),
       // 2026 개편 이후 앱 ID만으로는 호출되지 않는다. 둘 다 없으면 어댑터를 만들지 않는다.
       accessKey: requireEnv('RAKUTEN_ACCESS_KEY', env),
+      // Web 앱 타입일 때만 필요하다. 서버 앱 타입이면 비워둔다 (IP로 검사).
+      referer: env['RAKUTEN_REFERER'] ?? null,
     });
   } catch {
     return null;
