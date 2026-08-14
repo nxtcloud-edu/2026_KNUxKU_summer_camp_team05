@@ -9,13 +9,17 @@
 ## MVP 범위
 
 - 사용자: 한국어를 쓰는 20대 그룹 여행자
-- 목적지: 서울, 부산, 도쿄, 오사카
-- 방장 권한: 지원 목적지와 설명용 목표 페이스 확정
+- 목적지·카테고리: 오사카의 체류 거점·숙소
+- 고정 시나리오: 성인 3명, 3박
+- 방장 권한: 목적지와 설명용 목표 페이스 확정
 - 참여자 입력: 가용 날짜, 하드 제약, 개인 목표·절대상한 예산, 가치 정책, 취향, 같은 객실·테이블·회차 이용과 분리 허용 범위
 - 토론 중 사용자 개입: 없음
-- 사후 재논의: 결과가 나온 뒤 문제 카테고리만 영향 기반으로 재개방
+- 결과: 근거가 표시된 숙소 카테고리 결과, 사용자 선택 필요 또는 정직한 차단
+- 실행: localhost의 Codex OAuth Gateway만 사용하며 EC2·ECS·AgentCore·예약은 범위 밖
 
-## 전체 흐름
+## 목표 제품 흐름
+
+아래 0~6단계는 전체 제품의 목표다. 현재 MVP는 0단계의 확정 입력 스냅샷과 2단계 숙소 결과까지만 종단 검증하며 `FinalPlanRecord`를 완료 조건으로 삼지 않는다.
 
 | 단계 | 사용자에게 보이는 범위 | 시스템 처리 | 핵심 출력 |
 | --- | --- | --- | --- |
@@ -29,7 +33,7 @@
 
 예산, 날씨, 예약 가능성, 취소 조건은 6단계에서 처음 확인하지 않습니다. 각 후보와 계약을 만들 때 계속 검사하고, 6단계에서 결합 결과를 다시 검사합니다.
 
-## 공식 역할과 권한
+## 목표 역할과 MVP 권한
 
 ### LLM 에이전트 5종
 
@@ -40,6 +44,8 @@
 | `CategoryArbiterAgent` | 1~5단계의 토론을 중재하고 종료·카테고리 결론 계약을 작성 |
 | `TripOrchestratorAgent` | 날짜·페이스·개인별 예산·근거·전역 제약 이탈을 감사 |
 | `PlanFinalizerAgent` | 승인 계약들의 의미 연속성을 대조하고 사용자용 최종 초안을 구성 |
+
+이 다섯 역할은 목표 아키텍처다. MVP에서 실제 모델을 호출하는 역할은 참여자별 `UserProxyAgent`, 숙소 전용 `StayArbiterAgent`, 감사용 `TripSupervisorAgent` 세 종류다. 후보 조달과 최종 표시는 결정론적 데이터 게이트웨이와 렌더러가 담당한다.
 
 ### 결정론적 제어 3종
 
@@ -68,10 +74,10 @@
 - 행동축 47개는 질문 47개가 아니라 백엔드 후보 라이브러리입니다.
 - 최초에는 공통 핵심축 5개와 도시별 초기축 6개를 사용합니다.
 - 도시별 축은 후보 순위를 가를 가능성이 큰 초기 가설이며, 실제 후보 분산에 따라 최대 2개를 교체합니다.
-- 취향 질문은 정확히 11개 블록, 적응형 질문은 최대 2개입니다.
+- 취향 질문은 정확히 11개 블록이며 MVP에서는 적응형 질문을 사용하지 않습니다.
 - 날짜·하드 제약·개인 예산·가치 정책은 11개 취향 질문과 별도 필수 입력입니다.
 - 예산은 비율이 아니라 보호할 1·2순위와 선택형 추가 지불 가능 금액으로 받습니다.
-- 자유서술은 최대 5개 `ProfilePatchCandidate`로 바꾸고, 사용자가 체크한 항목만 `CanonicalProfile`에 저장합니다.
+- 자유서술은 최대 5개 `ProfilePatchCandidate`로 바꾸되 MVP에서는 session-only로 사용하며 장기 `CanonicalProfile`에 저장하지 않습니다.
 - `approval_required`는 선호 강도가 아니라 에이전트의 자동 확정 권한을 막는 상태입니다.
 
 자세한 문항·매핑·데이터 계약은 [Survey v4 + Profile Schema v1](docs/survey-v4-profile-v1.md)에 있습니다.
@@ -103,29 +109,26 @@ MVP의 기본 공급자는 공개·셀프서비스 범위 안에서 사용합니
 
 타베로그는 공개 셀프서비스 API가 확인되지 않았고 이용약관상 영리 목적 접근과 리뷰 무단 이용 제한이 있으므로 자동 수집·DB 적재 공급자에서 제외합니다. 사용자가 직접 여는 링크는 참고용일 뿐 검증 근거가 아닙니다. 세부 출처와 공급자별 한계는 [외부 데이터·검증 정책](docs/provider-evidence-policy.md)을 참고하세요.
 
-상태는 다음처럼 구분합니다.
+MVP 상태는 다음 네 가지로 제한합니다.
 
 - `PROVISIONAL`: 메타데이터는 있으나 날짜별 가격·재고 등 핵심 사실 미확인
 - `VERIFIED`: 하드 제약과 핵심 사실이 검증됐지만 예약 가능성을 뜻하지 않음
-- `BOOKABLE`: 날짜별 가격·재고·시간·취소 조건이 유효기간 안에서 확인됨
-- `BOOKED`: 별도 `ReservationRecord`로 예약 완료가 확인됨
 - `NEEDS_USER_CHOICE` / `BLOCKED`: 사용자 권한 또는 외부 상태 없이는 안전하게 확정할 수 없음
 
-## 첫 수직 경로와 비교 구현
+`BOOKABLE`과 `BOOKED`는 목표 계약에만 남아 있으며 현재 MVP는 생성·표시하지 않습니다.
+
+## 첫 수직 경로
 
 첫 해커톤 수직 경로는 **오사카·3인·3박·체류 거점·숙소**로 고정합니다. 날짜·인원·객실 조합·침대·총액·공실 근거가 같은 요청을 가리키는지 검증하며, 정원 초과·동의 없는 객실 분리·일부 인원만 확인된 재고는 통과시키지 않습니다.
 
-같은 `EvaluationCaseSnapshot`에서 두 결정 생성 방식을 모두 구현합니다.
-
-- `MULTI_PROXY`: 참여자별 `UserProxyAgent`가 자기 프로필만 읽고 개별 투표를 생성
-- `CENTRAL_BASELINE`: 평가 전용 중앙 플래너 하나가 세 사용자의 평가용 프로필 보기를 읽고 사용자별 투표를 생성
-
-두 방식은 같은 `TripCharter`, `proposalSetVersion`, 후보·근거·검증 영수증, 모델 버전, 출력 스키마를 사용합니다. 입력을 고정한 뒤에는 추가 후보 탐색을 허용하지 않고, 같은 결정론적 `SatisfactionNormalizer`와 `LeximinSelector`로 결론을 계산합니다. 중앙 기준선은 제품의 공식 여섯 번째 에이전트가 아니며 `DecisionLedger`를 변경하지 않는 평가용 구현입니다.
+MVP는 `MULTI_PROXY`만 구현합니다. 참여자별 `UserProxyAgent`가 자기 프로필만 읽고 같은 `proposalSetVersion`에 투표하며, 결정론적 `SatisfactionNormalizer`와 `LeximinSelector`가 선택합니다. `CENTRAL_BASELINE` 비교 실험과 자동 재토론은 후속 범위입니다.
 
 ## 문서 지도
 
 | 문서 | 권위 범위 |
 | --- | --- |
+| [MVP ADR](docs/adr/README.md) | 현재 MVP의 제품 흐름, 역할, 권한, 공정성, 데이터·런타임·계약 결정 |
+| [문서 권위](docs/operations/document-authority.md), [MVP 출시 게이트](docs/operations/mvp-release-gates.md) | 충돌 해소 순서, 실행·검증·완료 라벨 |
 | [종합 기획서](docs/travel-mediation-plan.md) | 제품 목표, 0/1~5/6단계, 프로필·공정성·계약·평가 |
 | [에이전트 아키텍처](docs/agent-architecture.md) | 공식 역할, 책임, 권한, 데이터 계약 |
 | [Survey v4 + Profile Schema v1](docs/survey-v4-profile-v1.md) | 질문·축·태그 매핑, 프로필 저장, 적응형 중단·검증 |
@@ -138,18 +141,18 @@ MVP의 기본 공급자는 공개·셀프서비스 범위 안에서 사용합니
 
 ## 현재 구현 상태
 
-이 브랜치의 문서는 목표 설계를 갱신하지만 코드 마이그레이션을 주장하지 않습니다. 현재 코드는 이전 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 포함합니다. Planning Graph, DateResolver, 합의 점수, 데이터 게이트웨이, API·Worker 골격의 기존 테스트가 있더라도 새 `TripCharter → CategoryDecisionContract × 5 → FinalPlanRecord` 종단 흐름이나 Survey v4가 구현·검증됐다는 뜻은 아닙니다.
+Accepted MVP 결정은 [ADR 목록](docs/adr/README.md)에 있습니다. 현재 코드는 이전 `R0~R6`, Persona·Referee·Supervisor, 설문 v2/v3 계약을 포함하므로 문서 확정이 새 수직 경로의 구현·검증을 뜻하지 않습니다.
 
-[Python 에이전트 초안](prototypes/python-agents/README.md)은 사용자별 Proxy, 공통 베이스 기반 중재자 5개, 감독관의 권한과 구조화 출력을 독립 실행으로 검증하고 ECS·AgentCore Gateway inference 배포 경계를 제공합니다. 실제 AWS 배포, 현재 TypeScript Worker·여행 API·DB 원장 연결이 완료됐다는 뜻은 아닙니다.
+[Python 에이전트 초안](prototypes/python-agents/README.md)의 Proxy·중재자·감독관 계약과 오프라인 fixture는 참고할 수 있습니다. 그 안의 ECS·AgentCore 코드는 과거 실험이며 MVP 선택 경로가 아닙니다. 선택 런타임은 로컬 Codex OAuth Gateway이고, 기존 TypeScript Worker가 업무 오케스트레이터입니다.
 
-제품 완결 기준은 다음 모두입니다.
+MVP 완결 기준은 다음 모두입니다.
 
-1. 0단계 입력·날짜·헌장 생성
-2. 1~5단계의 실제 승인 계약 5개
-3. 6단계 연속성·통합 검증
-4. 사용자에게 `FinalPlanRecord` 또는 정직한 차단 결과 공개
+1. 오사카·성인 3명·3박 입력과 헌장 스냅샷
+2. 참여자별 Proxy 투표와 근거 있는 숙소 후보
+3. 하드 제약·leximin·Arbiter·Supervisor 게이트
+4. 사용자에게 `CategoryContractView`, 선택 요청 또는 정직한 차단 공개
 
-한 카테고리 vertical slice나 fixture 기반 검증은 이 전체 제품 또는 `BOOKABLE`의 증거가 아닙니다.
+fixture와 실제 OAuth 실행의 완료 라벨은 [MVP 출시 게이트](docs/operations/mvp-release-gates.md)를 따르며 어느 쪽도 전체 제품·원격 배포·`BOOKABLE`의 증거가 아닙니다.
 
 ## 로컬 실행
 
@@ -165,6 +168,8 @@ npm run build
 ```
 
 `VITE_API_BASE_URL`을 비워두면 기존 프론트 흐름이 `sessionStorage`에 저장됩니다. 이는 UI 목업 경로이며 새 백엔드 계약이 연결됐다는 뜻은 아닙니다.
+
+모델 호출은 로컬 Codex OAuth Gateway가 추가된 뒤에만 활성화합니다. 사용자가 `codex login`을 완료하고 현재 모델 목록에서 allowlist를 확정하기 전에는 fixture 기반 검증만 수행합니다.
 
 ## 협업 원칙
 

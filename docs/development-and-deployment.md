@@ -1,8 +1,9 @@
 # 개발 환경과 배포 계획
 
-- 문서 버전: v2.0 / 2026-08-14
+- 문서 버전: v2.1 / 2026-08-14
 - 상위 문서: [종합 기획서](travel-mediation-plan.md), [에이전트 아키텍처](agent-architecture.md)
 - 범위: 현재 코드, 목표 계약, 런타임 경계, 로컬 검증, 배포 전 게이트
+- MVP 결정 기준: [Accepted ADR](adr/README.md). 충돌하면 ADR을 우선한다.
 
 ## 1. 현재 상태와 목표 상태
 
@@ -22,17 +23,17 @@
 apps/web/                 Survey v4, 프로필 확인, 결과·재논의 UI
 apps/api/                 인증, 방·설문·결과·재논의 API
 apps/worker/              RunController와 비동기 실행
+apps/codex-runtime-gateway/ 로컬 OAuth·모델 목록·구조화 모델 호출 목표 경계
 packages/contracts/       FE/백엔드 공용 스키마와 버전
 packages/core/            날짜·점수·leximin·예산·상태·의존성 계산
-packages/agents/          공식 LLM 에이전트 5종
-packages/data-agents/     공급자 게이트웨이·정규화·어댑터
+packages/agents/          MVP Proxy·StayArbiter·TripSupervisor 계약
+packages/data-agents/     결정론적 공급자 게이트웨이·정규화·어댑터
 packages/db/              프로필·계약·원장·예약 레코드 저장
-services/validator/       Python 중심 FactConstraintValidator 후보 경계
 packs/                    서울·부산·도쿄·오사카 데이터 팩
 docs/                     제품·아키텍처·공급자 계약
 ```
 
-`services/validator/`는 목표 경계이며 아직 존재하지 않는다. Python을 별도 프로세스로 둘지, Worker가 라이브러리/CLI로 호출할지는 구현 spike 후 확정한다.
+`apps/codex-runtime-gateway/`는 목표 경계이며 아직 존재하지 않는다. 다른 브랜치에서 OAuth·모델 카탈로그·구조화 출력 부분만 선별 이식한다. Python Worker나 별도 제품 상태머신은 추가하지 않는다.
 
 ## 3. 런타임 결정
 
@@ -40,20 +41,20 @@ docs/                     제품·아키텍처·공급자 계약
 | --- | --- | --- |
 | FE·API·Worker·공용 계약 | TypeScript 유지 | 기존 코드와 FE 타입 공유 |
 | 날짜·점수·상태머신 | 결정론적 코드 | LLM 산술·상태 변경 금지 |
-| 사실·제약 검증 | Python 중심 권장 | 시간·경로·예산·조합 검사 라이브러리 활용 |
-| LLM 에이전트 | Python 또는 TypeScript 미결정 | SDK보다 계약·평가·운영 단순성이 우선 |
-| 저장소 | PostgreSQL + Redis | 계약·원장 영속화와 비동기 실행 |
+| 사실·제약 검증 | TypeScript core 우선 | 한 Worker 안에서 계약과 실패 의미를 유지 |
+| LLM 실행 | 로컬 Codex OAuth Gateway | 개발자 OAuth와 현재 모델 카탈로그 사용 |
+| MVP 저장소 | session/로컬 개발 저장 | 장기 프로필·운영 내구성을 주장하지 않음 |
 
-따라서 이전의 “TypeScript 전면 확정”은 폐기한다. 다만 Python 선호만으로 현재 TypeScript 코드를 전면 이식하지 않는다. 경계 간에는 JSON Schema/OpenAPI와 불변 ID·버전 계약을 사용한다.
+TypeScript `RunController`가 유일한 업무 오케스트레이터다. Gateway는 OAuth, 모델 allowlist, thread, JSON Schema 호출과 최대 1회 복구만 담당한다. 자세한 권한은 [오케스트레이터 ADR](adr/0003-orchestrator-authority.md)과 [계약 소유권 ADR](adr/0008-contract-module-ownership.md)을 따른다.
 
-## 4. 프론트엔드·백엔드 목표 계약
+## 4. 프론트엔드·백엔드 MVP 계약
 
 ### 4.1 방 생성
 
 ```ts
 type CreateRoomInput = {
   schemaVersion: 2;
-  destinationId: "kr-seoul" | "kr-busan" | "jp-tokyo" | "jp-osaka";
+  destinationId: "jp-osaka";
   targetPace: "one_anchor" | "two_anchors" | "three_anchors";
 };
 ```
@@ -66,17 +67,17 @@ type CreateRoomInput = {
 
 1. 필수 입력: 가용 날짜, 하드 제약, 개인 목표·절대상한 예산, 가치 정책
 2. 고정 취향 질문: 정확히 11개 질문 블록
-3. 적응형 질문: 0~2개
-4. 프로필 확인: `ProfilePatchCandidate` 중 장기 저장 항목 체크
+3. 적응형 질문: MVP에서는 0개
+4. 프로필 확인: `ProfilePatchCandidate`의 이번 세션 사용 여부 체크
 
 FE는 질문 문구에서 점수를 계산하지 않고 `surveyVersion`, `questionId`, `optionId`를 전송한다. 백엔드의 버전된 매핑이 축·태그 신호를 만들고 같은 fixture가 FE와 백엔드에서 같은 결과를 내야 한다.
 
-### 4.3 결과와 재논의
+### 4.3 숙소 결과
 
-- 결과 API는 `FinalPlanRecord`의 상태·근거·만료·차단 사유를 그대로 노출한다.
-- `BOOKABLE`과 `BOOKED`를 합치지 않는다.
-- 재논의 요청은 원장 버전, 문제 카테고리, 사용자 이유, 프로필 반영 범위를 포함한다.
-- 영향 미리보기를 승인한 뒤에만 `RunController`가 활성 계약 참조를 비운다.
+- 결과 API는 `CategoryContractView`의 상태·근거·조회 시각·차단 사유를 그대로 노출한다.
+- 상태는 `PROVISIONAL`, `VERIFIED`, `NEEDS_USER_CHOICE`, `BLOCKED`만 허용한다.
+- 사용자 선택이 필요하면 자동 재토론하지 않고 선택 이유와 선택지를 반환한다.
+- `FinalPlanRecord`, `BOOKABLE`, `BOOKED`, 예약·결제는 MVP 결과에 포함하지 않는다.
 
 ## 5. 로컬 실행
 
@@ -107,8 +108,8 @@ npm run smoke --workspace @tm/db
 | --- | --- |
 | 런타임 | `NODE_ENV`, `LOG_LEVEL`, `API_PORT`, `WEB_ORIGIN` |
 | 저장소·큐 | `DATABASE_URL`, `REDIS_URL`, `WORKER_CONCURRENCY` |
-| 실행 상한 | `RUN_WALLCLOCK_LIMIT_SEC`, `RUN_COST_CAP_USD`, `CATEGORY_TURN_CAP`, `CATEGORY_RERUN_CAP` |
-| LLM | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL_PROXY`, `LLM_MODEL_EVIDENCE`, `LLM_MODEL_ARBITER`, `LLM_MODEL_ORCHESTRATOR`, `LLM_MODEL_FINALIZER` |
+| 실행 상한 | `RUN_WALLCLOCK_LIMIT_SEC`, `MODEL_CALL_LIMIT`, `MODEL_REPAIR_LIMIT` |
+| 로컬 Codex | `MOA_CODEX_GATEWAY_URL`, `MOA_MODEL_ALLOWLIST`, `MOA_MODEL_PROFILE_FAST`, `MOA_MODEL_PROFILE_BALANCED`, `MOA_MODEL_PROFILE_DEEP_REASONING` |
 | Google | `GOOGLE_MAPS_API_KEY` |
 | 일본 식당·숙소 | `HOTPEPPER_API_KEY`, `RAKUTEN_APPLICATION_ID`, `RAKUTEN_ACCESS_KEY` |
 | 한국 장소·경로 | `TOURAPI_SERVICE_KEY`, `KAKAO_REST_API_KEY` |
@@ -116,58 +117,32 @@ npm run smoke --workspace @tm/db
 
 Open-Meteo와 Frankfurter의 무료/상업 조건은 배포 시 다시 확인한다. 타베로그 스크래핑 키나 비공식 API URL은 환경변수 목록에 넣지 않는다.
 
-## 7. 개발 순서
+`LLM_API_KEY`와 원격 모델 공급자 fallback은 두지 않는다. Gateway URL 기본값은 localhost이며 실제 모델 ID는 현재 Codex 카탈로그와 allowlist의 교집합으로 결정한다.
 
-1. 공용 계약: Profile v1, TripCharter, CategoryProposal/Ballot/Contract/View, DecisionLedger, FinalPlanRecord
-2. Survey v4 FE·API와 동일 fixture 매핑
-3. `RunController`의 0/1~5/6단계 상태·버전·재개방
-4. 한 도시·한 카테고리의 실제 후보 조달과 `FactConstraintValidator`
-5. `UserProxyAgent → CategoryArbiterAgent` 수직 경로
-6. 계약 의무 승계와 `PlanFinalizerAgent`
-7. 네 도시 공급자·Pack 확장
-8. 실제 사용자 선택 기반 취향축 평가
+## 7. MVP 개발 순서
 
-한 카테고리 수직 경로는 구조 검증용이며 전체 제품·`BOOKABLE` 완료로 표시하지 않는다.
+1. Survey v4 고정 11문항, `TripCharter`, 숙소 Proposal/Ballot/Draft/View 계약
+2. 오사카 fixture의 정원·분리·예산·근거 검증과 leximin
+3. 로컬 Codex OAuth Gateway의 catalog/allowlist/schema 호출
+4. `UserProxyAgent → StayArbiterAgent → TripSupervisorAgent` 수직 경로
+5. 결과 화면의 근거·상태·사용자 선택 표시
+6. [MVP 출시 게이트](operations/mvp-release-gates.md)의 fixture와 OAuth 시나리오
 
-## 8. 배포
+전체 0~6단계, 다른 도시·카테고리, 중앙 비교선, 자동 재토론, 예약은 후속 범위다.
 
-초기에는 단일 EC2 + Docker Compose를 유지할 수 있다.
+## 8. 실행 범위
 
-```text
-nginx
-  ├─ web 정적 파일
-  └─ /api → API
-API + Worker + PostgreSQL + Redis
-Python validator sidecar 또는 Worker 호출 경계
-```
+현재 MVP는 개발자 컴퓨터 한 대에서만 실행한다. EC2, ECS, EKS, AgentCore, 인터넷에 공개된 Gateway는 사용하지 않는다. 로컬 Gateway는 `127.0.0.1`에 바인딩하고 Codex OAuth 파일을 저장소·컨테이너·원격 호스트로 복사하지 않는다.
 
-ECS/EKS, 오토스케일링, 멀티 AZ는 해커톤 MVP 비목표다. 다만 실제 사용자 프로필·예산·건강·가치 정보를 받기 전에는 다음이 필요하다.
+원격 배포나 실제 사용자 데이터의 장기 보존이 필요해지면 인증, 권한, 암호화, 삭제, PII 로그, 멱등성, 장애·비용 관측을 다루는 새 ADR을 먼저 승인한다.
 
-- OAuth·세션과 방 멤버 권한
-- 필드 수준 접근 제어
-- 전송·저장 암호화
-- 보존기간·삭제·정정·동의
-- 시크릿 관리와 로그 PII 제거
-- 계약·원장 멱등성과 Worker 재시도
-- 비용·쿼터·DLQ 관측
+## 9. 실행 전 게이트
 
-## 9. 배포 전 게이트
-
-- [ ] Survey v4 FE/백엔드 fixture 일치
-- [ ] `unknown`, `avoid`, `hard`, `approval_required` 상호 오변환 0건
-- [ ] 0단계에서 미응답자의 날짜·예산·하드 제약을 추정하지 않음
-- [ ] 1~5단계 같은 `proposalSetVersion` 투표 강제
-- [ ] `CONTINUE`가 계약을 만들지 않고 체크포인트만 저장
-- [ ] `NO_SAFE_DECISION`이 선택안 없는 차단 계약 생성
-- [ ] `BOOKABLE`의 유효기간과 공급자 근거 연결
-- [ ] 계약 재개방·동시 요청·중복 Worker 멱등 테스트
-- [ ] 실제 API sandbox 호출과 약관 재확인
-- [ ] 사용자 시나리오로 `FinalPlanRecord` 또는 정직한 차단 결과 관찰
+구체적인 자동·수동 시나리오, OAuth 확인, 완료 라벨은 [MVP 출시 게이트](operations/mvp-release-gates.md)를 단일 기준으로 사용한다.
 
 ## 10. 미결정
 
-- Python 검증기의 프로세스/배포 형태
-- LLM 에이전트 구현 언어와 모델 배분
 - 한국 숙소와 한·일 식당 live inventory 공급자
 - 일본 대중교통 자동 검증 공급자
-- 동시 사용자 규모에 맞는 EC2 타입
+- 사용자의 Codex 계정에서 실제로 노출되는 MVP allowlist 모델
+- session 이후 프로필 보존을 활성화할지 여부
