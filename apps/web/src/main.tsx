@@ -4,7 +4,6 @@ import App from './App'
 import { AppErrorBoundary } from './components/AppErrorBoundary'
 import './styles.css'
 import './features.css'
-import './results.css'
 import './product.css'
 import './survey.css'
 

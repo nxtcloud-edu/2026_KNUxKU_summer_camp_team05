@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { ArrowLeft, CaretDown, Check, CheckCircle, X } from '@phosphor-icons/react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { DestinationPack } from '../../product/types'
@@ -20,12 +20,14 @@ function answeredRows(plan: SurveyPlanV4, answers: Record<string, SurveyAnswerV4
     .flatMap((question) => getAnswerLabels(question, answers[question.id]?.value).map((label) => ({ id: `${question.id}-${label}`, label })))
 }
 
-function LiveProfile({ plan, answers, destination, mobile = false, close }: { plan: SurveyPlanV4; answers: Record<string, SurveyAnswerV4>; destination: DestinationPack; mobile?: boolean; close?: () => void }) {
+const dialogFocusSelector = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+
+function LiveProfile({ plan, answers, destination, mobile = false, close, headingId }: { plan: SurveyPlanV4; answers: Record<string, SurveyAnswerV4>; destination: DestinationPack; mobile?: boolean; close?: () => void; headingId?: string }) {
   const rows = answeredRows(plan, answers)
-  return <aside className={`moa-live-profile${mobile ? ' mobile' : ''}`} aria-label="현재 내 여행 답변">
+  return <aside className={`moa-live-profile${mobile ? ' mobile' : ''}`} aria-label={mobile ? undefined : '현재 내 여행 답변'}>
     {mobile&&<button type="button" className="moa-live-profile-close" onClick={close} aria-label="여행 답변 닫기"><X/></button>}
     <div className="moa-live-destination"><span>{destination.name.toUpperCase()}</span><strong>{plan.title}</strong></div>
-    <div className="moa-live-profile-heading"><h2>내가 고른 답변</h2><span>{Object.keys(answers).length}개 저장</span></div>
+    <div className="moa-live-profile-heading"><h2 id={headingId}>내가 고른 답변</h2><span>{Object.keys(answers).length}개 저장</span></div>
     <ul><AnimatePresence initial={false}>{rows.slice(-8).map((row) => <motion.li key={row.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}><CheckCircle weight="fill"/>{row.label}</motion.li>)}</AnimatePresence>{rows.length === 0&&<li className="empty">답할수록 선택한 내용이 여기에 쌓여요.</li>}</ul>
   </aside>
 }
@@ -38,24 +40,88 @@ function SurveyExperience({ destination, cityId, backToRoom, complete }: { desti
   const reduceMotion = useReducedMotion()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const advanceTimer = useRef<number | undefined>(undefined)
+  const activeQuestionIdRef = useRef<string | null>(null)
+  const mobileProfileTriggerRef = useRef<HTMLButtonElement>(null)
+  const mobileProfileDialogRef = useRef<HTMLDivElement>(null)
   const [mobileProfile, setMobileProfile] = useState(false)
   const [feedback, setFeedback] = useState('')
   const survey = useSurvey({ destinationId: cityId, repository: surveyRepository })
 
-  useEffect(() => () => { if (advanceTimer.current) window.clearTimeout(advanceTimer.current) }, [])
+  const clearAutoAdvance = useCallback(() => {
+    if (advanceTimer.current === undefined) return
+    window.clearTimeout(advanceTimer.current)
+    advanceTimer.current = undefined
+  }, [])
+  const closeMobileProfile = useCallback(() => setMobileProfile(false), [])
+
+  useEffect(() => clearAutoAdvance, [clearAutoAdvance])
   useEffect(() => {
+    activeQuestionIdRef.current = survey.currentQuestionId
+    clearAutoAdvance()
     if (survey.currentQuestion?.uiType !== 'intro') headingRef.current?.focus({ preventScroll: true })
     setFeedback('')
-  }, [survey.currentQuestionId, survey.currentQuestion?.uiType])
+  }, [clearAutoAdvance, survey.currentQuestionId, survey.currentQuestion?.uiType])
+
+  useEffect(() => {
+    if (!mobileProfile) return
+    const dialog = mobileProfileDialogRef.current
+    const profileTrigger = mobileProfileTriggerRef.current
+    const previousBodyOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const focusFrame = window.requestAnimationFrame(() => dialog?.querySelector<HTMLElement>(dialogFocusSelector)?.focus())
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMobileProfile()
+        return
+      }
+      if (event.key !== 'Tab' || !dialog) return
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(dialogFocusSelector)).filter((element) => {
+        const style = window.getComputedStyle(element)
+        return !element.hidden && style.display !== 'none' && style.visibility !== 'hidden'
+      })
+      if (focusable.length === 0) {
+        event.preventDefault()
+        dialog.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(focusFrame)
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousBodyOverflow
+      if (profileTrigger?.isConnected) profileTrigger.focus()
+    }
+  }, [closeMobileProfile, mobileProfile])
 
   const autoAnswer = (value: Parameters<typeof survey.answer>[0], message: string) => {
-    if (advanceTimer.current) window.clearTimeout(advanceTimer.current)
+    if (survey.isSaving) return
+    clearAutoAdvance()
+    const scheduledQuestionId = survey.currentQuestionId
     survey.answer(value)
     setFeedback(message)
-    advanceTimer.current = window.setTimeout(() => { void survey.next() }, reduceMotion ? 80 : 360)
+    advanceTimer.current = window.setTimeout(() => {
+      advanceTimer.current = undefined
+      if (!scheduledQuestionId || activeQuestionIdRef.current !== scheduledQuestionId) return
+      void survey.next()
+    }, reduceMotion ? 80 : 360)
   }
 
   const submit = async (value: Parameters<typeof survey.submit>[0]) => {
+    clearAutoAdvance()
     const result = await survey.submit(value)
     if (result) complete()
   }
@@ -72,19 +138,19 @@ function SurveyExperience({ destination, cityId, backToRoom, complete }: { desti
     destinationName={destination.name}
     destinationImage={destination.image}
     headingRef={headingRef as RefObject<HTMLHeadingElement | null>}
-    submitting={survey.submitting}
+    submitting={survey.submitting || survey.isSaving}
     onAnswer={survey.answer}
     onAutoAnswer={autoAnswer}
-    onBack={() => { void survey.back() }}
-    onNext={() => { void survey.next() }}
-    onSkip={() => { void survey.skip() }}
-    onExit={backToRoom}
+    onBack={() => { clearAutoAdvance(); void survey.back() }}
+    onNext={() => { clearAutoAdvance(); void survey.next() }}
+    onSkip={() => { clearAutoAdvance(); void survey.skip() }}
+    onExit={() => { clearAutoAdvance(); backToRoom() }}
     onSubmit={(value) => { void submit(value) }}
   />
 
-  if (survey.currentQuestion.uiType === 'intro') return renderer
+  if (survey.currentQuestion.uiType === 'intro') return <div style={{ display:'contents' }} aria-busy={survey.isSaving} inert={survey.isSaving ? true : undefined}>{renderer}</div>
 
-  return <div className="moa-trip-builder"><div className="moa-builder-mobile-bar"><button type="button" aria-expanded={mobileProfile} onClick={() => setMobileProfile(true)}><span>내 여행 답변</span><strong>{Object.keys(survey.answers).length}개 저장</strong><CaretDown/></button></div><div className="moa-builder-shell"><main><ChapterProgress plan={survey.plan} question={survey.currentQuestion}/><AnimatePresence mode="wait" initial={false}><motion.div key={survey.currentQuestion.id} className="moa-builder-question" initial={reduceMotion ? { opacity: 1 } : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }} transition={{ duration: reduceMotion ? 0 : .26 }}>{renderer}{survey.error&&<p className="moa-builder-error" role="alert">{survey.error}</p>}</motion.div></AnimatePresence><div className="moa-builder-feedback" role="status" aria-live="polite">{feedback}</div></main><LiveProfile plan={survey.plan} answers={survey.answers} destination={destination}/></div><AnimatePresence>{mobileProfile&&<motion.div className="moa-live-profile-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) setMobileProfile(false) }}><motion.div initial={reduceMotion ? { opacity: 1 } : { y: '100%' }} animate={{ y: 0 }} exit={reduceMotion ? { opacity: 0 } : { y: '100%' }}><LiveProfile mobile plan={survey.plan} answers={survey.answers} destination={destination} close={() => setMobileProfile(false)}/></motion.div></motion.div>}</AnimatePresence></div>
+  return <div className="moa-trip-builder"><div className="moa-builder-mobile-bar"><button ref={mobileProfileTriggerRef} type="button" aria-haspopup="dialog" aria-expanded={mobileProfile} aria-controls="moa-mobile-live-profile" onClick={() => setMobileProfile(true)}><span>내 여행 답변</span><strong>{Object.keys(survey.answers).length}개 저장</strong><CaretDown/></button></div><div className="moa-builder-shell"><main><ChapterProgress plan={survey.plan} question={survey.currentQuestion}/><AnimatePresence mode="wait" initial={false}><motion.div key={survey.currentQuestion.id} className="moa-builder-question" aria-busy={survey.isSaving} inert={survey.isSaving ? true : undefined} initial={reduceMotion ? { opacity: 1 } : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }} transition={{ duration: reduceMotion ? 0 : .26 }}>{renderer}{survey.error&&<p className="moa-builder-error" role="alert">{survey.error}</p>}</motion.div></AnimatePresence><div className="moa-builder-feedback" role="status" aria-live="polite">{feedback}</div></main><LiveProfile plan={survey.plan} answers={survey.answers} destination={destination}/></div><AnimatePresence>{mobileProfile&&<motion.div className="moa-live-profile-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) closeMobileProfile() }}><motion.div id="moa-mobile-live-profile" ref={mobileProfileDialogRef} role="dialog" aria-modal="true" aria-labelledby="moa-mobile-live-profile-title" tabIndex={-1} initial={reduceMotion ? { opacity: 1 } : { y: '100%' }} animate={{ y: 0 }} exit={reduceMotion ? { opacity: 0 } : { y: '100%' }}><LiveProfile mobile plan={survey.plan} answers={survey.answers} destination={destination} headingId="moa-mobile-live-profile-title" close={closeMobileProfile}/></motion.div></motion.div>}</AnimatePresence></div>
 }
 
 export function TripBuilderSurvey({ destination, backToRoom, complete }: { destination: DestinationPack; backToRoom: () => void; complete: () => void }) {

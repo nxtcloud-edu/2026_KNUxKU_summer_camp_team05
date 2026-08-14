@@ -46,6 +46,7 @@ const formatDuration = (minutes: number) => {
 }
 
 export function PriceDisplay({ price, compact = false }: { price: PriceView; compact?: boolean }) {
+  if (!price) return null
   if (price.type === 'unknown') {
     return <div className="moa-price-display state-unknown"><strong>가격 확인 필요</strong><span>예약 전 확인 필요</span></div>
   }
@@ -76,7 +77,7 @@ export function PriceDisplay({ price, compact = false }: { price: PriceView; com
 }
 
 export function EvidenceBadge({ evidence }: { evidence?: EvidenceSummary }) {
-  if (!evidence) return <span className="moa-evidence-badge state-unknown">정보 없음</span>
+  if (!evidence) return null
   return <span className={`moa-evidence-badge state-${evidence.state}`}>{evidence.stateLabel}</span>
 }
 
@@ -117,8 +118,8 @@ export function SourceDetail({ evidence }: { evidence?: EvidenceSummary }) {
   )
 }
 
-export function LocationSummary({ location }: { location: LocationView }) {
-  if (!location.address && !location.area && !location.mapUrl) return null
+export function LocationSummary({ location }: { location?: LocationView }) {
+  if (!location || (!location.address && !location.area && !location.mapUrl)) return null
   return (
     <div className="moa-location-summary">
       <MapPin />
@@ -129,7 +130,7 @@ export function LocationSummary({ location }: { location: LocationView }) {
 }
 
 export function RouteMapPreview({ map, origin, destination }: { map: RouteMapView; origin: string; destination: string }) {
-  if (map.path.length < 2) return null
+  if (!map?.path || map.path.length < 2) return null
   const latitudes = map.path.map((point) => point.latitude)
   const longitudes = map.path.map((point) => point.longitude)
   const minLatitude = Math.min(...latitudes)
@@ -161,7 +162,8 @@ export function RouteMapPreview({ map, origin, destination }: { map: RouteMapVie
   )
 }
 
-export function RouteSummary({ route, compact = false }: { route: RouteSummaryView; compact?: boolean }) {
+export function RouteSummary({ route, compact = false }: { route?: RouteSummaryView; compact?: boolean }) {
+  if (!route) return null
   if (compact) {
     return (
       <div className="moa-route-summary compact">

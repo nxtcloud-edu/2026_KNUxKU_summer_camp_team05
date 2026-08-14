@@ -95,7 +95,7 @@ function compactPriceLabel(price: PriceView, includeUnit = true) {
 }
 
 type DecisionSnapshot = {
-  metadata: string
+  metadata?: string
   price?: PriceView
   priceLabel?: string
   operationalStatus?: string
@@ -103,30 +103,35 @@ type DecisionSnapshot = {
 
 function decisionSnapshot(decision: DecisionSummary): DecisionSnapshot {
   const data = decision.travelData
-  if (!data) return { metadata: decision.location ?? decision.detail, priceLabel: decision.priceLabel, operationalStatus: decision.evidence[0]?.stateLabel }
+  if (!data) return { metadata: decision.location ?? decision.detail, priceLabel: decision.priceLabel, operationalStatus: decision.evidence?.[0]?.stateLabel }
   if (data.kind === 'transport') return {
-    metadata: `${data.departureTime} ${data.departureLocation} → ${data.arrivalTime} ${data.arrivalLocation} · ${formatDuration(data.durationMinutes)}`,
+    metadata: [
+      data.departureLocation && data.arrivalLocation ? `${data.departureTime ? `${data.departureTime} ` : ''}${data.departureLocation} → ${data.arrivalTime ? `${data.arrivalTime} ` : ''}${data.arrivalLocation}` : undefined,
+      Number.isFinite(data.durationMinutes) ? formatDuration(data.durationMinutes) : undefined,
+    ].filter(Boolean).join(' · ') || undefined,
     price: data.effectiveTotalPrice ?? data.baseFare,
     operationalStatus: data.inventory?.label,
   }
   if (data.kind === 'accommodation') return {
-    metadata: `${data.location.area ?? data.location.name} · ${data.roomCombination}`,
+    metadata: [data.location?.area ?? data.location?.name, data.roomCombination].filter(Boolean).join(' · ') || undefined,
     price: data.nightlyPrice,
-    operationalStatus: data.roomAvailability.label,
+    operationalStatus: data.roomAvailability?.label,
   }
   if (data.kind === 'activity') return {
-    metadata: [data.location.area, data.openingHours, data.expectedDurationMinutes ? `예상 ${formatDuration(data.expectedDurationMinutes)}` : undefined].filter(Boolean).join(' · '),
+    metadata: [data.location?.area, data.openingHours, data.expectedDurationMinutes ? `예상 ${formatDuration(data.expectedDurationMinutes)}` : undefined].filter(Boolean).join(' · ') || undefined,
     price: data.ticketPrice,
     operationalStatus: data.reservation?.label,
   }
   if (data.kind === 'dining') {
-    const allergy = data.allergySupport.find((item) => item.status !== 'confirmed') ?? data.allergySupport[0]
+    const allergySupport = data.allergySupport ?? []
+    const allergy = allergySupport.find((item) => item.status !== 'confirmed') ?? allergySupport[0]
     return {
-      metadata: [data.location.area, data.openingHours].filter(Boolean).join(' · '),
+      metadata: [data.location?.area, data.openingHours].filter(Boolean).join(' · ') || undefined,
       price: data.price,
       operationalStatus: allergy ? `${allergy.label} ${allergy.status === 'confirmed' ? '확인됨' : '확인 필요'}` : data.reservation?.label,
     }
   }
+  if (!data.route) return {}
   return {
     metadata: `${data.route.modeLabel} · ${formatDuration(data.route.durationMinutes)} · ${data.route.transferCount ? `환승 ${data.route.transferCount}회` : '환승 없음'}`,
     price: data.route.fare,
@@ -135,10 +140,11 @@ function decisionSnapshot(decision: DecisionSummary): DecisionSnapshot {
 }
 
 function DecisionStatus({ decision, snapshot }: { decision: DecisionSummary; snapshot: DecisionSnapshot }) {
-  const evidence = decision.evidence[0]
+  const evidence = decision.evidence?.[0]
   const labels = [evidence?.stateLabel, snapshot.operationalStatus]
     .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index)
 
+  if (labels.length === 0 && !evidence?.checkedLabel) return null
   return <div className="moa-decision-status" aria-label="확인 상태">
     {labels.map((label, index) => <span className={index === 0 ? `state-${evidence?.state ?? 'unknown'}` : 'state-verified'} key={label}>{label}</span>)}
     {evidence?.checkedLabel && <small><Clock />{evidence.checkedLabel}</small>}
@@ -154,18 +160,19 @@ function ConditionChips({ reasons, limit = 3 }: { reasons: string[]; limit?: num
 
 export function DecisionCard({ decision, index, selected, details, select }: { decision: DecisionSummary; index: number; selected: boolean; details: () => void; select: () => void }) {
   const snapshot = decisionSnapshot(decision)
+  const reasons = decision.reasons ?? []
   const number = String(index + 1).padStart(2, '0')
   return (
     <article className={`moa-shared-decision-card${selected ? ' selected' : ''}`} onFocus={select}>
       <header className="moa-shared-decision-category"><span>{number} · {decision.categoryLabel}</span></header>
       <div className="moa-shared-decision-choice">
         <h3>{decision.title}</h3>
-        <p>{snapshot.metadata}</p>
+        {snapshot.metadata && <p>{snapshot.metadata}</p>}
         {snapshot.price ? <PriceDisplay price={snapshot.price} compact /> : snapshot.priceLabel && <strong>{snapshot.priceLabel}</strong>}
       </div>
       <DecisionStatus decision={decision} snapshot={snapshot} />
-      <section className="moa-shared-decision-reason"><h4>선택 이유</h4><p>{decision.summaryReason}</p></section>
-      <section className="moa-shared-decision-conditions"><h4>반영된 조건</h4><ConditionChips reasons={decision.reasons} /></section>
+      {decision.summaryReason && <section className="moa-shared-decision-reason"><h4>선택 이유</h4><p>{decision.summaryReason}</p></section>}
+      {reasons.length > 0 && <section className="moa-shared-decision-conditions"><h4>반영된 조건</h4><ConditionChips reasons={reasons} /></section>}
       <button type="button" className="moa-shared-decision-action" onClick={details}>결정 자세히 보기 <ArrowRight /></button>
     </article>
   )
@@ -554,6 +561,7 @@ export function BookingReadinessCard({ booking }: { booking: BookingReadiness })
     || booking.priceLabel
     || booking.evidence
     || booking.freshness
+    || booking.availabilityLabel
     || (booking.actionLabel && booking.externalUrl)
   return (
     <article className={`moa-booking-row state-${booking.state}`}>
@@ -561,14 +569,15 @@ export function BookingReadinessCard({ booking }: { booking: BookingReadiness })
         <header><span>{booking.category}</span><strong>{bookingStatusLabels[booking.state]}</strong></header>
         <h3>{booking.title}</h3>
         {booking.detail && <p className="moa-booking-detail">{booking.detail}</p>}
-        <p>{booking.note}</p>
+        {booking.note && <p>{booking.note}</p>}
         {booking.checkItems && booking.checkItems.length > 0 && <div className="moa-booking-checks"><span>확인할 것</span><strong>{booking.checkItems.join(' · ')}</strong></div>}
         {booking.followUpLabel && <p className="moa-booking-follow-up">{booking.followUpLabel}</p>}
       </div>
       {hasActionContent && <div className="moa-booking-row-action">
         {booking.price && booking.price.type !== 'unknown' ? <div className="moa-booking-price-block">{booking.price.type === 'estimated' && <span>예상 가격</span>}<PriceDisplay price={booking.price} compact /></div> : booking.priceLabel && <strong>{booking.priceLabel}</strong>}
         <div className="moa-booking-meta">
-          {booking.evidence && <><span className={`moa-evidence-badge state-${booking.evidence.state}`}>{booking.evidence.stateLabel}</span>{booking.availabilityLabel && <span>{booking.availabilityLabel}</span>}<FreshnessLabel evidence={booking.evidence} /></>}
+          {booking.evidence && <><span className={`moa-evidence-badge state-${booking.evidence.state}`}>{booking.evidence.stateLabel}</span><FreshnessLabel evidence={booking.evidence} /></>}
+          {booking.availabilityLabel && <span>{booking.availabilityLabel}</span>}
           {!booking.evidence && booking.freshness && <small><Clock />{booking.freshness}</small>}
         </div>
         {booking.actionLabel && booking.externalUrl && <a href={booking.externalUrl} target="_blank" rel="noreferrer">{booking.actionLabel}<ArrowSquareOut /></a>}
@@ -578,24 +587,30 @@ export function BookingReadinessCard({ booking }: { booking: BookingReadiness })
 }
 
 function BookingChecklist({ result }: { result: ProductResult }) {
-  const [activeFilter, setActiveFilter] = useState<'attention' | 'ready'>('attention')
+  const attentionCount = result.bookings.filter((item) => item.state === 'blocked' || item.state === 'needs-check').length
+  const readyCount = result.bookings.filter((item) => item.state === 'ready' || item.state === 'booked').length
+  const preferredFilter: 'attention' | 'ready' = attentionCount > 0 || readyCount === 0 ? 'attention' : 'ready'
+  const [activeFilter, setActiveFilter] = useState<'attention' | 'ready'>(preferredFilter)
+  useEffect(() => setActiveFilter(preferredFilter), [preferredFilter])
+  const visibleGroups = bookingGroups.flatMap((group) => {
+    if (group.filter !== activeFilter) return []
+    const items = result.bookings.filter((item) => group.states.includes(item.state))
+    return items.length > 0 ? [{ ...group, items }] : []
+  })
+  const showOtherFilter = activeFilter === 'attention' ? readyCount > 0 : attentionCount > 0
   return (
     <div className="moa-booking-checklist">
       <section className="moa-booking-totals" aria-label="예약 준비 요약">
         <button type="button" aria-pressed={activeFilter === 'attention'} onClick={() => setActiveFilter('attention')}><span>확인 필요</span></button>
         <button type="button" aria-pressed={activeFilter === 'ready'} onClick={() => setActiveFilter('ready')}><span>예약 가능</span></button>
       </section>
-      <div className="moa-booking-filter-results" aria-live="polite">{bookingGroups.filter((group) => group.filter === activeFilter).map((group) => {
-        const items = result.bookings.filter((item) => group.states.includes(item.state))
-        if (items.length === 0) return null
-        return <section className={`moa-booking-group group-${group.id}`} key={group.id}><header><h3>{group.label}</h3></header><div>{items.map((item) => <BookingReadinessCard key={item.id} booking={item} />)}</div></section>
-      })}</div>
+      <div className="moa-booking-filter-results" aria-live="polite">{visibleGroups.length > 0 ? visibleGroups.map((group) => <section className={`moa-booking-group group-${group.id}`} key={group.id}><header><h3>{group.label}</h3></header><div>{group.items.map((item) => <BookingReadinessCard key={item.id} booking={item} />)}</div></section>) : <div className="moa-booking-filter-empty"><strong>{result.bookings.length === 0 ? '예약 준비 항목이 아직 없어요.' : activeFilter === 'attention' ? '지금 확인이 필요한 항목이 없어요.' : '바로 예약 가능한 항목이 아직 없어요.'}</strong>{showOtherFilter && <button type="button" onClick={() => setActiveFilter(activeFilter === 'attention' ? 'ready' : 'attention')}>{activeFilter === 'attention' ? '예약 가능 보기' : '확인 필요 보기'} <ArrowRight /></button>}</div>}</div>
     </div>
   )
 }
 
-function DecisionTimeline({ decisions, selectedDecisionId, selectDecision, openDecision }: { decisions: DecisionSummary[]; selectedDecisionId: string; selectDecision: (id: string) => void; openDecision: (id: string) => void }) {
-  if (decisions.length === 0) return <div className="moa-result-empty"><strong>표시할 결정이 없어요.</strong></div>
+function DecisionTimeline({ decisions, selectedDecisionId, selectDecision, openDecision }: { decisions: DecisionSummary[]; selectedDecisionId?: string; selectDecision: (id: string) => void; openDecision: (id: string) => void }) {
+  if (decisions.length === 0) return <div className="moa-result-empty"><strong>아직 확정된 결정이 없어요.</strong><span>여행 조건을 확인한 뒤 결과를 다시 불러와 주세요.</span></div>
   return (
     <ol className="moa-decision-timeline">
       {decisions.map((item, index) => (
@@ -703,7 +718,7 @@ function Overview({ result, pace, openBooking, openSchedule, openDecisions }: { 
   const accommodation = accommodationDecision?.travelData?.kind === 'accommodation' ? accommodationDecision.travelData : undefined
   const flightTitle = flight ? [flight.operator, flight.serviceNumber].filter(Boolean).join(' ') : flightDecision?.title ?? '항공 정보 확인 중'
   const flightDetail = flight ? `${flight.departureTime} ${flight.departureLocation} → ${flight.arrivalTime} ${flight.arrivalLocation}` : flightDecision?.location ?? flightDecision?.detail ?? '항공 정보를 확인하고 있어요.'
-  const accommodationTitle = accommodation ? [accommodation.location.area, accommodation.name].filter(Boolean).join(' · ') : accommodationDecision?.title ?? '숙소 정보 확인 중'
+  const accommodationTitle = accommodation ? [accommodation.location?.area, accommodation.name].filter(Boolean).join(' · ') : accommodationDecision?.title ?? '숙소 정보 확인 중'
   const accommodationDetail = accommodation?.roomCombination ?? accommodationDecision?.detail ?? '숙소 정보를 확인하고 있어요.'
   const reflectedCount = result.coverage.represented.length
   const concessionCount = result.coverage.compromised.length
@@ -739,7 +754,7 @@ function TripHeader({ result, mode, setMode, back }: { result: ProductResult; mo
         <div className="moa-results-frame">
           <div className="moa-results-tools"><button onClick={back}><ArrowLeft />여행 방</button></div>
           <section className="moa-trip-plan-hero" aria-labelledby="moa-result-destination">
-            {result.destinationImage && <img className="moa-trip-plan-hero-image" src={result.destinationImage} alt={`${result.destination} 여행지 풍경`} />}
+            {result.destinationImage && <img className="moa-trip-plan-hero-image" src={result.destinationImage} alt={`${result.destination} 여행지 풍경`} onError={(event) => { event.currentTarget.hidden = true }} />}
             <span className="moa-trip-plan-hero-overlay" aria-hidden="true" />
             <div className="moa-result-hero-copy">
               <span>FINAL TRIP PLAN</span>
@@ -762,7 +777,7 @@ function TripHeader({ result, mode, setMode, back }: { result: ProductResult; mo
   )
 }
 
-export function ProductResults({ result, pace, mode, setMode, back, decision, selectedDecisionId, selectDecision }: { result: ProductResult; pace: TripPace; mode: ResultMode; setMode: (mode: ResultMode) => void; back: () => void; decision: (id: string) => void; reopen: (id: string) => void; selectedDecisionId: string; selectDecision: (id: string) => void }) {
+export function ProductResults({ result, pace, mode, setMode, back, decision, selectedDecisionId, selectDecision }: { result: ProductResult; pace: TripPace; mode: ResultMode; setMode: (mode: ResultMode) => void; back: () => void; decision: (id: string) => void; reopen: (id: string) => void; selectedDecisionId?: string; selectDecision: (id: string) => void }) {
   return (
     <div className="moa-product-results">
       <TripHeader result={result} mode={mode} setMode={setMode} back={back} />
@@ -786,6 +801,9 @@ export function DecisionDetail({ decision, index = 0, back, reopen, replay, mobi
   const [sheetExpanded, setSheetExpanded] = useState(false)
   const titleId = `moa-decision-title-${decision.id}`
   const descriptionId = `moa-decision-description-${decision.id}`
+  const reasons = decision.reasons ?? []
+  const rejectedCandidates = decision.rejectedCandidates ?? []
+  const evidenceItems = decision.evidence ?? []
   const primaryAction = (() => {
     const data = decision.travelData
     if (!data || data.kind === 'route') return undefined
@@ -871,7 +889,7 @@ export function DecisionDetail({ decision, index = 0, back, reopen, replay, mobi
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={descriptionId}
+        aria-describedby={decision.detail ? descriptionId : undefined}
         tabIndex={-1}
       >
         <div className="moa-decision-detail-toolbar">
@@ -894,19 +912,19 @@ export function DecisionDetail({ decision, index = 0, back, reopen, replay, mobi
           ><span aria-hidden="true" /></button>}
           <button ref={closeButtonRef} className="moa-decision-detail-close" onClick={back}><X />닫기</button>
         </div>
-        <header><span>{String(index + 1).padStart(2, '0')} · {decision.categoryLabel}</span><h1 id={titleId}>{decision.title}</h1><p id={descriptionId}>{decision.detail}</p></header>
+        <header><span>{String(index + 1).padStart(2, '0')} · {decision.categoryLabel}</span><h1 id={titleId}>{decision.title}</h1>{decision.detail && <p id={descriptionId}>{decision.detail}</p>}</header>
         <div className="moa-unified-detail-composition">
           {decision.travelData && <TravelDecisionContent data={decision.travelData} showPrimaryAction={false} />}
-          {(decision.summaryReason || decision.reasons.length > 0) && <div className="moa-unified-why-conditions">
+          {(decision.summaryReason || reasons.length > 0) && <div className="moa-unified-why-conditions">
             {decision.summaryReason && <section className="moa-decision-rationale"><h2>선택 이유</h2><p>{decision.summaryReason}</p></section>}
-            {decision.reasons.length > 0 && <section className="moa-decision-constraints"><h2>반영된 조건</h2><ConditionChips reasons={decision.reasons} limit={decision.reasons.length} /></section>}
+            {reasons.length > 0 && <section className="moa-decision-constraints"><h2>반영된 조건</h2><ConditionChips reasons={reasons} limit={reasons.length} /></section>}
           </div>}
           <div className="moa-unified-detail-actions">
             {primaryAction && <DecisionPrimaryLink href={primaryAction.href}>{primaryAction.label}</DecisionPrimaryLink>}
             <button className="moa-reopen-decision" onClick={reopen}>이 결정 다시 논의하기 <ArrowRight /></button>
           </div>
-          {decision.rejectedCandidates.length > 0 && <details className="moa-unified-secondary-disclosure"><summary>비교한 다른 후보 <span>{decision.rejectedCandidates.length}</span><CaretDown /></summary><div className="moa-rejected-list">{decision.rejectedCandidates.map((candidate) => <article className={`moa-rejected ${candidate.hardConstraintConflict ? 'critical' : ''}`} key={candidate.id}><span aria-hidden="true" /><div><strong>{candidate.title}</strong><p>{candidate.reason}</p></div></article>)}</div></details>}
-          {decision.evidence.length > 0 && <details className="moa-decision-evidence-disclosure"><summary>상세 근거 보기 <CaretDown /></summary><div>{decision.evidence.map((evidence) => <article className="moa-evidence-row" key={evidence.id}><header><strong>{evidence.label}</strong><span>{evidence.stateLabel}</span></header><p>{evidence.value}</p><small>{evidence.checkedLabel}</small>{evidence.uncertainty && <UncertaintyNotice message={evidence.uncertainty} safety={decision.category === 'dining'} />}<SourceDetail evidence={evidence} /></article>)}</div></details>}
+          {rejectedCandidates.length > 0 && <details className="moa-unified-secondary-disclosure"><summary>비교한 다른 후보 <span>{rejectedCandidates.length}</span><CaretDown /></summary><div className="moa-rejected-list">{rejectedCandidates.map((candidate) => <article className={`moa-rejected ${candidate.hardConstraintConflict ? 'critical' : ''}`} key={candidate.id}><span aria-hidden="true" /><div><strong>{candidate.title}</strong>{candidate.reason && <p>{candidate.reason}</p>}</div></article>)}</div></details>}
+          {evidenceItems.length > 0 && <details className="moa-decision-evidence-disclosure"><summary>상세 근거 보기 <CaretDown /></summary><div>{evidenceItems.map((evidence) => <article className="moa-evidence-row" key={evidence.id}><header><strong>{evidence.label}</strong><span>{evidence.stateLabel}</span></header>{evidence.value && <p>{evidence.value}</p>}{evidence.checkedLabel && <small>{evidence.checkedLabel}</small>}{evidence.uncertainty && <UncertaintyNotice message={evidence.uncertainty} safety={decision.category === 'dining'} />}<SourceDetail evidence={evidence} /></article>)}</div></details>}
           <button className="moa-decision-replay moa-unified-replay" onClick={replay}><PlayCircle />전체 회의 기록 보기</button>
         </div>
       </div>

@@ -107,6 +107,7 @@ export type TripEvent = {
   time: string
   title: string
   detail?: string
+  durationMinutes?: number
   transit?: {
     label: string
     detail: string

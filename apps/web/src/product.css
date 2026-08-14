@@ -1800,3 +1800,12 @@
   .moa-booking-section>.moa-results-section-header h2{font-size:28px}
   .moa-booking-totals{align-items:center}
 }
+
+/* Current result UI is owned by product.css. results.css is a retired, unimported legacy screen. */
+.moa-app.moa-results-active{overflow-x:clip;overflow-y:visible}
+.moa-missing-decision{min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--result-bg)}
+.moa-missing-decision>.moa-result-empty{width:min(100%,520px)}
+.moa-missing-decision button,.moa-booking-filter-empty button{min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;padding:0 14px;border:1px solid var(--result-teal);border-radius:7px;background:transparent;color:var(--result-teal);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.moa-booking-filter-empty{min-height:120px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:18px 2px;color:var(--result-muted)}
+.moa-booking-filter-empty strong{color:var(--result-ink);font-size:14px}
+.moa-booking-filter-empty button svg{width:14px}

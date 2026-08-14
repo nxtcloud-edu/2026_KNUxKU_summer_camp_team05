@@ -2,6 +2,7 @@ export type DestinationPack = {
   id: string
   country: '한국' | '일본'
   name: string
+  timeZone: string
   tags: string[]
   image: string
 }
@@ -149,7 +150,7 @@ export type TransportView = {
   kind: 'transport'
   mode: Extract<TravelMode, 'flight' | 'train' | 'intercity-bus' | 'ferry'>
   modeLabel: string
-  operator: string
+  operator?: string
   serviceNumber?: string
   departureLocation: string
   departureCode?: string
@@ -172,17 +173,17 @@ export type TransportView = {
 export type AccommodationView = {
   kind: 'accommodation'
   name: string
-  location: LocationView
+  location?: LocationView
   image?: string
-  nightlyPrice: PriceView
+  nightlyPrice?: PriceView
   totalStayPrice?: PriceView
-  roomCombination: string
-  groupCapacity: number
-  roomAvailability: AvailabilityView
-  amenities: string[]
+  roomCombination?: string
+  groupCapacity?: number
+  roomAvailability?: AvailabilityView
+  amenities?: string[]
   accessibility?: string[]
-  checkIn: string
-  checkOut: string
+  checkIn?: string
+  checkOut?: string
   cancellationInfo?: string
   bookingUrl?: string
   evidence?: EvidenceSummary
@@ -192,7 +193,7 @@ export type ActivityView = {
   kind: 'activity'
   name: string
   category: string
-  location: LocationView
+  location?: LocationView
   openingHours?: string
   closedDays?: string
   ticketPrice?: PriceView
@@ -214,20 +215,20 @@ export type DiningView = {
   kind: 'dining'
   name: string
   cuisine: string
-  location: LocationView
+  location?: LocationView
   openingHours?: string
   price?: PriceView
   reservation?: AvailabilityView
   waitingInfo?: string
-  dietarySupport: DietarySupportView[]
-  allergySupport: DietarySupportView[]
+  dietarySupport?: DietarySupportView[]
+  allergySupport?: DietarySupportView[]
   bookingUrl?: string
   evidence?: EvidenceSummary
 }
 
 export type ScheduleTravelView = {
   kind: 'route'
-  route: RouteSummaryView
+  route?: RouteSummaryView
 }
 
 export type TravelDecisionData = TransportView | AccommodationView | ActivityView | DiningView | ScheduleTravelView
@@ -247,12 +248,12 @@ export type DecisionSummary = {
   categoryLabel: string
   title: string
   location?: string
-  detail: string
+  detail?: string
   priceLabel?: string
-  summaryReason: string
-  reasons: string[]
-  evidence: EvidenceSummary[]
-  rejectedCandidates: RejectedCandidate[]
+  summaryReason?: string
+  reasons?: string[]
+  evidence?: EvidenceSummary[]
+  rejectedCandidates?: RejectedCandidate[]
   status: 'verified' | 'needs-check' | 'choice-required'
   featured?: boolean
   travelData?: TravelDecisionData

@@ -5,14 +5,6 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fbf8f1",
-  "theme_color": "#f2714b",
-  "lang": "ko-KR",
-  "icons": [
-    {
-      "src": "/assets/moa-wordmark.png",
-      "sizes": "1042x563",
-      "type": "image/png",
-      "purpose": "any"
-    }
-  ]
+  "theme_color": "#fbf7ef",
+  "lang": "ko-KR"
 }

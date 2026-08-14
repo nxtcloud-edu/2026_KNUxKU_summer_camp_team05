@@ -23,12 +23,14 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
   const [answers, setAnswers] = useState<Record<string, SurveyAnswerV4>>({})
   const [startedAt, setStartedAt] = useState(() => new Date().toISOString())
   const [loading, setLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const planRef = useRef<SurveyPlanV4 | null>(null)
   const answersRef = useRef<Record<string, SurveyAnswerV4>>({})
   const currentQuestionIdRef = useRef<string | null>(null)
   const startedAtRef = useRef(startedAt)
+  const navigationInFlightRef = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -123,8 +125,10 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
   const move = useCallback(async (direction: 1 | -1) => {
     const activePlan = planRef.current
     const activeQuestionId = currentQuestionIdRef.current
-    if (!activePlan || !activeQuestionId) return
+    if (!activePlan || !activeQuestionId || navigationInFlightRef.current) return
 
+    navigationInFlightRef.current = true
+    setIsSaving(true)
     setError(null)
     try {
       const progress = await repository.saveProgress(createSubmission('draft'))
@@ -153,10 +157,14 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
       }
     } catch (saveError) {
       setError(errorMessage(saveError))
+    } finally {
+      navigationInFlightRef.current = false
+      setIsSaving(false)
     }
   }, [createSubmission, repository])
 
   const skip = useCallback(async (reason: 'user-skipped' | 'not-applicable' | 'unknown' = 'user-skipped') => {
+    if (navigationInFlightRef.current) return
     const questionId = currentQuestionIdRef.current
     if (!questionId) return
     commitAnswer(questionId, { kind: 'skipped', reason })
@@ -164,6 +172,7 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
   }, [commitAnswer, move])
 
   const submit = useCallback(async (answer?: SurveyAnswerValue): Promise<SurveySubmitResult | null> => {
+    if (navigationInFlightRef.current) return null
     const questionId = currentQuestionIdRef.current
     let answerState = answersRef.current
     if (answer && questionId) answerState = commitAnswer(questionId, answer)
@@ -181,6 +190,7 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
   }, [commitAnswer, createSubmission, repository])
 
   const answer = useCallback((value: SurveyAnswerValue) => {
+    if (navigationInFlightRef.current) return
     const questionId = currentQuestionIdRef.current
     if (questionId) commitAnswer(questionId, value)
   }, [commitAnswer])
@@ -195,6 +205,7 @@ export function useSurvey({ destinationId, repository }: UseSurveyOptions) {
     answers,
     startedAt,
     loading,
+    isSaving,
     submitting,
     error,
     answer,

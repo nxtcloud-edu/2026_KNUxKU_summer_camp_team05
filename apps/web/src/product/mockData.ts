@@ -15,10 +15,10 @@ import type {
 
 /** Frontend-only demo fixtures. These are normalized view models, not server responses or live travel facts. */
 export const featuredDestinations: DestinationPack[] = [
-  { id:'seoul', country:'한국', name:'서울', tags:['전시','동네','미식'], image:'https://images.unsplash.com/photo-1534274988757-a28bf1a57c17?auto=format&fit=crop&w=900&q=85' },
-  { id:'busan', country:'한국', name:'부산', tags:['해운대','시장','야경'], image:'https://images.unsplash.com/photo-1534274867514-d5b47ef89ed7?auto=format&fit=crop&w=900&q=85' },
-  { id:'tokyo', country:'일본', name:'도쿄', tags:['트렌드','문화','동네'], image:'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=900&q=85' },
-  { id:'osaka', country:'일본', name:'오사카', tags:['미식','도톤보리','온천'], image:'https://images.unsplash.com/photo-1590559899731-a382839e5549?auto=format&fit=crop&w=900&q=85' },
+  { id:'seoul', country:'한국', name:'서울', timeZone:'Asia/Seoul', tags:['전시','동네','미식'], image:'https://images.unsplash.com/photo-1534274988757-a28bf1a57c17?auto=format&fit=crop&w=900&q=85' },
+  { id:'busan', country:'한국', name:'부산', timeZone:'Asia/Seoul', tags:['해운대','시장','야경'], image:'https://images.unsplash.com/photo-1534274867514-d5b47ef89ed7?auto=format&fit=crop&w=900&q=85' },
+  { id:'tokyo', country:'일본', name:'도쿄', timeZone:'Asia/Tokyo', tags:['트렌드','문화','동네'], image:'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=900&q=85' },
+  { id:'osaka', country:'일본', name:'오사카', timeZone:'Asia/Tokyo', tags:['미식','도톤보리','온천'], image:'https://images.unsplash.com/photo-1590559899731-a382839e5549?auto=format&fit=crop&w=900&q=85' },
 ]
 
 export const tripPaces: TripPace[] = [
