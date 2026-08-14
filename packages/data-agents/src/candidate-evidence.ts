@@ -15,6 +15,10 @@ import {
 } from '@tm/contracts';
 import { assertAgentContextSafe } from '@tm/core';
 import { canonicalize } from './canonical.js';
+import {
+  candidateEvidenceQueryPolicyIssue,
+  type CandidateEvidenceQueryPolicyIssueCode,
+} from './candidate-evidence-query-policy.js';
 import type { DataAgentGateway } from './gateway.js';
 import { extractCandidates } from './prefetch.js';
 import { ProviderError } from './provider.js';
@@ -76,9 +80,9 @@ export interface CandidateEvidenceExecutionPort {
 }
 
 export type CandidateEvidenceExecutionErrorCode =
+  | CandidateEvidenceQueryPolicyIssueCode
   | 'INVALID_INPUT'
   | 'QUERY_BUDGET_EXCEEDED'
-  | 'BRIEF_LINEAGE_MISMATCH'
   | 'SENSITIVE_CONTEXT'
   | 'UNAPPROVED_RELAXATION'
   | 'HARD_CONTEXT_OVERRIDE'
@@ -127,10 +131,6 @@ const CONTROLLER_OWNED_PARAMS: Record<string, keyof Pick<
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
-}
-
-function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
-  return JSON.stringify(unique(left).sort()) === JSON.stringify(unique(right).sort());
 }
 
 function stableId(prefix: string, parts: readonly string[]): string {
@@ -193,19 +193,6 @@ function validateInput(input: CandidateEvidenceExecutionInput): TripCharter {
     throw new CandidateEvidenceExecutionError('INVALID_INPUT', '실행할 QueryPlan이 없습니다.');
   }
   return charter;
-}
-
-function validateBriefLineage(
-  plans: readonly CandidateEvidenceQueryPlan[],
-  expectedBriefIds: readonly string[],
-): void {
-  const actual = plans.flatMap((plan) => plan.sourceBriefIds);
-  if (!sameStringSet(actual, expectedBriefIds)) {
-    throw new CandidateEvidenceExecutionError(
-      'BRIEF_LINEAGE_MISMATCH',
-      'Proxy Brief와 중립 Brief가 QueryPlan에 정확히 한 번 이상 대표되어야 합니다.',
-    );
-  }
 }
 
 function bindStayPlan(
@@ -365,7 +352,10 @@ export function createCandidateEvidenceExecutionPort(
     async execute(input) {
       const charter = validateInput(input);
       const plans = input.queryPlans.map((plan) => candidateEvidenceQueryPlanSchema.parse(plan));
-      validateBriefLineage(plans, input.expectedBriefIds);
+      const policyIssue = candidateEvidenceQueryPolicyIssue(plans, input.expectedBriefIds);
+      if (policyIssue !== null) {
+        throw new CandidateEvidenceExecutionError(policyIssue.code, policyIssue.message);
+      }
       const boundPlans = plans.map((plan) => bindStayPlan(plan, input, charter));
       const groups = groupBoundPlans(boundPlans);
       const candidateMap = new Map<string, CandidateRecord>();

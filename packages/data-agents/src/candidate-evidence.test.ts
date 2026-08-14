@@ -205,3 +205,80 @@ test('응답 정규화와 Candidate 생성은 구분하고 후보가 없으면 �
   assert.equal(result.receipts[0]?.status, 'NO_CANDIDATES');
   await repos.close();
 });
+
+test('Given 중복 queryPlanId When 실행 Then Provider 호출 전에 거부한다', async () => {
+  const { provider, repos, port } = setup();
+  const duplicated = [
+    plan('query:duplicate', ['brief:u1']),
+    plan('query:duplicate', ['brief:u2', 'brief:neutral'], { area: '우메다' }),
+  ];
+
+  await assert.rejects(
+    () => port.execute(input(duplicated)),
+    (error: unknown) =>
+      error instanceof CandidateEvidenceExecutionError &&
+      error.code === 'DUPLICATE_QUERY_PLAN_ID',
+  );
+  assert.equal(provider.calls.length, 0);
+  await repos.close();
+});
+
+test('Given 한 Brief가 상한보다 많은 QueryPlan에 연결됨 When 실행 Then Provider 호출 전에 거부한다', async () => {
+  const { provider, repos, port } = setup();
+  const repeated = [
+    plan('query:u1:first', ['brief:u1']),
+    plan('query:u1:second', ['brief:u1', 'brief:u2', 'brief:neutral'], { area: '우메다' }),
+  ];
+
+  await assert.rejects(
+    () => port.execute(input(repeated)),
+    (error: unknown) =>
+      error instanceof CandidateEvidenceExecutionError &&
+      error.code === 'BRIEF_QUERY_BUDGET_EXCEEDED',
+  );
+  assert.equal(provider.calls.length, 0);
+  await repos.close();
+});
+
+test('Given 한 Provider 그룹 실패 When 다음 그룹 실행 Then 성공 후보와 실패 영수증을 함께 보존한다', async () => {
+  const broken = createFixtureProvider({
+    id: 'broken',
+    queryClasses: ['hotel.search'],
+    responses: { 'hotel.search': { payload: { candidates: [] }, confidence: 'live' } },
+    failing: ['hotel.search'],
+  });
+  const healthy = createFixtureProvider({
+    id: 'rakuten_travel',
+    queryClasses: ['hotel.search'],
+    responses: {
+      'hotel.search': { payload: { candidates: [hotelCandidate] }, confidence: 'live' },
+    },
+  });
+  const repos = createMemoryRepositories();
+  const gateway = createDataAgent({
+    cache: repos.cache,
+    providers: createStaticRegistry([broken, healthy], {
+      'jp-osaka': { hotel: ['broken', 'rakuten_travel'] },
+    }),
+  });
+  const port = createCandidateEvidenceExecutionPort(gateway);
+  const failedPlan = {
+    ...plan('query:broken', ['brief:u1']),
+    providerOrder: ['broken'],
+  };
+  const healthyPlan = {
+    ...plan('query:healthy', ['brief:u2', 'brief:neutral'], { area: '우메다' }),
+    providerOrder: ['rakuten_travel'],
+  };
+
+  const result = await port.execute(input([failedPlan, healthyPlan]));
+
+  assert.equal(result.status, 'PARTIAL');
+  assert.equal(result.executedProviderRequests, 2);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.receipts.length, 1);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(broken.calls.length, 1);
+  assert.equal(healthy.calls.length, 1);
+  await repos.close();
+});
