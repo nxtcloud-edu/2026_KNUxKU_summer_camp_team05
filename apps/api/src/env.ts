@@ -11,6 +11,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   API_HOST: z.string().default('127.0.0.1'),
   WEB_ORIGIN: z.string().default('http://localhost:5173'),
+  SESSION_SECRET: z.string().min(32).optional(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   DATABASE_URL: z.string().optional(),
   /** Redis 없이 로컬 화면 연동만 확인할 때 false로 둔다 */
@@ -22,6 +23,14 @@ const envSchema = z.object({
   OBJECTION_CAP_PER_ROOM: z.coerce.number().int().min(0).default(3),
   /** 1인 이의 제기 상한 */
   OBJECTION_CAP_PER_USER: z.coerce.number().int().min(0).default(1),
+}).superRefine((env, context) => {
+  if (env.NODE_ENV === 'production' && env.SESSION_SECRET === undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SESSION_SECRET'],
+      message: 'production에서는 32자 이상의 SESSION_SECRET이 필요합니다',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

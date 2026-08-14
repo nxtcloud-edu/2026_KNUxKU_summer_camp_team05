@@ -70,7 +70,11 @@ export async function registerObjectionRoutes(
    */
   app.post('/api/rooms/:roomId/objections/preview', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
-    const parsed = objectionRequestSchema.safeParse({ ...(request.body as object), roomId });
+    const parsed = objectionRequestSchema.safeParse({
+      ...(request.body as object),
+      roomId,
+      userId: currentUserId(request),
+    });
     if (!parsed.success) {
       return reply.status(400).send({ error: 'invalid_payload', issues: parsed.error.issues });
     }
@@ -89,7 +93,11 @@ export async function registerObjectionRoutes(
   /** 이의 접수. 승인이 필요하면 needs_approval로 남고 큐에 넣지 않는다. */
   app.post('/api/rooms/:roomId/objections', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
-    const parsed = objectionRequestSchema.safeParse({ ...(request.body as object), roomId });
+    const parsed = objectionRequestSchema.safeParse({
+      ...(request.body as object),
+      roomId,
+      userId: currentUserId(request),
+    });
     if (!parsed.success) {
       return reply.status(400).send({ error: 'invalid_payload', issues: parsed.error.issues });
     }

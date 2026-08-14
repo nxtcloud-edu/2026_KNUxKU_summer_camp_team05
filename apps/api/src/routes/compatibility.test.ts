@@ -83,11 +83,55 @@ test('Felicia Osaka destination id creates a room on the canonical jp-osaka Pack
   }
 });
 
+test('Production session rejects spoofing and unsafe cross-site writes', async () => {
+  const productionEnv = loadEnv({
+    NODE_ENV: 'production',
+    LOG_LEVEL: 'warn',
+    WEB_ORIGIN: 'https://moa.example',
+    SESSION_SECRET: '0123456789abcdef0123456789abcdef',
+    ENABLE_QUEUE: 'false',
+  });
+  const app = await buildServer(productionEnv, { repos: createMemoryRepositories() });
+  try {
+    const issued = await app.inject({ method: 'GET', url: '/api/session' });
+    const setCookie = issued.headers['set-cookie'];
+    assert.equal(typeof setCookie, 'string');
+    assert.match(setCookie as string, /HttpOnly/);
+    assert.match(setCookie as string, /SameSite=None/);
+    assert.match(setCookie as string, /Secure/);
+
+    const cookiePair = (setCookie as string).split(';')[0] as string;
+    const originalValue = decodeURIComponent(cookiePair.slice(cookiePair.indexOf('=') + 1));
+    const signature = originalValue.slice(originalValue.lastIndexOf('.'));
+    const tamperedCookie = `moa_uid=${encodeURIComponent(`u_spoofed${signature}`)}`;
+    const tampered = await app.inject({
+      method: 'GET',
+      url: '/api/session',
+      headers: { cookie: tamperedCookie, 'x-user-id': 'u_header_spoof' },
+    });
+    const tamperedUser = tampered.json<{ userId: string }>().userId;
+    assert.notEqual(tamperedUser, 'u_spoofed');
+    assert.notEqual(tamperedUser, 'u_header_spoof');
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/api/trip-rooms',
+      headers: { cookie: cookiePair, origin: 'https://evil.example' },
+      payload: { schemaVersion: 1, destinationId: 'osaka' },
+    });
+    assert.equal(blocked.statusCode, 403);
+    assert.equal(blocked.json<{ error: string }>().error, 'origin_not_allowed');
+  } finally {
+    await app.close();
+  }
+});
+
 test('Survey v4 routes reuse canonical final submission storage', async () => {
   const repos = createMemoryRepositories();
   const app = await buildServer(env, { repos });
   try {
     const room = await repos.rooms.create('jp-osaka');
+    await repos.members.join(room.roomId, 'host', 'host');
     const planResponse = await app.inject({ method: 'GET', url: '/api/survey-plans/jp-osaka' });
     assert.equal(planResponse.statusCode, 200);
     const plan = planResponse.json<{ planId: string; revision: string; schemaVersion: number }>();
@@ -175,22 +219,30 @@ test('Date Resolution reports missing evidence, offered choices, and a verified 
     await repos.members.join(room.roomId, 'host', 'host');
     await repos.members.join(room.roomId, 'guest');
 
-    const noPack = await app.inject({ method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution` });
+    const noPack = await app.inject({
+      method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(noPack.json<{ status: string }>().status, 'BLOCKED');
     assert.equal(noPack.json<{ reason: string }>().reason, 'destination_pack_not_found');
 
     await repos.packs.upsert(pack);
-    const pending = await app.inject({ method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution` });
+    const pending = await app.inject({
+      method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(pending.json<{ status: string }>().status, 'PROVISIONAL');
     assert.equal(pending.json<{ data: unknown }>().data, null);
 
     await repos.surveys.save(room.roomId, 'host', canonicalSurvey());
-    const partial = await app.inject({ method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution` });
+    const partial = await app.inject({
+      method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(partial.json<{ status: string }>().status, 'PROVISIONAL');
     assert.equal(partial.json<{ reason: string }>().reason, 'member_survey_evidence_incomplete');
 
     await repos.surveys.save(room.roomId, 'guest', canonicalSurvey());
-    const offered = await app.inject({ method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution` });
+    const offered = await app.inject({
+      method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(offered.statusCode, 200);
     const offeredBody = offered.json<{ status: string; data: { windows: Array<{ start: string; end: string }> } }>();
     assert.ok(['VERIFIED', 'NEEDS_USER_CHOICE'].includes(offeredBody.status));
@@ -217,7 +269,9 @@ test('Date Resolution reports missing evidence, offered choices, and a verified 
     assert.equal(choice.statusCode, 200, choice.body);
     assert.equal(choice.json<{ status: string }>().status, 'VERIFIED');
 
-    const persistedView = await app.inject({ method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution` });
+    const persistedView = await app.inject({
+      method: 'GET', url: `/api/rooms/${room.roomId}/date-resolution`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(persistedView.json<{ data: { chosen: { start: string } } }>().data.chosen.start, selected.start);
     assert.deepEqual((await repos.rooms.get(room.roomId))?.setting['canonicalDateChoice'], selected);
   } finally {
@@ -230,7 +284,14 @@ test('Canonical result routes preserve pending, partial, failed, and room-not-fo
   const app = await buildServer(env, { repos });
   try {
     const pendingRoom = await repos.rooms.create('jp-osaka');
-    const pending = await app.inject({ method: 'GET', url: `/api/rooms/${pendingRoom.roomId}/plan` });
+    await repos.members.join(pendingRoom.roomId, 'host', 'host');
+    const denied = await app.inject({
+      method: 'GET', url: `/api/rooms/${pendingRoom.roomId}/plan`, headers: { 'x-user-id': 'outsider' },
+    });
+    assert.equal(denied.statusCode, 403);
+    const pending = await app.inject({
+      method: 'GET', url: `/api/rooms/${pendingRoom.roomId}/plan`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(pending.statusCode, 200);
     assert.equal(pending.json<{ availability: string; data: unknown }>().availability, 'pending');
     assert.equal(pending.json<{ data: unknown }>().data, null);
@@ -238,15 +299,20 @@ test('Canonical result routes preserve pending, partial, failed, and room-not-fo
     const partialRun = 'run_partial';
     await repos.runs.start({ runId: partialRun, roomId: pendingRoom.roomId, trigger: 'host_start' });
     await repos.runs.finish(partialRun, 'COMPLETED');
-    const partial = await app.inject({ method: 'GET', url: `/api/rooms/${pendingRoom.roomId}/plan` });
+    const partial = await app.inject({
+      method: 'GET', url: `/api/rooms/${pendingRoom.roomId}/plan`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(partial.json<{ availability: string; data: unknown }>().availability, 'partial');
     assert.equal(partial.json<{ data: unknown }>().data, null);
 
     const failedRoom = await repos.rooms.create('jp-osaka');
+    await repos.members.join(failedRoom.roomId, 'host', 'host');
     const failedRun = 'run_failed';
     await repos.runs.start({ runId: failedRun, roomId: failedRoom.roomId, trigger: 'host_start' });
     await repos.runs.finish(failedRun, 'FAILED', 'provider evidence unavailable');
-    const failed = await app.inject({ method: 'GET', url: `/api/rooms/${failedRoom.roomId}/plan` });
+    const failed = await app.inject({
+      method: 'GET', url: `/api/rooms/${failedRoom.roomId}/plan`, headers: { 'x-user-id': 'host' },
+    });
     assert.equal(failed.json<{ availability: string }>().availability, 'failed');
     assert.match(failed.json<{ reason: string }>().reason, /provider evidence unavailable/);
 

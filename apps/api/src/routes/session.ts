@@ -1,6 +1,7 @@
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { SessionView } from '@tm/contracts';
+import type { Env } from '../env.js';
 
 /**
  * 간이 세션 — 사용자를 식별하는 최소 장치.
@@ -9,8 +10,8 @@ import type { SessionView } from '@tm/contracts';
  * 계속 의존하면 브라우저는 사용자를 기억하지 못하고, 초대 링크로 들어온 참여자가
  * 새로고침 한 번에 남이 된다. 그래서 **신원이 아니라 연속성**만 제공한다.
  *
- * 이것이 인증이 아니라는 점이 중요하다. 쿠키 값은 서명되지 않았고 위조할 수 있다.
- * 그러므로 **인증이 붙기 전까지 API를 외부에 노출하지 않는다** (development-and-deployment 7.6).
+ * 이것이 로그인 인증은 아니지만, 쿠키는 HMAC 서명되어 다른 사용자를 사칭할 수 없다.
+ * 방 접근 권한은 별도의 membership gate가 판정한다.
  *
  * 우선순위: `x-user-id` 헤더 > 쿠키 > 신규 발급
  * 헤더가 우선인 이유는 기존 스모크 스크립트와 워커 검증 경로를 깨지 않기 위해서다.
@@ -28,6 +29,26 @@ declare module 'fastify' {
 }
 
 const newUserId = (): string => `u_${randomBytes(9).toString('base64url')}`;
+const ephemeralSecret = randomBytes(32).toString('base64url');
+
+const signatureOf = (userId: string, secret: string): string =>
+  createHmac('sha256', secret).update(userId).digest('base64url');
+
+const signedCookie = (userId: string, secret: string): string =>
+  `${userId}.${signatureOf(userId, secret)}`;
+
+function verifiedUserId(value: string | null, secret: string): string | null {
+  if (value === null) return null;
+  const separator = value.lastIndexOf('.');
+  if (separator <= 0) return null;
+  const userId = value.slice(0, separator);
+  const supplied = value.slice(separator + 1);
+  const expected = signatureOf(userId, secret);
+  const suppliedBytes = Buffer.from(supplied);
+  const expectedBytes = Buffer.from(expected);
+  if (suppliedBytes.length !== expectedBytes.length) return null;
+  return timingSafeEqual(suppliedBytes, expectedBytes) ? userId : null;
+}
 
 /** 헤더 문자열에서 쿠키 하나를 꺼낸다. 의존성을 늘리지 않으려고 직접 파싱한다 */
 function readCookie(header: string | undefined, name: string): string | null {
@@ -48,16 +69,17 @@ function readCookie(header: string | undefined, name: string): string | null {
  */
 export const currentUserId = (request: FastifyRequest): string => request.userId;
 
-export async function registerSession(app: FastifyInstance): Promise<void> {
+export async function registerSession(app: FastifyInstance, env: Env): Promise<void> {
+  const secret = env.SESSION_SECRET ?? ephemeralSecret;
   // 기본값이 있어야 Fastify가 요청 객체 shape를 미리 잡는다.
   app.decorateRequest('userId', '');
 
   app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     const fromHeader = request.headers['x-user-id'];
     const header = typeof fromHeader === 'string' && fromHeader.length > 0 ? fromHeader : null;
-    const cookie = readCookie(request.headers.cookie, COOKIE_NAME);
+    const cookie = verifiedUserId(readCookie(request.headers.cookie, COOKIE_NAME), secret);
 
-    if (header !== null) {
+    if (header !== null && env.NODE_ENV !== 'production') {
       // 스크립트·테스트 경로. 쿠키를 덮어쓰지 않는다.
       request.userId = header;
       return;
@@ -69,11 +91,10 @@ export async function registerSession(app: FastifyInstance): Promise<void> {
 
     const issued = newUserId();
     request.userId = issued;
-    // SameSite=Lax로 충분하다. localhost:5173 → localhost:3001은 포트만 다르므로
-    // 교차 사이트가 아니다(사이트는 등록 가능 도메인 기준). Secure는 배포에서 붙인다.
+    const crossSite = env.NODE_ENV === 'production';
     reply.header(
       'Set-Cookie',
-      `${COOKIE_NAME}=${encodeURIComponent(issued)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE_SEC}`,
+      `${COOKIE_NAME}=${encodeURIComponent(signedCookie(issued, secret))}; Path=/; HttpOnly; SameSite=${crossSite ? 'None' : 'Lax'}; Max-Age=${MAX_AGE_SEC}${crossSite ? '; Secure' : ''}`,
     );
   });
 
@@ -82,7 +103,6 @@ export async function registerSession(app: FastifyInstance): Promise<void> {
     '/api/session',
     async (request): Promise<SessionView> => ({
       userId: currentUserId(request),
-      // 이것은 인증이 아니다. 프론트가 이 값을 권한 판단에 쓰면 안 된다.
       authenticated: false,
     }),
   );

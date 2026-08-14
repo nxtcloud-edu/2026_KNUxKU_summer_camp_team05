@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { ObjectionRecord, ObjectionRequest, RoundId, SurveySubmission } from '@tm/contracts';
 import { roundRowId } from './ports.js';
 import type {
@@ -52,6 +53,7 @@ export function createMemoryRepositories(): Repositories {
     sequence += 1;
     return `${prefix}_${Date.now().toString(36)}${sequence.toString(36)}`;
   };
+  const nextRoomId = (): string => `rm_${randomBytes(18).toString('base64url')}`;
 
   const rooms = new Map<string, RoomRow>();
   const surveys = new Map<string, SurveyRow>();
@@ -60,7 +62,7 @@ export function createMemoryRepositories(): Repositories {
   const roomRepo: RoomRepository = {
     async create(packId, setting = {}) {
       const room: RoomRow = {
-        roomId: nextId('rm'),
+        roomId: nextRoomId(),
         packId,
         status: 'COLLECTING',
         setting,

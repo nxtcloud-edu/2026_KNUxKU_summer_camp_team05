@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type {
   DestinationPack,
   ObjectionRecord,
@@ -73,6 +74,7 @@ const nextId = (prefix: string): string => {
   sequence += 1;
   return `${prefix}_${Date.now().toString(36)}${sequence.toString(36)}`;
 };
+const nextRoomId = (): string => `rm_${randomBytes(18).toString('base64url')}`;
 
 /**
  * 실행 결과에서 완료 라운드와 예약 잠금 노드를 읽는다.
@@ -104,7 +106,7 @@ async function loadRunFacts(
 export function createPostgresRepositories(): Repositories {
   const rooms: RoomRepository = {
     async create(packId, setting = {}) {
-      const id = nextId('rm');
+      const id = nextRoomId();
       const row = await queryOne<RoomDbRow>(
         `INSERT INTO rooms (id, pack_id, setting) VALUES ($1, $2, $3::jsonb)
          RETURNING id, pack_id, status, setting, deadline_at, created_at`,

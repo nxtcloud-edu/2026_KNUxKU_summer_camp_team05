@@ -3,7 +3,7 @@ import { apiBaseUrl } from './dataMode'
 /**
  * The single place the browser is allowed to talk to the network from.
  *
- * `credentials: 'include'` is required: the backend issues an unsigned
+ * `credentials: 'include'` is required: the backend issues a signed
  * continuity cookie (`moa_uid`) in `apps/api/src/routes/session.ts`, and a
  * participant who loses it becomes a different person on refresh.
  */

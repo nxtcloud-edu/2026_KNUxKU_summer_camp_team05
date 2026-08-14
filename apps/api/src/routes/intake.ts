@@ -33,7 +33,9 @@ async function persistSurvey(
   if ((await repos.rooms.get(roomId)) === undefined) return { error: 'room_not_found' as const };
 
   const userId = currentUserId(request);
-  await repos.members.join(roomId, userId);
+  if ((await repos.members.get(roomId, userId)) === undefined) {
+    return { error: 'room_access_denied' as const };
+  }
   const saved = await repos.surveys.save(roomId, userId, submission);
   if (saved.allergens.length > 0) {
     app.log.info(
@@ -97,8 +99,13 @@ export async function registerIntakeRoutes(
     }
     const issues = validateV4AgainstPlan(parsed.data);
     if (issues.length > 0) return reply.status(400).send({ error: 'invalid_survey_v4', issues });
-    if (parsed.data.tripRoomId !== null && (await repos.rooms.get(parsed.data.tripRoomId)) === undefined) {
-      return reply.status(404).send({ error: 'room_not_found' });
+    if (parsed.data.tripRoomId !== null) {
+      if ((await repos.rooms.get(parsed.data.tripRoomId)) === undefined) {
+        return reply.status(404).send({ error: 'room_not_found' });
+      }
+      if ((await repos.members.get(parsed.data.tripRoomId, currentUserId(request))) === undefined) {
+        return reply.status(403).send({ error: 'room_access_denied' });
+      }
     }
 
     progress.set(planId, currentUserId(request), parsed.data);
@@ -129,7 +136,10 @@ export async function registerIntakeRoutes(
       }
       const persisted = await persistSurvey(app, repos, request, roomId, canonical.data);
       if ('error' in persisted) {
-        return reply.status(persisted.error === 'room_not_found' ? 404 : 400).send({ error: persisted.error });
+        const status = persisted.error === 'room_not_found'
+          ? 404
+          : persisted.error === 'room_access_denied' ? 403 : 400;
+        return reply.status(status).send({ error: persisted.error });
       }
       progress.set(submission.planId, currentUserId(request), submission);
       return reply.status(201).send({
@@ -146,7 +156,10 @@ export async function registerIntakeRoutes(
     const roomId = String(request.headers['x-room-id'] ?? '');
     const persisted = await persistSurvey(app, repos, request, roomId, parsed.data);
     if ('error' in persisted) {
-      return reply.status(persisted.error === 'room_not_found' ? 404 : 400).send({ error: persisted.error });
+      const status = persisted.error === 'room_not_found'
+        ? 404
+        : persisted.error === 'room_access_denied' ? 403 : 400;
+      return reply.status(status).send({ error: persisted.error });
     }
     return reply.status(201).send({
       surveyId: persisted.saved.surveyId,

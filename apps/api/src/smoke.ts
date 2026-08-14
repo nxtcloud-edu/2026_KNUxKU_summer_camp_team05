@@ -129,7 +129,9 @@ async function run(app: FastifyInstance, repos: Repositories): Promise<void> {
 
   console.log('결과 조회 — 회의 전');
 
-  const progress = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/progress` });
+  const progress = await app.inject({
+    method: 'GET', url: `/api/rooms/${roomId}/progress`, headers: { cookie: cookie as string },
+  });
   check('GET /progress → 200', progress.statusCode === 200, progress.body);
   const progressBody = progress.json<RoomProgress>();
   check('회의 전에는 runId가 null이다', progressBody.runId === null);
@@ -138,7 +140,9 @@ async function run(app: FastifyInstance, repos: Repositories): Promise<void> {
   check('방 상태를 그대로 싣는다', progressBody.roomStatus === 'COLLECTING', progressBody.roomStatus);
 
   for (const path of ['plan', 'transcript', 'fairness']) {
-    const response = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/${path}` });
+    const response = await app.inject({
+      method: 'GET', url: `/api/rooms/${roomId}/${path}`, headers: { cookie: cookie as string },
+    });
     check(`GET /${path} → 200`, response.statusCode === 200, response.body);
     const body = response.json<ResultEnvelope<PlanResult | TranscriptView | FairnessView>>();
     check(`/${path}: 없는 결과를 지어내지 않는다 (data=null)`, body.data === null, body.data);
@@ -166,7 +170,9 @@ async function run(app: FastifyInstance, repos: Repositories): Promise<void> {
     phase: 'SOURCING',
   });
 
-  const running = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/progress` });
+  const running = await app.inject({
+    method: 'GET', url: `/api/rooms/${roomId}/progress`, headers: { cookie: cookie as string },
+  });
   const runningBody = running.json<RoomProgress>();
   check('최신 run을 찾는다 (latestByRoom)', runningBody.runId === runId, runningBody.runId);
   check('run 상태가 RUNNING이다', runningBody.runStatus === 'RUNNING', runningBody.runStatus);
@@ -176,7 +182,9 @@ async function run(app: FastifyInstance, repos: Repositories): Promise<void> {
   check('SETTLED만 완료로 센다 → 1/8 = 13%', runningBody.percent === 13, runningBody.percent);
   check('진행 중에는 실패 사유가 없다', runningBody.failureReason === null);
 
-  const runningPlan = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/plan` });
+  const runningPlan = await app.inject({
+    method: 'GET', url: `/api/rooms/${roomId}/plan`, headers: { cookie: cookie as string },
+  });
   check(
     '진행 중 계획서는 running으로 표시한다',
     runningPlan.json<ResultEnvelope<PlanResult>>().availability === 'running',
@@ -186,13 +194,17 @@ async function run(app: FastifyInstance, repos: Repositories): Promise<void> {
   console.log('결과 조회 — run이 실패했을 때');
 
   await repos.runs.finish(runId, 'FAILED', '심판 에이전트가 아직 없어 후보를 조달하지 못했습니다');
-  const failed = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/progress` });
+  const failed = await app.inject({
+    method: 'GET', url: `/api/rooms/${roomId}/progress`, headers: { cookie: cookie as string },
+  });
   const failedBody = failed.json<RoomProgress>();
   check('실패 사유를 숨기지 않는다 (failureReason)', failedBody.failureReason !== null, failedBody);
   check('run 상태가 FAILED다', failedBody.runStatus === 'FAILED', failedBody.runStatus);
   check('종료 시각이 남는다', failedBody.finishedAt !== null);
 
-  const failedPlan = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/plan` });
+  const failedPlan = await app.inject({
+    method: 'GET', url: `/api/rooms/${roomId}/plan`, headers: { cookie: cookie as string },
+  });
   const failedPlanBody = failedPlan.json<ResultEnvelope<PlanResult>>();
   check('실패한 run의 계획서는 failed다', failedPlanBody.availability === 'failed', failedPlanBody);
   check(

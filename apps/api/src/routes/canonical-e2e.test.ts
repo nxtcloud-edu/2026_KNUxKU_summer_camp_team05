@@ -104,6 +104,7 @@ test('Felicia API mode reaches the canonical Worker result and replay surfaces',
     const dateResponse = await app.inject({
       method: 'GET',
       url: `/api/rooms/${roomId}/date-resolution`,
+      headers: { 'x-user-id': 'u1' },
     });
     assert.equal(dateResponse.statusCode, 200, dateResponse.body);
     const dateResolution = dateResponse.json<{
@@ -140,12 +141,16 @@ test('Felicia API mode reaches the canonical Worker result and replay surfaces',
     assert.equal(result.resultStatus, 'BLOCKED');
     assert.equal(result.failure?.stage, 'FACT_CONSTRAINT_VALIDATION');
 
-    const progress = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/progress` });
+    const progress = await app.inject({
+      method: 'GET', url: `/api/rooms/${roomId}/progress`, headers: { 'x-user-id': 'u1' },
+    });
     assert.equal(progress.statusCode, 200, progress.body);
     assert.equal(progress.json<{ percent: number; runStatus: string }>().percent, 100);
     assert.equal(progress.json<{ runStatus: string }>().runStatus, 'COMPLETED');
 
-    const plan = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/plan` });
+    const plan = await app.inject({
+      method: 'GET', url: `/api/rooms/${roomId}/plan`, headers: { 'x-user-id': 'u1' },
+    });
     assert.equal(plan.statusCode, 200, plan.body);
     const planBody = plan.json<{
       availability: string;
@@ -156,7 +161,9 @@ test('Felicia API mode reaches the canonical Worker result and replay surfaces',
     assert.equal(planStatusFromBadge(planBody.data.badge, planBody.data.blockers.length), 'BLOCKED');
     assert.doesNotMatch(plan.body, /BOOKABLE|BOOKED/);
 
-    const transcript = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/transcript` });
+    const transcript = await app.inject({
+      method: 'GET', url: `/api/rooms/${roomId}/transcript`, headers: { 'x-user-id': 'u1' },
+    });
     assert.equal(transcript.statusCode, 200, transcript.body);
     assert.equal(transcript.json<{ availability: string }>().availability, 'ready');
     assert.match(transcript.body, /canonical-worker/);
