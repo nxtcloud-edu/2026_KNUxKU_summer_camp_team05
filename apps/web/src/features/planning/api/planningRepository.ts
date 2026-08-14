@@ -89,6 +89,14 @@ const triggerRejectionMessages: Record<string, string> = {
   not_enough_attendees: '회의에 설 수 있는 참여자가 부족해요.',
 }
 
+/**
+ * The queue is off (`ENABLE_QUEUE=false`) or Redis is unreachable. The API
+ * answers 503 and deliberately does not move the room to QUEUED, so the screen
+ * must not show a room that is waiting for a result nobody will produce.
+ */
+const queueOfflineMessage =
+  '회의가 큐에 등록되지 않았어요. 워커 큐가 꺼져 있으면(ENABLE_QUEUE=false) 결과가 만들어지지 않아요.'
+
 /** Round groups as the backend numbers them (packages/contracts/src/rounds.ts). */
 const roundGroups: Array<{ id: string; label: string; roundIds: string[] }> = [
   { id: 'prep', label: '회의 순서 정리', roundIds: ['r_0'] },
@@ -229,6 +237,21 @@ export function progressToSnapshot(progress: RoomProgressResponse): PlanningSnap
   }
 }
 
+/** Nothing is known yet. Used only to carry a failure reason to the screen. */
+const emptySnapshot = (): PlanningSnapshot => ({
+  source: 'live',
+  roomStatus: null,
+  runId: null,
+  runStatus: null,
+  percent: 0,
+  steps: roundGroups.map((group) => ({ id: group.id, label: group.label, state: 'pending' })),
+  failureReason: null,
+  pendingApprovals: 0,
+  finished: false,
+  startedAt: null,
+  finishedAt: null,
+})
+
 export class ApiPlanningRepository implements PlanningRepository {
   /**
    * The backend has no date-candidate endpoint yet, so this reads the range the
@@ -298,13 +321,26 @@ export class ApiPlanningRepository implements PlanningRepository {
     }
 
     try {
-      await requestJson<StartRunResponse>(`/api/rooms/${encodeURIComponent(roomId)}/start`, {
+      const started = await requestJson<StartRunResponse>(`/api/rooms/${encodeURIComponent(roomId)}/start`, {
         method: 'POST',
         body: { trigger: chosen },
       })
+      // 202 with enqueued=false should not happen, but if it does the room is
+      // not waiting for anything and must not look like it is.
+      if (!started.enqueued) {
+        const snapshot = await this.getProgress(roomId)
+        return { ...(snapshot ?? emptySnapshot()), failureReason: queueOfflineMessage }
+      }
     } catch (error) {
+      if (!(error instanceof ApiError)) throw error
+      // 503: the API accepted the request but the job never reached the queue
+      // (ENABLE_QUEUE=false, or Redis is down). Waiting for a result is futile.
+      if (error.status === 503) {
+        const snapshot = await this.getProgress(roomId)
+        return { ...(snapshot ?? emptySnapshot()), failureReason: queueOfflineMessage }
+      }
       // 409 carries the rejection reason (survey incomplete, persona unconfirmed…).
-      if (!(error instanceof ApiError) || error.status !== 409) throw error
+      if (error.status !== 409) throw error
       const snapshot = await this.getProgress(roomId)
       if (snapshot) return { ...snapshot, failureReason: error.message }
       throw error
