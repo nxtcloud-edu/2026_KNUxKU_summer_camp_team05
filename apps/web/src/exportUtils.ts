@@ -1,4 +1,4 @@
-import { itineraryDays } from './data'
+import type { TripDay } from './travel/models'
 
 export async function copyText(value:string) {
   if (navigator.clipboard?.writeText) {
@@ -25,16 +25,15 @@ export async function shareTrip(url:string) {
 }
 
 const pad = (value:number) => String(value).padStart(2,'0')
-const formatIcsDate = (date:Date) => `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`
 const escapeIcs = (value:string) => value.replace(/\\/g,'\\\\').replace(/,/g,'\\,').replace(/;/g,'\\;').replace(/\n/g,'\\n')
 
-export function downloadTripCalendar() {
-  const tripStart = new Date(2026, 9, 15)
-  const events = itineraryDays.flatMap((day, dayIndex) => day.items.map(([time,title,meta], itemIndex) => {
-    const [hours,minutes] = time.split(':').map(Number)
-    const start = new Date(tripStart.getFullYear(), tripStart.getMonth(), tripStart.getDate() + dayIndex, hours, minutes)
-    const end = new Date(start.getTime() + 60 * 60 * 1000)
-    return ['BEGIN:VEVENT',`UID:moa-${dayIndex}-${itemIndex}@moa.travel`,`DTSTAMP:${formatIcsDate(new Date())}`,`DTSTART:${formatIcsDate(start)}`,`DTEND:${formatIcsDate(end)}`,`SUMMARY:${escapeIcs(title)}`,`LOCATION:${escapeIcs(title)}`,`DESCRIPTION:${escapeIcs(meta)}`,'END:VEVENT'].join('\r\n')
+export function downloadTripCalendar(days: TripDay[]) {
+  const events = days.flatMap((day) => day.events.map((event, itemIndex) => {
+    const localStart = `${day.dateIso.replaceAll('-', '')}T${event.time.replace(':', '')}00`
+    const [hours, minutes] = event.time.split(':').map(Number)
+    const endMinutes = (hours * 60 + minutes + 60) % (24 * 60)
+    const localEnd = `${day.dateIso.replaceAll('-', '')}T${pad(Math.floor(endMinutes / 60))}${pad(endMinutes % 60)}00`
+    return ['BEGIN:VEVENT',`UID:moa-${day.id}-${itemIndex}@moa.travel`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}`,`DTSTART;TZID=Asia/Tokyo:${localStart}`,`DTEND;TZID=Asia/Tokyo:${localEnd}`,`SUMMARY:${escapeIcs(event.title)}`,`LOCATION:${escapeIcs(event.title)}`,`DESCRIPTION:${escapeIcs(event.detail ?? '')}`,'END:VEVENT'].join('\r\n')
   }))
   const content = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//MOA//Group Travel Plan//KO','CALSCALE:GREGORIAN','METHOD:PUBLISH',...events,'END:VCALENDAR'].join('\r\n')
   const blob = new Blob([content], { type:'text/calendar;charset=utf-8' })
