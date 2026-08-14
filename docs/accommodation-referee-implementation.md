@@ -530,7 +530,7 @@ Sat(i, c) 의 comfortFit 항목에 배정 결과를 반영:
 | `dormitory` 불가 | `excludeTypes: ["dormitory"]` | 도미토리 실격 |
 | 흡연실 불가 | `requiredAmenities: ["no_smoking"]` | 금연 불가 시설 실격 |
 | 남녀 혼숙 불가 | 배정 알고리즘 제약 | 배정 불가능한 객실 구성 실격 |
-| 휠체어 / 유아차 | `requiredAmenities: ["wheelchair"]` or `["elevator"]` | 미충족 실격 |
+| 휠체어 / 유모차 | `requiredAmenities: ["wheelchair"]` or `["elevator"]` | 미충족 실격 |
 | 계단 불가 | `stepFree` 필수 | 엘리베이터 없는 시설 실격 |
 | 예산 상한 | `maxPricePerPersonPerNight` | `effectiveLodgingCost` 초과 실격 |
 | 주차 필수 (제주·강릉 자차) | `requiredAmenities: ["parking"]` | 미충족 실격 |

@@ -75,6 +75,33 @@ export const planningNodeSchema = z.object({
 
 export type PlanningNode = z.infer<typeof planningNodeSchema>;
 
+export const allowedNodeStatusTransitions: Record<NodeStatus, readonly NodeStatus[]> = {
+  PROVISIONAL: ['VERIFIED', 'BLOCKED', 'STALE', 'FAILED'],
+  VERIFIED: ['BOOKABLE', 'BLOCKED', 'STALE', 'FAILED'],
+  BOOKABLE: ['BOOKED', 'PROVISIONAL', 'BLOCKED', 'STALE', 'FAILED'],
+  BOOKED: ['STALE', 'FAILED'],
+  BLOCKED: ['PROVISIONAL', 'STALE', 'FAILED'],
+  STALE: ['PROVISIONAL', 'VERIFIED', 'BLOCKED', 'FAILED'],
+  FAILED: ['PROVISIONAL'],
+};
+
+/** 저장 직전 호출하는 결정론적 상태 전이 가드. 잠긴 노드는 BOOKED 외 자동 승격할 수 없다. */
+export function assertPlanningNodeTransition(previous: PlanningNode, next: PlanningNode): void {
+  const safePrevious = planningNodeSchema.parse(previous);
+  const safeNext = planningNodeSchema.parse(next);
+  if (safePrevious.nodeId !== safeNext.nodeId) throw new Error('nodeId가 다른 상태 전이는 허용되지 않습니다.');
+  if (safeNext.version !== safePrevious.version + 1) throw new Error('계획 노드 version은 정확히 1 증가해야 합니다.');
+  if (!allowedNodeStatusTransitions[safePrevious.status].includes(safeNext.status)) {
+    throw new Error(safePrevious.status + ' → ' + safeNext.status + ' 전이는 허용되지 않습니다.');
+  }
+  if (safePrevious.locked && safeNext.status !== 'BOOKED' && safeNext.status !== 'STALE') {
+    throw new Error('잠긴 노드는 BOOKED 또는 STALE 이외 상태로 자동 전이할 수 없습니다.');
+  }
+  if (safeNext.status === 'BOOKABLE' && safeNext.confidence !== 'live') {
+    throw new Error('BOOKABLE 노드는 live confidence가 필요합니다.');
+  }
+}
+
 /**
  * 노드 의존성. 상위 노드가 바뀌면 하위 노드는 삭제되지 않고 STALE로 전환된다.
  * 근거: agent-architecture.md 5.1 / 5.2

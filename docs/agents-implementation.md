@@ -82,6 +82,10 @@ sequenceDiagram
 
 `run_demo_debate()`는 빠른 fixture 검증용이다. 실제 실행은 Worker가 Gateway를 통해 같은 순서를 수행하고, `REQUEST_REBUTTAL`·`PROPOSE_COMPROMISE`·`CALL_VOTE`는 최대 3회 안에서 다음 iteration으로 넘긴다. 운영 순서의 권위 문서는 [Agent 아키텍처](agent-architecture.md)다.
 
+현재 로컬 Worker는 Candidate Search의 QueryPlan을 안전성 검사한 뒤 **preloaded 정규화 PlanOption 집합**에 연결한다. QueryPlan을 실제 Provider에 실행하는 `packages/data-gateway`는 아직 미구현이므로 이 모드는 `PRELOADED_NORMALIZED_OPTIONS`로 결과에 기록한다. Provider 연결 전 로컬 결과를 실시간 검색 결과로 해석하면 안 된다. 각 iteration은 동일 안을 반복하지 않고, VERIFIED·fresh·hard-safe 계획을 최저 만족도 우선(leximin), 비용, 이동시간, canonical ID 순으로 평가한다.
+
+Logic Auditor는 표시용 자연어 문장만 파싱하지 않는다. `claimedParticipantId + claimedProposalId + claimedDecision` 구조화 claim을 같은 라운드의 `expectedVotes`와 대조하고, premise fact가 참조한 evidence가 주장 evidence에 포함되는지도 검사한다. Finalizer 입력·출력은 선택 계획의 proposal, 전체 candidate 집합, 참가자별 만족도, VERIFIED evidence에 묶이며 다른 후보를 추가하거나 선택 후보를 누락하면 Worker가 실패 처리한다.
+
 ## 4. 로컬 실행
 
 ```powershell

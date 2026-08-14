@@ -8,8 +8,9 @@ import {
   Warning, X,
 } from '@phosphor-icons/react'
 import {
-  bookingChecklistItems, budget, destinationPacks, itineraryDays, meetingRounds, osakaPreferences,
-  planReadiness, preferenceSliders, replayMessages, reservations, roomMembers, type DestinationPack,
+  bookingChecklistItems, budget, destinationPacks, getDestinationPreferences, itineraryDays, meetingRounds,
+  planReadiness, preferenceQuestions, replayMessages, reservations, roomMembers, type DestinationPack,
+  type ActivityPreference,
 } from './data'
 import {
   createEmptySurveyDraft, createRoomSubmissionPayload, createSurveySubmissionPayload,
@@ -48,26 +49,57 @@ function initialResultTab(): ResultTab {
   return queryTab && resultTabs.includes(queryTab) ? queryTab : 'summary'
 }
 
+const legacyStyleKeyByCanonical: Record<string, string> = {
+  PACE: 'pace', PLANNING: 'planning', NATURE_VS_CITY: 'atmosphere',
+  HISTORY_VS_TREND: 'place-style', LOCAL_VS_PROVEN_DINING: 'food-style',
+  TOGETHERNESS: 'togetherness', DAILY_RHYTHM: 'daily-rhythm',
+  EVENING_STYLE: 'evening-style', TRANSPORT_STYLE: 'transport-style',
+  PHOTO_PRIORITY: 'photo-priority', ACTIVITY_RISK: 'activity-level',
+}
+
+function normalizeTravelStyle(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  if (value <= 3) return 1
+  if (value <= 5) return 4
+  return 7
+}
+
+function normalizeActivityScore(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  if (value <= 4) return 1
+  if (value <= 8) return 5
+  return 10
+}
+
 function initialSurvey(): SurveyDraft {
-  const empty = createEmptySurveyDraft(preferenceSliders.map(({ id }) => id),osakaPreferences.map(({ id }) => id))
+  const empty = createEmptySurveyDraft(
+    preferenceQuestions.map(({ id }) => id),
+    getDestinationPreferences('osaka').map(({ id }) => id),
+  )
   const saved = localStorage.getItem('moa-survey-draft')
   if (!saved) return empty
   try {
     const parsed = JSON.parse(saved) as Partial<SurveyDraft> & { mustDo?: unknown }
     const travelStyles = Object.fromEntries(
-      Object.keys(empty.travelStyles).map((id) => [id, parsed.travelStyles?.[id] ?? null]),
+      Object.keys(empty.travelStyles).map((id) => [
+        id,
+        normalizeTravelStyle(parsed.travelStyles?.[id] ?? parsed.travelStyles?.[legacyStyleKeyByCanonical[id] ?? '']),
+      ]),
     )
     const legacyPurpose = typeof parsed.mustDo === 'string' ? parsed.mustDo : ''
     const purposeItems = Array.isArray(parsed.purposeItems)
       ? [String(parsed.purposeItems[0] ?? ''), String(parsed.purposeItems[1] ?? '')]
       : [legacyPurpose, '']
+    const activityScores = Object.fromEntries(
+      Object.keys(empty.activityScores).map((id) => [id, normalizeActivityScore(parsed.activityScores?.[id])]),
+    )
     return {
       ...empty,
       ...parsed,
       availability:{...empty.availability,...parsed.availability},
       hardConstraints:{...empty.hardConstraints,...parsed.hardConstraints},
       travelStyles,
-      activityScores:{...empty.activityScores,...parsed.activityScores},
+      activityScores,
       purposeItems,
     }
   } catch { return empty }
@@ -81,6 +113,7 @@ const stageNav: Record<Stage, string> = {
 function App() {
   const [stage, setStage] = useState<Stage>(initialStage)
   const [selected, setSelected] = useState<DestinationPack>(destinationPacks.find((d) => d.id === 'osaka')!)
+  const activityPreferences = getDestinationPreferences(selected.id)
   const [cardIndex, setCardIndex] = useState(0)
   const [survey, setSurvey] = useState<SurveyDraft>(initialSurvey)
   const [tab, setTab] = useState<ResultTab>(initialResultTab)
@@ -126,6 +159,16 @@ function App() {
       setToast('답변을 저장하지 못했어요. 다시 시도해주세요.')
     }
   }
+  const selectDestination = (destination: DestinationPack) => {
+    setSelected(destination)
+    setCardIndex(0)
+    setSurvey((old) => ({
+      ...old,
+      activityScores: Object.fromEntries(
+        getDestinationPreferences(destination.id).map(({ id }) => [id, null]),
+      ),
+    }))
+  }
 
   return <div className="moa-app">
     {stage !== 'landing' && <Header stage={stage} home={() => go('home')} room={() => go(stage === 'home' ? 'destinations' : 'lobby')} profile={() => setProfileOpen(true)} />}
@@ -133,17 +176,17 @@ function App() {
       <motion.main key={stage} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: .25 }}>
         {stage === 'landing' && <Landing create={() => go('destinations')} join={() => go('lobby')} intro={() => setLandingModal('intro')} how={() => setLandingModal('how')} login={() => setLandingModal('login')} />}
         {stage === 'home' && <Home create={() => go('destinations')} openTrip={go} about={() => go('landing')} />}
-        {stage === 'destinations' && <DestinationPicker selected={selected} select={setSelected} next={() => go('create')} request={() => setDestinationRequestOpen(true)} />}
+        {stage === 'destinations' && <DestinationPicker selected={selected} select={selectDestination} next={() => go('create')} request={() => setDestinationRequestOpen(true)} />}
         {stage === 'create' && <CreateRoom destination={selected} back={() => go('destinations')} next={() => go('invite')} />}
         {stage === 'invite' && <InviteSuccess next={() => go('lobby')} copy={copyInvitation} share={shareInvitation} />}
         {stage === 'lobby' && <Lobby start={() => go('availability')} startPlanning={() => go('date-conflict')} copy={copyInvitation} share={shareInvitation} nudge={() => setToast('서연님에게 확인 요청을 보냈어요')} personaConfirmed={personaConfirmed} />}
         {stage === 'availability' && <AvailabilitySurvey value={survey.availability} change={(availability) => setSurvey((old) => ({ ...old, availability }))} next={() => go('hard')} />}
         {stage === 'hard' && <HardSurvey value={survey.hardConstraints} change={(hardConstraints) => setSurvey((old) => ({ ...old, hardConstraints }))} next={() => go('sliders')} />}
         {stage === 'sliders' && <SliderSurvey values={survey.travelStyles} change={(id, value) => setSurvey((old) => ({ ...old, travelStyles: { ...old.travelStyles, [id]: value } }))} next={() => go('cards')} />}
-        {stage === 'cards' && <CardSurvey index={cardIndex} scores={survey.activityScores} setScore={(id, score) => setSurvey((old) => ({ ...old, activityScores: { ...old.activityScores, [id]: score } }))} back={() => setCardIndex((i) => Math.max(0, i - 1))} next={() => cardIndex < osakaPreferences.length - 1 ? setCardIndex((i) => i + 1) : go('free')} />}
+        {stage === 'cards' && <CardSurvey destinationName={selected.name} items={activityPreferences} index={cardIndex} scores={survey.activityScores} setScore={(id, score) => setSurvey((old) => ({ ...old, activityScores: { ...old.activityScores, [id]: score } }))} back={() => setCardIndex((i) => Math.max(0, i - 1))} next={() => cardIndex < activityPreferences.length - 1 ? setCardIndex((i) => i + 1) : go('free')} />}
         {stage === 'free' && <FreeSurvey purposeItems={survey.purposeItems} avoid={survey.avoid} changePurposes={(purposeItems) => setSurvey((old) => ({ ...old, purposeItems }))} changeAvoid={(avoid) => setSurvey((old) => ({ ...old, avoid }))} next={submitSurvey} />}
         {stage === 'persona-loading' && <PersonaLoading next={() => go('persona')} />}
-        {stage === 'persona' && <Persona survey={survey} confirm={() => { setPersonaConfirmed(true); go('submitted') }} edit={() => go('availability')} />}
+        {stage === 'persona' && <Persona survey={survey} preferences={activityPreferences} confirm={() => { setPersonaConfirmed(true); go('submitted') }} edit={() => go('availability')} />}
         {stage === 'submitted' && <Submitted next={() => go('running')} room={() => go('lobby')} />}
         {stage === 'date-conflict' && <DateConflict back={() => go('lobby')} select={(optionId) => { sessionStorage.setItem('moa-date-resolution', optionId); go('running') }} extend={() => { setToast('응답 마감을 24시간 연장했어요'); go('lobby') }} />}
         {stage === 'running' && <MeetingRunning next={() => go('complete')} later={() => go('home')} />}
@@ -306,28 +349,33 @@ function HardSurvey({ value, change, next }: { value: HardConstraintDraft; chang
     set('dietary', next.includes(item) ? next.filter((x) => x !== item) : [...next, item])
   }
   const incomplete = !value.budgetLimit.trim() || value.dietary.length === 0 || value.walkingDistanceKm === null
-  return <SurveyShell step={1} time="6분" title="이건 진짜 안 돼요." copy="여기서 고른 건 대리인이 절대 양보하지 않아요." next={next} disabled={incomplete}><div className="moa-hard-grid"><SurveyCard icon={Coins} title="예산"><label className="moa-field">1인 총예산 상한<div className="moa-money"><b>₩</b><input name="budgetLimit" inputMode="numeric" value={value.budgetLimit} onChange={(e) => set('budgetLimit', e.target.value)} placeholder="금액 입력" /><span>원</span></div></label><label className="moa-switch"><input name="includesFlight" type="checkbox" checked={value.includesFlight} onChange={(e) => set('includesFlight', e.target.checked)} /><span /> 항공 포함</label></SurveyCard><SurveyCard icon={ForkKnife} title="먹는 것"><ChipGroup items={[...dietaryOptions]} selected={value.dietary} select={toggleDietary} plus /></SurveyCard><SurveyCard icon={Warning} title="알레르기"><p className="moa-card-note">해당되는 것을 모두 골라주세요. 목록에 없으면 직접 추가할 수 있어요. 알레르기는 어떤 경우에도 양보하지 않고, 대응을 확인하지 못한 식당은 후보에서 제외해요.</p><ChipGroup items={[...allergenOptions]} selected={value.allergies} select={(item) => toggle('allergies', item)} plus /></SurveyCard><SurveyCard icon={ShieldCheck} title="생활 · 신념"><ChipGroup items={['기도 시간 필요','음주 일정 제외','동물 체험 제외']} selected={value.beliefs} select={(item) => toggle('beliefs', item)} plus /></SurveyCard><SurveyCard icon={SuitcaseRolling} title="체력 · 이동"><label className={`moa-field moa-unanswered-range ${value.walkingDistanceKm === null ? 'unanswered' : ''}`}>하루에 얼마나 걸을 수 있나요?<input name="walkingDistanceKm" type="range" min="1" max="15" value={value.walkingDistanceKm ?? 8} onChange={(e) => set('walkingDistanceKm', Number(e.target.value))} /><div className="moa-range-label"><span>1km</span><strong>{value.walkingDistanceKm === null ? '선택 안 함' : `${value.walkingDistanceKm}km`}</strong><span>15km</span></div></label><ChipGroup items={['계단·경사 어려움','휠체어','유아차']} selected={value.mobilityNeeds} select={(item) => toggle('mobilityNeeds', item)} /></SurveyCard></div><SurveyCard icon={LockKey} title="절대 안 돼요" full><ChipGroup items={['새벽 비행','도미토리','남녀 혼숙','날것','놀이기구','장시간 버스','흡연실']} selected={value.noGoItems} select={(item) => toggle('noGoItems', item)} plus /></SurveyCard><div className="moa-warning"><Warning weight="fill" /><p><strong>빠진 조건은 없나요?</strong><span>여기에 적지 않으면 대리인이 모를 수도 있어요.</span></p></div></SurveyShell>
+  return <SurveyShell step={1} time="6분" title="이건 진짜 안 돼요." copy="여기서 고른 건 대리인이 절대 양보하지 않아요." next={next} disabled={incomplete}><div className="moa-hard-grid"><SurveyCard icon={Coins} title="예산"><label className="moa-field">1인 총예산 상한<div className="moa-money"><b>₩</b><input name="budgetLimit" inputMode="numeric" value={value.budgetLimit} onChange={(e) => set('budgetLimit', e.target.value)} placeholder="금액 입력" /><span>원</span></div></label><label className="moa-switch"><input name="includesFlight" type="checkbox" checked={value.includesFlight} onChange={(e) => set('includesFlight', e.target.checked)} /><span /> 항공 포함</label></SurveyCard><SurveyCard icon={ForkKnife} title="먹는 것"><ChipGroup items={[...dietaryOptions]} selected={value.dietary} select={toggleDietary} plus /></SurveyCard><SurveyCard icon={Warning} title="알레르기"><p className="moa-card-note">해당되는 것을 모두 골라주세요. 목록에 없으면 직접 추가할 수 있어요. 알레르기는 어떤 경우에도 양보하지 않고, 대응을 확인하지 못한 식당은 후보에서 제외해요.</p><ChipGroup items={[...allergenOptions]} selected={value.allergies} select={(item) => toggle('allergies', item)} plus /></SurveyCard><SurveyCard icon={ShieldCheck} title="생활 · 신념"><ChipGroup items={['기도 시간 필요','음주 일정 제외','동물 체험 제외']} selected={value.beliefs} select={(item) => toggle('beliefs', item)} plus /></SurveyCard><SurveyCard icon={SuitcaseRolling} title="체력 · 이동"><label className={`moa-field moa-unanswered-range ${value.walkingDistanceKm === null ? 'unanswered' : ''}`}>하루에 얼마나 걸을 수 있나요?<input name="walkingDistanceKm" type="range" min="1" max="15" value={value.walkingDistanceKm ?? 8} onChange={(e) => set('walkingDistanceKm', Number(e.target.value))} /><div className="moa-range-label"><span>1km</span><strong>{value.walkingDistanceKm === null ? '선택 안 함' : `${value.walkingDistanceKm}km`}</strong><span>15km</span></div></label><ChipGroup items={['계단·경사 어려움','휠체어','유모차']} selected={value.mobilityNeeds} select={(item) => toggle('mobilityNeeds', item)} /></SurveyCard></div><SurveyCard icon={LockKey} title="절대 안 돼요" full><ChipGroup items={['새벽 비행','도미토리','남녀 혼숙','날것','놀이기구','장시간 버스','흡연실']} selected={value.noGoItems} select={(item) => toggle('noGoItems', item)} plus /></SurveyCard><div className="moa-warning"><Warning weight="fill" /><p><strong>빠진 조건은 없나요?</strong><span>여기에 적지 않으면 대리인이 모를 수도 있어요.</span></p></div></SurveyShell>
 }
 
 function SliderSurvey({ values, change, next }: { values: Record<string, number | null>; change: (id: string, value: number) => void; next: () => void }) {
-  const incomplete = preferenceSliders.some(({ id }) => values[id] === null)
-  return <SurveyShell step={2} time="4분" title="그래서, 어떤 여행을 좋아해요?" copy="눈치 보지 말고 본인 취향대로 골라주세요." next={next} disabled={incomplete}><div className="moa-slider-grid">{preferenceSliders.map(({ id, title, left, right }) => <article className={`moa-slider ${values[id] === null ? 'unanswered' : ''}`} key={id}><div><strong>{title}</strong><span>{values[id] === null ? '선택 안 함' : `${values[id]} / 7`}</span></div><input name={id} type="range" min="1" max="7" value={values[id] ?? 4} onChange={(e) => change(id, Number(e.target.value))} /><footer><span>{left}</span><span>{right}</span></footer></article>)}</div><div className="moa-tip"><Info weight="fill" /><p><strong>MOA 안내</strong><span>딱 반반이면 가운데도 괜찮아요. 애매한 취향도 그대로 전할게요.</span></p></div></SurveyShell>
+  const incomplete = preferenceQuestions.some(({ id }) => values[id] === null)
+  return <SurveyShell step={2} time="4분" title="그래서, 어떤 여행을 좋아해요?" copy="눈치 보지 말고 본인 취향대로 골라주세요." next={next} disabled={incomplete}><div className="moa-slider-grid">{preferenceQuestions.map(({ id, title, options }) => <article className={`moa-slider ${values[id] === null ? 'unanswered' : ''}`} key={id}><header><strong>{title}</strong><span>{values[id] === null ? '하나를 골라주세요' : options.find((option) => option.value === values[id])?.label}</span></header><div className="moa-preference-options" role="group" aria-label={title}>{options.map((option) => <button type="button" aria-pressed={values[id] === option.value} className={values[id] === option.value ? 'active' : ''} key={option.value} onClick={() => change(id, option.value)}><strong>{option.label}</strong><small>{option.description}</small></button>)}</div></article>)}</div><div className="moa-tip"><Info weight="fill" /><p><strong>MOA 안내</strong><span>가장 가까운 설명을 골라주세요. 선택한 의미를 실제 일정 밀도와 방식에 반영할게요.</span></p></div></SurveyShell>
 }
 
-function CardSurvey({ index, scores, setScore, back, next }: { index: number; scores: Record<string, number | null>; setScore: (id: string, score: number) => void; back: () => void; next: () => void }) {
-  const item = osakaPreferences[index]
-  const label = (n: number) => n >= 9 ? '꼭 하고 싶어요' : n >= 7 ? '좋아요' : n >= 5 ? '있어도 좋아요' : n >= 3 ? '별로 관심 없어요' : '피하고 싶어요'
-  const score = scores[item.id]
+function CardSurvey({ destinationName, items, index, scores, setScore, back, next }: { destinationName: string; items: ActivityPreference[]; index: number; scores: Record<string, number | null>; setScore: (id: string, score: number) => void; back: () => void; next: () => void }) {
+  const item = items[index]
+  const choices = [
+    { value: 1, label: '관심 적어요', description: '일정에서 빠져도 괜찮아요' },
+    { value: 5, label: '괜찮아요', description: '동선이 맞으면 하고 싶어요' },
+    { value: 10, label: '꼭 하고 싶어요', description: '우선순위 높게 반영해요' },
+  ] as const
   const advanceTimer = useRef<number | null>(null)
   useEffect(() => () => {
     if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current)
   }, [index])
+  if (!item) return null
+  const score = scores[item.id]
   const chooseScore = (value: number) => {
     if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current)
     setScore(item.id, value)
     advanceTimer.current = window.setTimeout(next, 320)
   }
-  return <SurveyShell step={3} time="2분" title="이거 얼마나 끌려요?" copy="오사카에서 해볼 것들을 1점부터 10점까지 골라주세요." next={next} nextLabel={index === osakaPreferences.length - 1 ? '다음' : '확인'} disabled={score === null}><div className="moa-card-counter"><strong>{index + 1}</strong> / {osakaPreferences.length}<div><i style={{ width: `${((index + 1) / osakaPreferences.length) * 100}%` }} /></div></div><motion.article key={index} className="moa-score-card" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }}><img src={item.image} alt={item.name} onError={useLocalImageFallback} /><span className="moa-photo-shade" /><div><span>OSAKA PICK {String(index + 1).padStart(2,'0')}</span><h2>{item.name}</h2><p>{item.context}</p></div></motion.article><div className="moa-score-selector"><div><span>안 끌려요</span><strong>{score === null ? '아직 선택 안 했어요' : <><b>{score}</b> — {label(score)}</>}</strong><span>꼭 할래요</span></div><div>{[1,2,3,4,5,6,7,8,9,10].map((n) => <button type="button" aria-pressed={score === n} className={score === n ? 'active' : ''} key={n} onClick={() => chooseScore(n)}>{n}</button>)}</div></div><div className="moa-card-nav"><button onClick={back} disabled={index === 0}><ArrowLeft /> 이전 카드</button><p aria-live="polite">{score === null ? '하나를 골라주세요' : '선택했어요. 다음으로 넘어갈게요'}</p></div></SurveyShell>
+  return <SurveyShell step={3} time="2분" title="이거 얼마나 끌려요?" copy={`${destinationName}에서 해볼 것마다 가장 가까운 마음을 골라주세요.`} next={next} nextLabel={index === items.length - 1 ? '다음' : '확인'} disabled={score === null}><div className="moa-card-counter"><strong>{index + 1}</strong> / {items.length}<div><i style={{ width: `${((index + 1) / items.length) * 100}%` }} /></div></div><motion.article key={index} className="moa-score-card" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }}><img src={item.image} alt={item.name} onError={useLocalImageFallback} /><span className="moa-photo-shade" /><div><span>{destinationName.toUpperCase()} PICK {String(index + 1).padStart(2,'0')}</span><h2>{item.name}</h2><p>{item.context}</p></div></motion.article><div className="moa-card-choice-panel" role="group" aria-label={`${item.name} 선호도`}>{choices.map((choice) => <button type="button" aria-pressed={score === choice.value} className={score === choice.value ? 'active' : ''} key={choice.value} onClick={() => chooseScore(choice.value)}><strong>{choice.label}</strong><small>{choice.description}</small></button>)}</div><div className="moa-card-choice-note"><Info weight="fill" /><span>‘관심 적어요’는 제외가 아니라 낮은 선호예요. 절대 피할 항목은 앞 단계의 필수조건에서 설정해요.</span></div><div className="moa-card-nav"><button onClick={back} disabled={index === 0}><ArrowLeft /> 이전 카드</button><p aria-live="polite">{score === null ? '하나를 골라주세요' : '선택했어요. 다음으로 넘어갈게요'}</p></div></SurveyShell>
 }
 
 function FreeSurvey({ purposeItems, avoid, changePurposes, changeAvoid, next }: { purposeItems: string[]; avoid: string; changePurposes: (value: string[]) => void; changeAvoid: (value: string) => void; next: () => void }) {
@@ -337,11 +385,11 @@ function FreeSurvey({ purposeItems, avoid, changePurposes, changeAvoid, next }: 
 
 function PersonaLoading({ next }: { next: () => void }) { useEffect(() => { const t = window.setTimeout(next, 2600); return () => clearTimeout(t) }, [next]); return <section className="moa-loading"><div className="moa-status-mark loading"><SpinnerGap /></div><span className="moa-kicker">BUILDING MY AGENT</span><h1>내 편 만드는 중이에요</h1><p>답변을 하나씩 정리해서, 나를 잘 아는 대리인을 만들고 있어요.</p><div>{['절대 조건 챙기기','좋아하는 것 정리하기','말하는 방식 맞추기'].map((x,i) => <span style={{ animationDelay: `${i*.35}s` }} key={x}><SpinnerGap />{x}</span>)}</div></section> }
 
-function Persona({ survey, confirm, edit }: { survey:SurveyDraft; confirm:()=>void; edit:()=>void }) {
-  const ranked = osakaPreferences.map((item) => ({ ...item, score:survey.activityScores[item.id] })).filter((item):item is typeof item & { score:number } => item.score !== null).sort((a,b) => b.score - a.score)
+function Persona({ survey, preferences, confirm, edit }: { survey:SurveyDraft; preferences: ActivityPreference[]; confirm:()=>void; edit:()=>void }) {
+  const ranked = preferences.map((item) => ({ ...item, score:survey.activityScores[item.id] })).filter((item):item is typeof item & { score:number } => item.score !== null).sort((a,b) => b.score - a.score)
   const strongest = ranked.slice(0,3)
   const lowest = [...ranked].sort((a,b) => a.score - b.score).slice(0,2)
-  const paceValue = survey.travelStyles.pace
+  const paceValue = survey.travelStyles.PACE
   const pace = paceValue === null ? '아직 선택 전' : paceValue <= 3 ? '느긋한 편' : paceValue >= 6 ? '알찬 일정' : '균형 잡힌 편'
   // 알레르기를 가장 앞에 둔다. 페르소나 확인 화면이 사용자의 마지막 통제 지점이므로 안전 항목이 먼저 보여야 한다.
   const allergyLabels = survey.hardConstraints.allergies.map((item) => `${item} 알레르기`)

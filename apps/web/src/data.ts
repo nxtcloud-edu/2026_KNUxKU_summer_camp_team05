@@ -16,7 +16,7 @@ export type RoomMember = {
   score: number
 }
 
-export type OsakaPreference = {
+export type ActivityPreference = {
   id: string
   name: string
   context: string
@@ -46,18 +46,62 @@ export const roomMembers: RoomMember[] = [
   { name: '수아', initial: '수', color: '#B66F84', pale: '#F2DEE4', status: '참여함', score: 7.2 },
 ]
 
-export const preferenceSliders = [
-  { id: 'pace', title: '여행 페이스', left: '느긋하게', right: '빡빡하게' },
-  { id: 'planning', title: '계획 스타일', left: '즉흥적으로', right: '미리 꼼꼼하게' },
-  { id: 'atmosphere', title: '여행 분위기', left: '자연 · 풍경', right: '도심 · 쇼핑' },
-  { id: 'place-style', title: '장소 취향', left: '역사 · 박물관', right: '트렌디 · 핫플' },
-  { id: 'food-style', title: '맛집 선택', left: '로컬 음식 도전', right: '검증된 맛집' },
-  { id: 'togetherness', title: '함께하는 정도', left: '항상 같이', right: '자유시간 필요' },
-  { id: 'daily-rhythm', title: '생활 리듬', left: '새벽형', right: '늦잠형' },
-  { id: 'evening-style', title: '저녁 시간', left: '나이트라이프', right: '저녁 휴식' },
-  { id: 'transport-style', title: '이동 방식', left: '택시 편하게', right: '대중교통 절약' },
-  { id: 'photo-priority', title: '여행 사진', left: '인생샷 중요', right: '사진 관심 없음' },
-  { id: 'activity-level', title: '활동 강도', left: '모험 · 액티비티', right: '안전 · 무난' },
+export const preferenceQuestions = [
+  { id: 'PACE', title: '여행 페이스', options: [
+    { value: 1, label: '휴식형', description: '핵심 일정 하루 1개' },
+    { value: 4, label: '보통형', description: '핵심 일정 하루 2개' },
+    { value: 7, label: '활동형', description: '핵심 일정 하루 3개' },
+  ] },
+  { id: 'PLANNING', title: '계획 스타일', options: [
+    { value: 1, label: '즉흥형', description: '현장에서 정해요' },
+    { value: 4, label: '균형형', description: '큰 틀만 정해요' },
+    { value: 7, label: '계획형', description: '미리 꼼꼼히 정해요' },
+  ] },
+  { id: 'NATURE_VS_CITY', title: '여행 분위기', options: [
+    { value: 1, label: '자연형', description: '풍경과 야외 중심' },
+    { value: 4, label: '균형형', description: '자연과 도시 모두' },
+    { value: 7, label: '도시형', description: '쇼핑과 도심 중심' },
+  ] },
+  { id: 'HISTORY_VS_TREND', title: '장소 취향', options: [
+    { value: 1, label: '역사형', description: '역사·박물관 중심' },
+    { value: 4, label: '혼합형', description: '전통과 핫플 모두' },
+    { value: 7, label: '트렌드형', description: '새로운 핫플 중심' },
+  ] },
+  { id: 'LOCAL_VS_PROVEN_DINING', title: '맛집 선택', options: [
+    { value: 1, label: '도전형', description: '현지 음식에 도전' },
+    { value: 4, label: '균형형', description: '도전과 익숙함 모두' },
+    { value: 7, label: '검증형', description: '평점 좋은 맛집 위주' },
+  ] },
+  { id: 'TOGETHERNESS', title: '함께하는 정도', options: [
+    { value: 1, label: '함께형', description: '대부분 같이 다녀요' },
+    { value: 4, label: '균형형', description: '함께와 개인 시간' },
+    { value: 7, label: '자유형', description: '자유시간이 필요해요' },
+  ] },
+  { id: 'DAILY_RHYTHM', title: '생활 리듬', options: [
+    { value: 1, label: '아침형', description: '일찍 하루를 시작' },
+    { value: 4, label: '유연형', description: '일정에 맞춰 움직여요' },
+    { value: 7, label: '느긋형', description: '늦게 하루를 시작' },
+  ] },
+  { id: 'EVENING_STYLE', title: '저녁 시간', options: [
+    { value: 1, label: '야간형', description: '밤 일정도 좋아요' },
+    { value: 4, label: '균형형', description: '하루 정도는 가능해요' },
+    { value: 7, label: '휴식형', description: '저녁에는 쉬고 싶어요' },
+  ] },
+  { id: 'TRANSPORT_STYLE', title: '이동 방식', options: [
+    { value: 1, label: '편의형', description: '택시를 적극 활용' },
+    { value: 4, label: '혼합형', description: '상황에 따라 선택' },
+    { value: 7, label: '절약형', description: '대중교통 중심' },
+  ] },
+  { id: 'PHOTO_PRIORITY', title: '여행 사진', options: [
+    { value: 1, label: '사진형', description: '촬영 시간이 중요해요' },
+    { value: 4, label: '기록형', description: '몇 장이면 충분해요' },
+    { value: 7, label: '경험형', description: '사진보다 경험 중심' },
+  ] },
+  { id: 'ACTIVITY_RISK', title: '활동 강도', options: [
+    { value: 1, label: '모험형', description: '새로운 체험을 선호' },
+    { value: 4, label: '균형형', description: '적당한 체험이 좋아요' },
+    { value: 7, label: '안정형', description: '안전하고 무난하게' },
+  ] },
 ] as const
 
 const osakaImages = [
@@ -68,7 +112,7 @@ const osakaImages = [
   'https://images.unsplash.com/photo-1542051841857-5f90071e7989?auto=format&fit=crop&w=1200&q=85',
 ]
 
-export const osakaPreferences: OsakaPreference[] = [
+const curatedOsakaPreferences: ActivityPreference[] = [
   ['도톤보리 야경', '네온사인 아래에서 오사카의 밤 즐기기'],
   ['유니버설 스튜디오', '하루를 온전히 테마파크에서 보내기'],
   ['구로몬 시장', '아침부터 길거리 음식과 해산물 맛보기'],
@@ -90,6 +134,34 @@ export const osakaPreferences: OsakaPreference[] = [
   ['한큐 백화점', '식품관과 일본 브랜드 쇼핑하기'],
   ['오사카 야구 관람', '현지 팬들과 경기 분위기 즐기기'],
 ].map(([name, context], index) => ({ id: `osaka-activity-${index + 1}`, name: String(name), context: String(context), image: osakaImages[index % osakaImages.length] }))
+
+const destinationActivityTemplates = [
+  ['대표 명소 산책', '가장 상징적인 장소를 여유 있게 둘러보기'],
+  ['로컬 시장 탐방', '시장과 골목에서 현지 음식 맛보기'],
+  ['야경 감상', '해 질 무렵 전망 좋은 곳에서 도시 감상하기'],
+  ['지역 대표 체험', '이 지역에서만 할 수 있는 체험 한 가지 해보기'],
+  ['현지 맛집', '대표 메뉴를 파는 검증된 식당 찾아가기'],
+  ['카페 휴식', '일정 사이 분위기 좋은 카페에서 쉬기'],
+  ['문화·전시', '박물관이나 전시 공간을 천천히 관람하기'],
+  ['근교 반나절', '이동 부담이 크지 않은 근교 코스 다녀오기'],
+  ['자유 쇼핑', '시장과 상점가에서 각자 관심 있는 것 둘러보기'],
+] as const
+
+export const destinationPreferences: Record<string, ActivityPreference[]> = Object.fromEntries(
+  destinationPacks.map((destination) => {
+    if (destination.id === 'osaka') return [destination.id, curatedOsakaPreferences]
+    const items = destinationActivityTemplates.map(([name, context], index) => ({
+      id: `${destination.id}-activity-${index + 1}`,
+      name: `${destination.name} ${name}`,
+      context: `${destination.tags[index % destination.tags.length]} 테마로 ${context}`,
+      image: destination.image,
+    }))
+    return [destination.id, items]
+  }),
+)
+
+export const getDestinationPreferences = (destinationId: string): ActivityPreference[] =>
+  destinationPreferences[destinationId] ?? []
 
 export const meetingRounds = [
   { code: 'R0', name: '여행 방향', state: '완료' },

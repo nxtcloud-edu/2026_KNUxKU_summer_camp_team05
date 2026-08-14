@@ -90,7 +90,13 @@ export function evaluateSatisfactionGap(
   participants: readonly ParticipantSatisfactionForGap[],
   fairnessRedebateCount: number,
 ): SatisfactionGapReviewResult {
-  const scored = participants.filter(
+  const parsedParticipants = z.array(participantSatisfactionForGapSchema).parse(participants);
+  const safeRedebateCount = z.number().int().nonnegative().parse(fairnessRedebateCount);
+  const participantIds = parsedParticipants.map(({ participantId }) => participantId);
+  if (new Set(participantIds).size !== participantIds.length) {
+    throw new Error('participantId는 만족도 격차 계산에서 중복될 수 없습니다.');
+  }
+  const scored = parsedParticipants.filter(
     (participant): participant is Extract<ParticipantSatisfactionForGap, { status: 'SCORED' }> =>
       participant.status === 'SCORED',
   );
@@ -117,7 +123,7 @@ export function evaluateSatisfactionGap(
   const status: SatisfactionGapReviewStatus =
     gapBp <= satisfactionGapPolicyV1.thresholdBp
       ? 'PASS'
-      : fairnessRedebateCount < satisfactionGapPolicyV1.maxFairnessRedebates
+      : safeRedebateCount < satisfactionGapPolicyV1.maxFairnessRedebates
         ? 'REDEBATE'
         : 'REPORT_UNRESOLVED';
 
@@ -173,6 +179,16 @@ export const proxyVoteSchema = z
     explanation: z.string().min(1),
   })
   .superRefine((vote, context) => {
+    if (
+      (vote.decision === 'SUPPORT' || vote.decision === 'ACCEPTABLE') &&
+      vote.reasonCode !== 'NONE'
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reasonCode'],
+        message: '수용 투표는 reasonCode NONE만 사용할 수 있습니다.',
+      });
+    }
     if (
       (vote.decision === 'OPPOSE' || vote.decision === 'USER_CONFIRMATION_REQUIRED') &&
       vote.reasonCode === 'NONE'

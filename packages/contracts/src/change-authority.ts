@@ -130,7 +130,8 @@ export type ChangeAuthorityRecord = z.infer<typeof changeAuthorityRecordSchema>;
 
 /** LLM의 자연어 판단이 아니라 사유 코드 집합에 대해 결정론적으로 실행한다. */
 export function classifyChangeAuthority(reasonCodes: readonly ChangeReasonCode[]): ChangeAuthorityDecision {
-  const reasonSet = new Set<ChangeReasonCode>(reasonCodes);
+  const parsedReasons = z.array(z.enum(changeReasonCodes)).min(1).parse(reasonCodes);
+  const reasonSet = new Set<ChangeReasonCode>(parsedReasons);
   if (newSurveySnapshotReasons.some((reason) => reasonSet.has(reason))) return 'NEW_SURVEY_SNAPSHOT';
   if (userConfirmationReasons.some((reason) => reasonSet.has(reason))) {
     return 'USER_CONFIRMATION_REQUIRED';

@@ -58,9 +58,9 @@
 | 공통 계약 | 일부 구현 | `packages/contracts` |
 | PostgreSQL·Redis 로컬 환경 | 구현 | `docker-compose.yml` |
 | API 서버 | 미구현 | 목표 `apps/api` |
-| Worker·Orchestrator | 로컬 구현 완료 | `apps/worker` — 상태 머신·SQLite·사용자 대기/재개 |
+| Worker·Orchestrator | 부분 구현 | `apps/worker` — 상태 머신·SQLite·검증 후보 leximin 선택·사용자 대기/재검증. Provider Data Gateway 연결 전에는 preloaded 정규화 후보만 처리 |
 | 결정론 엔진 | 미구현 | 목표 `packages/core` |
-| Agent 역할 구현 | 로컬 구현 완료 | `packages/agents` — 6개 계약·Fixture Runtime·Codex Gateway 경계 |
+| Agent 역할 구현 | 부분 구현 | `packages/agents` — 6개 계약·Fixture Runtime·Codex Gateway 경계·교차 필드 검증. 자연어 일반 논리 추론은 결정론적 SymbolicReasoner 연결 전까지 제한적 |
 | Data Gateway·Connector | 미구현 | 목표 `packages/data-gateway` |
 | DB 마이그레이션·Repository | 미구현 | 목표 `packages/db` |
 | Destination Pack | 미구현 | 목표 `packs/` |

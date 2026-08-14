@@ -6,8 +6,8 @@ from .models import (
 )
 
 DEMO_EVIDENCE = [
-    EvidenceRef(evidence_id="ev.hotel.price", fact_summary="호텔 총액과 세금 포함 여부가 확인되었습니다.", verification_status="VERIFIED", authority_tier=2, valid_until="2026-08-15T12:00:00Z"),
-    EvidenceRef(evidence_id="ev.hotel.location", fact_summary="호텔에서 주요 목적지까지 이동시간이 확인되었습니다.", verification_status="VERIFIED", authority_tier=2, valid_until="2026-09-01T00:00:00Z"),
+    EvidenceRef(evidence_id="ev.hotel.price", fact_summary="호텔 총액과 세금 포함 여부가 확인되었습니다.", verification_status="VERIFIED", authority_tier=2, valid_until="2099-08-15T12:00:00Z"),
+    EvidenceRef(evidence_id="ev.hotel.location", fact_summary="호텔에서 주요 목적지까지 이동시간이 확인되었습니다.", verification_status="VERIFIED", authority_tier=2, valid_until="2099-09-01T00:00:00Z"),
 ]
 
 DEMO_PLAN_OPTIONS = [

@@ -1170,3 +1170,157 @@ body,.moa-app { background:var(--cream); color:var(--ink); font-family:var(--fon
   .moa-replay-page .moa-chat-positions>div span { font-size:12px; }
   .moa-replay-page .moa-fact-lines p { font-size:13px; }
 }
+
+/* Preference survey: semantic three-way choices instead of ambiguous number sliders. */
+.moa-slider>header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.moa-slider>header>strong { font-size:14px; }
+.moa-slider>header>span {
+  color:var(--coral);
+  font-size:12px;
+  font-weight:700;
+}
+.moa-slider.unanswered>header>span { color:var(--muted); }
+.moa-slider>.moa-preference-options {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-top:14px;
+}
+.moa-preference-options button {
+  min-width:0;
+  min-height:76px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:9px 7px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#faf8f4;
+  color:var(--ink);
+  cursor:pointer;
+  transition:border-color .18s ease,background .18s ease,color .18s ease,transform .18s ease;
+}
+.moa-preference-options button:hover {
+  border-color:#efaa94;
+  background:#fff8f4;
+  transform:translateY(-1px);
+}
+.moa-preference-options button:focus-visible {
+  outline:3px solid rgba(242,113,75,.25);
+  outline-offset:2px;
+}
+.moa-preference-options button>strong {
+  font-size:13px;
+  line-height:1.25;
+  word-break:keep-all;
+}
+.moa-preference-options button>small {
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.35;
+  word-break:keep-all;
+}
+.moa-preference-options button.active {
+  border-color:var(--coral);
+  background:#fff0e9;
+  color:#df5f3d;
+  box-shadow:0 5px 12px rgba(242,113,75,.13);
+}
+.moa-preference-options button.active>small { color:#a6543f; }
+
+@media(max-width:620px){
+  .moa-slider { padding:16px; }
+  .moa-slider>header { align-items:flex-start; }
+  .moa-slider>header>span { text-align:right; }
+  .moa-slider>.moa-preference-options { gap:6px; }
+  .moa-preference-options button { min-height:72px; padding:8px 5px; }
+  .moa-preference-options button>strong { font-size:12px; }
+  .moa-preference-options button>small { font-size:9px; }
+}
+
+/* Destination cards: three semantic choices, while retaining 1/5/10 internally. */
+.moa-card-choice-panel {
+  width:min(720px,100%);
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:9px;
+  margin:12px auto 0;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:17px;
+  background:#fff;
+}
+.moa-card-choice-panel button {
+  min-width:0;
+  min-height:72px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:10px 8px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#faf8f4;
+  color:var(--ink);
+  cursor:pointer;
+  transition:border-color .18s ease,background .18s ease,color .18s ease,transform .18s ease;
+}
+.moa-card-choice-panel button:hover {
+  border-color:#efaa94;
+  background:#fff8f4;
+  transform:translateY(-1px);
+}
+.moa-card-choice-panel button:focus-visible {
+  outline:3px solid rgba(242,113,75,.25);
+  outline-offset:2px;
+}
+.moa-card-choice-panel button>strong {
+  font-size:14px;
+  line-height:1.25;
+  word-break:keep-all;
+}
+.moa-card-choice-panel button>small {
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.35;
+  word-break:keep-all;
+}
+.moa-card-choice-panel button.active {
+  border-color:var(--coral);
+  background:var(--coral-pale);
+  color:var(--coral-dark);
+  box-shadow:0 5px 12px rgba(242,113,75,.13);
+}
+.moa-card-choice-panel button.active>small { color:#a6543f; }
+.moa-card-choice-note {
+  width:min(720px,100%);
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin:8px auto 5px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.45;
+}
+.moa-card-choice-note svg {
+  width:15px;
+  height:15px;
+  flex:0 0 auto;
+  color:var(--sage);
+}
+
+@media(max-width:620px){
+  .moa-card-choice-panel { gap:6px; padding:9px; }
+  .moa-card-choice-panel button { min-height:72px; padding:8px 5px; }
+  .moa-card-choice-panel button>strong { font-size:12px; }
+  .moa-card-choice-panel button>small { font-size:9px; }
+  .moa-card-choice-note { align-items:flex-start; font-size:10px; }
+}

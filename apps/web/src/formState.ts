@@ -78,12 +78,14 @@ export const createEmptySurveyDraft = (styleIds: string[], activityIds: string[]
 })
 
 /**
- * v3: 목적급 자유 입력을 mustDo 단일 문자열에서 purposeItems 최대 2개로 분리.
+ * v4: 여행 스타일·활동 선호를 의미가 고정된 3단계 척도로 변경하고 척도 버전을 명시.
  * 백엔드는 schemaVersion 으로 분기한다.
  */
 export type SurveySubmissionPayload = SurveyDraft & {
-  schemaVersion: 3
+  schemaVersion: 4
   destinationId: string
+  travelStyleScaleVersion: 'THREE_LEVEL_1_4_7_V1'
+  activityScoreScaleVersion: 'THREE_LEVEL_1_5_10_V1'
 }
 
 export type RoomSubmissionPayload = {
@@ -105,8 +107,10 @@ export const createSurveySubmissionPayload = (
     throw new Error('목적급 콘텐츠는 MVP에서 최대 2개까지 제출할 수 있습니다.')
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     destinationId,
+    travelStyleScaleVersion: 'THREE_LEVEL_1_4_7_V1',
+    activityScoreScaleVersion: 'THREE_LEVEL_1_5_10_V1',
     ...draft,
     purposeItems,
   }

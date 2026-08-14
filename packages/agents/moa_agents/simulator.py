@@ -30,7 +30,7 @@ async def run_demo_debate(runtime: AgentRuntime | None = None) -> dict[str, obje
             Rule(rule_id="rule.hard-constraint", description="필수조건 실패는 반대를 요구한다."),
             Rule(rule_id="rule.protected-objective", description="보호 목적 변경은 사용자 확인이 필요하다."),
             Rule(rule_id="rule.preference-score", description="검증된 만족도로 수용성을 설명한다."),
-        ], evidence=DEMO_EVIDENCE,
+        ], evidence=DEMO_EVIDENCE, expected_votes=[item.vote for item in proxies],
     )))
     assert isinstance(audit, LogicAuditorOutput)
 

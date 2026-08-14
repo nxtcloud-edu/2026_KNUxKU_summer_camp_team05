@@ -28,10 +28,28 @@ from .models import (
 )
 
 
+_UNSAFE_RELAXATION_TERMS = (
+    "allergy", "allergen", "health", "safety", "accessibility", "wheelchair",
+    "mandatory", "hard constraint", "\uc54c\ub808\ub974\uae30", "\uac74\uac15", "\uc548\uc804",
+    "\uc811\uadfc\uc131", "\ud720\uccb4\uc5b4", "\uc720\ubaa8\ucc28", "\ud544\uc218", "\uc808\ub300 \uc870\uac74",
+)
+
+
+def _contains_unsafe_relaxation(value: str) -> bool:
+    normalized = value.casefold()
+    return any(term in normalized for term in _UNSAFE_RELAXATION_TERMS)
+
+
 def run_participant_proxy(data: ParticipantProxyInput) -> ParticipantProxyOutput:
     participant = data.participant
+    eligible = [
+        option for option in data.options
+        if option.validation_status == "VERIFIED" and option.hard_constraints_satisfied
+    ]
+    if not eligible:
+        raise ValueError("Participant Proxy received no VERIFIED, hard-safe proposal.")
     ranked = sorted(
-        data.options,
+        eligible,
         key=lambda option: (-option.participant_satisfaction_bp.get(participant.participant_id, 0), option.proposal_id),
     )
     preferred = ranked[0]
@@ -79,6 +97,9 @@ def run_participant_proxy(data: ParticipantProxyInput) -> ParticipantProxyOutput
             actor_agent_run_id=data.run_id,
             premise_fact_ids=[f"fact:{evidence_id}" for evidence_id in preferred.evidence_ids],
             rule_id=("rule.hard-constraint" if hard_failure else "rule.protected-objective" if missing_objectives else "rule.preference-score"),
+            claimed_participant_id=participant.participant_id,
+            claimed_proposal_id=preferred.proposal_id,
+            claimed_decision=decision,
             conclusion=f"{participant.participant_id}는 {preferred.proposal_id}에 대해 {decision}한다.",
             evidence_ids=preferred.evidence_ids,
         ),
@@ -87,6 +108,7 @@ def run_participant_proxy(data: ParticipantProxyInput) -> ParticipantProxyOutput
 
 def run_candidate_search(data: CandidateSearchInput) -> CandidateSearchOutput:
     unsafe = any(re.search(r"알레르기|건강|접근성|필수", value, re.IGNORECASE) for value in data.allowed_relaxations)
+    unsafe = any(_contains_unsafe_relaxation(value) for value in data.allowed_relaxations)
     terms = [term.strip() for term in data.unresolved_free_text if term.strip()]
     if not terms or unsafe:
         return CandidateSearchOutput(
@@ -111,30 +133,61 @@ def run_candidate_search(data: CandidateSearchInput) -> CandidateSearchOutput:
 
 
 def run_logic_auditor(data: LogicAuditorInput) -> LogicAuditorOutput:
-    facts = {item.fact_id for item in data.facts}
+    facts = {item.fact_id: item for item in data.facts}
     rules = {item.rule_id for item in data.rules}
     evidence = {item.evidence_id: item for item in data.evidence}
+    expected_votes = {
+        (item.participant_id, item.proposal_id, item.decision)
+        for item in data.expected_votes
+    }
     reviews: list[ProofReview] = []
     requested_evidence: list[str] = []
     for argument in data.arguments:
         issues: list[str] = []
         if any(fact_id not in facts for fact_id in argument.premise_fact_ids):
             issues.append("MISSING_FACT")
+        for fact_id in argument.premise_fact_ids:
+            fact = facts.get(fact_id)
+            if fact is not None and not set(fact.evidence_ids) <= set(argument.evidence_ids):
+                issues.append("MISSING_EVIDENCE")
         if argument.rule_id not in rules:
             issues.append("UNKNOWN_RULE")
+        missing_evidence_ids: list[str] = []
         for evidence_id in argument.evidence_ids:
             item = evidence.get(evidence_id)
             if item is None or item.verification_status == "UNVERIFIED":
                 issues.append("MISSING_EVIDENCE")
+                missing_evidence_ids.append(evidence_id)
             elif item.verification_status == "STALE":
                 issues.append("STALE_EVIDENCE")
+                missing_evidence_ids.append(evidence_id)
             elif item.verification_status == "CONTRADICTED":
                 issues.append("CONTRADICTED_EVIDENCE")
+        match = re.fullmatch(
+            r"(.+)는 (.+)에 대해 (SUPPORT|ACCEPTABLE|OPPOSE|USER_CONFIRMATION_REQUIRED)한다\.",
+            argument.conclusion,
+        )
+        if match is None:
+            issues.append("CONCLUSION_NOT_DERIVED")
+        elif expected_votes and (match.group(1), match.group(2), match.group(3)) not in expected_votes:
+            issues.append("CONCLUSION_NOT_DERIVED")
+        # 표시용 자연어 conclusion의 문구·언어는 판정 근거로 사용하지 않는다.
+        # 구조화 claim과 expectedVotes의 정확 일치만 결론 도출 여부를 결정한다.
+        issues = [code for code in issues if code != "CONCLUSION_NOT_DERIVED"]
+        structured_claim = (
+            argument.claimed_participant_id,
+            argument.claimed_proposal_id,
+            argument.claimed_decision,
+        )
+        if structured_claim not in expected_votes:
+            issues.append("CONCLUSION_NOT_DERIVED")
         issues = list(dict.fromkeys(issues))
-        invalid = "UNKNOWN_RULE" in issues or "CONTRADICTED_EVIDENCE" in issues
+        invalid = any(code in issues for code in {
+            "UNKNOWN_RULE", "CONTRADICTED_EVIDENCE", "CONCLUSION_NOT_DERIVED",
+        })
         verdict = "INVALID" if invalid else "NEEDS_EVIDENCE" if issues else "VALID"
         if verdict == "NEEDS_EVIDENCE":
-            requested_evidence.extend(argument.evidence_ids)
+            requested_evidence.extend(missing_evidence_ids)
         reviews.append(ProofReview(
             argument_id=argument.argument_id,
             verdict=verdict,
@@ -152,7 +205,18 @@ def run_logic_auditor(data: LogicAuditorInput) -> LogicAuditorOutput:
 
 def run_category_watcher(data: CategoryWatcherInput) -> CategoryWatcherOutput:
     checks = data.mechanical_checks
-    affected = [option.proposal_id for option in data.options]
+    invalid_options = [
+        option.proposal_id for option in data.options
+        if option.validation_status != "VERIFIED" or not option.hard_constraints_satisfied
+    ]
+    affected = invalid_options or [option.proposal_id for option in data.options]
+    if invalid_options:
+        return CategoryWatcherOutput(
+            role="CATEGORY_WATCHER", verdict="BLOCK", affected_proposal_ids=invalid_options,
+            reason_codes=["HARD_CONSTRAINT"],
+            requested_changes=["검증되지 않았거나 필수조건을 위반한 계획안을 제거해야 합니다."],
+            evidence_ids=[], explanation="비교 대상에 실행 불가능한 계획안이 포함되어 있습니다.",
+        )
     if checks.hard_constraint_failures or not checks.budget_valid or not checks.schedule_valid:
         reasons = []
         if checks.hard_constraint_failures:
@@ -183,7 +247,9 @@ def run_category_watcher(data: CategoryWatcherInput) -> CategoryWatcherOutput:
 
 def run_debate_supervisor(data: DebateSupervisorInput) -> DebateSupervisorOutput:
     def legal(preferred: DebateAction) -> DebateAction:
-        return preferred if preferred in data.legal_moves else (data.legal_moves[0] if data.legal_moves else "BLOCK")
+        if preferred not in data.legal_moves:
+            raise ValueError(f"Required fail-closed action is not legal: {preferred}")
+        return preferred
 
     confirmation = [vote for vote in data.votes if vote.decision == "USER_CONFIRMATION_REQUIRED"]
     opposition = [vote for vote in data.votes if vote.decision == "OPPOSE"]
@@ -192,8 +258,17 @@ def run_debate_supervisor(data: DebateSupervisorInput) -> DebateSupervisorOutput
         return DebateSupervisorOutput(role="DEBATE_SUPERVISOR", next_action=legal("BLOCK"), target_participant_ids=[], referenced_proposal_ids=proposal_ids, reason_code="WATCHER_BLOCK", rationale=data.watcher_verdict.explanation)
     if confirmation:
         return DebateSupervisorOutput(role="DEBATE_SUPERVISOR", next_action=legal("WAIT_FOR_USER"), target_participant_ids=[vote.participant_id for vote in confirmation], referenced_proposal_ids=proposal_ids, reason_code="USER_AUTHORITY_REQUIRED", rationale="보호 목적 변경에는 참가자 본인의 확인이 필요합니다.")
-    if opposition and data.iteration < data.max_iterations:
+    hard_opposition = [vote for vote in opposition if vote.reason_code == "HARD_CONSTRAINT"]
+    protected_opposition = [
+        vote for vote in opposition
+        if vote.reason_code in {"PROTECTED_OBJECTIVE", "MIN_SATISFACTION", "FIVE_POINT_PREFERENCE"}
+    ]
+    if hard_opposition:
+        return DebateSupervisorOutput(role="DEBATE_SUPERVISOR", next_action=legal("BLOCK"), target_participant_ids=[vote.participant_id for vote in hard_opposition], referenced_proposal_ids=proposal_ids, reason_code="ITERATION_LIMIT", rationale="하드 제약 반대는 다수결이나 사용자 승인으로 덮을 수 없습니다.")
+    if opposition and data.iteration + 1 < data.max_iterations:
         return DebateSupervisorOutput(role="DEBATE_SUPERVISOR", next_action=legal("PROPOSE_COMPROMISE"), target_participant_ids=[vote.participant_id for vote in opposition], referenced_proposal_ids=proposal_ids, reason_code="OPPOSITION_REMAINS", rationale="반대 사유를 보존한 새 절충안이 필요합니다.")
+    if protected_opposition:
+        return DebateSupervisorOutput(role="DEBATE_SUPERVISOR", next_action=legal("WAIT_FOR_USER"), target_participant_ids=[vote.participant_id for vote in protected_opposition], referenced_proposal_ids=proposal_ids, reason_code="ITERATION_LIMIT", rationale="반복 한도 안에 보호 목적 또는 최소 만족도를 해결하지 못해 당사자 확인이 필요합니다.")
     if opposition:
         return DebateSupervisorOutput(role="DEBATE_SUPERVISOR", next_action=legal("END_DEBATE"), target_participant_ids=[vote.participant_id for vote in opposition], referenced_proposal_ids=proposal_ids, reason_code="ITERATION_LIMIT", rationale="반복 한도에 도달해 미해결 양보를 보고합니다.")
     return DebateSupervisorOutput(role="DEBATE_SUPERVISOR", next_action=legal("END_DEBATE"), target_participant_ids=[], referenced_proposal_ids=proposal_ids, reason_code="CONSENSUS", rationale="모든 투표가 수용 가능 이상이고 감시 검증을 통과했습니다.")

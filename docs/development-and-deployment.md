@@ -140,7 +140,7 @@ npm run lint
 | 메서드 | 경로 | 페이로드 | 비고 |
 | --- | --- | --- | --- |
 | POST | `/api/trip-rooms` | `RoomSubmissionPayload` `{ schemaVersion: 1, destinationId }` | 방장은 목적지만 선택 (기획서 v1.2) |
-| POST | `/api/survey-responses` | `SurveySubmissionPayload` `{ schemaVersion: 3, destinationId, availability, hardConstraints, travelStyles, activityScores, purposeItems, avoid }` | `credentials: 'include'` |
+| POST | `/api/survey-responses` | `SurveySubmissionPayload` `{ schemaVersion: 4, destinationId, travelStyleScaleVersion: 'THREE_LEVEL_1_4_7_V1', activityScoreScaleVersion: 'THREE_LEVEL_1_5_10_V1', availability, hardConstraints, travelStyles, activityScores, purposeItems, avoid }` | `credentials: 'include'` |
 
 ### 5.1 설문 스키마 v2 — 알레르기를 식이 제약에서 분리
 
@@ -173,6 +173,10 @@ v3: purposeItems: string[]  // 0~2개, 순서 보존
 ```
 
 상한은 공통 계약의 `protectedObjectivePolicyV1.maxPerParticipant`에서 관리한다. 후속 버전에서 상한을 늘릴 때 저장 구조를 다시 바꾸지 않는다.
+
+### 5.2.1 설문 스키마 v4 — 3단계 의미 척도
+
+v4는 여행 스타일을 `1 / 4 / 7`, 활동 선호를 `1 / 5 / 10` 세 버튼으로 고정한다. 내부 계산 범위는 기존 1~7·1~10을 유지하지만 제출 payload에 `travelStyleScaleVersion`과 `activityScoreScaleVersion`을 함께 저장해 연속 척도 응답과 구분한다. 기존 로컬 초안은 스타일 `1~3 → 1`, `4~5 → 4`, `6~7 → 7`, 활동 `1~4 → 1`, `5~8 → 5`, `9~10 → 10`으로 한 번 정규화한다. 스타일 축 ID는 공통 계약의 대문자 canonical ID로 저장한다.
 
 ### 5.3 MVP 보류 — 참가자 간 알레르기 상세 공개
 

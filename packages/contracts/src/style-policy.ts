@@ -19,10 +19,22 @@ export type TravelStyleAxis = (typeof travelStyleAxes)[number];
 export const travelStyleValueSchema = z.number().int().min(1).max(7);
 export type TravelStyleValue = z.infer<typeof travelStyleValueSchema>;
 
-export const travelStyleProfileSchema = z.record(
-  z.enum(travelStyleAxes),
-  travelStyleValueSchema.nullable(),
-);
+/** Zod 3의 enum record는 partial이므로 모든 축을 명시한 strict object로 고정한다. */
+export const travelStyleProfileSchema = z
+  .object({
+    PACE: travelStyleValueSchema.nullable(),
+    PLANNING: travelStyleValueSchema.nullable(),
+    NATURE_VS_CITY: travelStyleValueSchema.nullable(),
+    HISTORY_VS_TREND: travelStyleValueSchema.nullable(),
+    LOCAL_VS_PROVEN_DINING: travelStyleValueSchema.nullable(),
+    TOGETHERNESS: travelStyleValueSchema.nullable(),
+    DAILY_RHYTHM: travelStyleValueSchema.nullable(),
+    EVENING_STYLE: travelStyleValueSchema.nullable(),
+    TRANSPORT_STYLE: travelStyleValueSchema.nullable(),
+    PHOTO_PRIORITY: travelStyleValueSchema.nullable(),
+    ACTIVITY_RISK: travelStyleValueSchema.nullable(),
+  })
+  .strict();
 export type TravelStyleProfile = z.infer<typeof travelStyleProfileSchema>;
 
 export const styleFitPolicyV1 = {
@@ -42,7 +54,9 @@ export function calculateStyleFitBp(
   userValue: TravelStyleValue,
   candidateValue: TravelStyleValue,
 ): number {
-  return Math.round(10_000 * (1 - Math.abs(userValue - candidateValue) / 6));
+  const safeUserValue = travelStyleValueSchema.parse(userValue);
+  const safeCandidateValue = travelStyleValueSchema.parse(candidateValue);
+  return Math.round(10_000 * (1 - Math.abs(safeUserValue - safeCandidateValue) / 6));
 }
 
 /** 분야 우선순위와 중복되어 MVP 입력에서 제거한 구버전 축이다. */

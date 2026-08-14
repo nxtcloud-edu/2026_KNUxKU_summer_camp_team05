@@ -577,7 +577,7 @@ Agent 권한 밖의 참조
 검증된 사실과 직접 모순
 ```
 
-동일 주장은 `premiseFactIds + ruleId + conclusion + planVersion`의 해시로 캐시한다. 해시가 같고 관련 근거가 `STALE`이 아니면 Auditor 결과를 재사용한다. Logic Auditor는 새로운 사실이나 규칙을 만들 수 없으며, 기존 사실 연결·추가 근거 요청·결론 철회 중 하나만 제안한다.
+동일 주장은 `premiseFactIds + ruleId + claimedParticipantId + claimedProposalId + claimedDecision + conclusion + planVersion`의 해시로 캐시한다. 해시가 같고 관련 근거가 `STALE`이 아니면 Auditor 결과를 재사용한다. Logic Auditor는 구조화된 claim을 같은 라운드의 `expectedVotes`와 대조하며, 새로운 사실이나 규칙을 만들 수 없고 기존 사실 연결·추가 근거 요청·결론 철회 중 하나만 제안한다.
 
 ---
 
